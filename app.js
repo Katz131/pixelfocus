@@ -1,5 +1,5 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.10)
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.11)
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
@@ -1086,29 +1086,41 @@ try {
         state.lastActiveDate = todayStr();
         state.profileCreated = Date.now();
       }
-      // If timer was running when closed, check the wall clock first.
+      // If timer was running when the popup closed, check the wall clock.
       // If the full session time has already elapsed, auto-complete it
-      // (the user gets credit even if the tab was closed at the moment
-      // the session ended). Otherwise, snapshot the true remaining time
-      // and pause it so the user can explicitly resume.
+      // (the user gets credit even if the popup was closed at the moment
+      // the session ended). Otherwise, KEEP THE TIMER RUNNING and resync
+      // state.timerRemaining from the wall clock. The tick interval is
+      // re-armed after init (see load(...) callback in the DOMContentLoaded
+      // block) so the display resumes updating immediately.
+      //
+      // v3.19.11 fix: previously this path auto-paused any in-flight
+      // session whenever the popup reopened. Chrome MV3 popups close the
+      // moment they lose focus (clicking another window, opening a modal
+      // that steals focus, a system notification, etc.), so this caused
+      // the timer to appear "frozen" until the user manually clicked
+      // RESUME — exactly what Giulia reported with the check-in modal.
+      // Wall-clock anchoring means the correct resolution is: just keep
+      // running and re-arm the tick.
       if (state.timerState === 'running') {
         if (state.timerEndsAt && Date.now() >= state.timerEndsAt) {
-          // Session completed while away / tab closed — award the credit.
+          // Session completed while away / popup closed — award the credit.
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
           state.timerState = 'completed';
           save();
         } else if (state.timerEndsAt) {
-          // Still mid-session. Snapshot the real remaining time and
-          // pause so the user explicitly resumes.
+          // Still mid-session. Resync display time from the wall clock
+          // and leave state.timerState === 'running' so the tick picks
+          // back up where real time actually is. The interval is armed
+          // after load() finishes.
           var remMs2 = state.timerEndsAt - Date.now();
           state.timerRemaining = Math.max(0, Math.ceil(remMs2 / 1000));
-          state.timerEndsAt = 0;
-          state.timerState = 'paused';
           save();
         } else {
           // No endsAt recorded (pre-v3.19.5 save) — fall back to legacy
-          // behavior: just pause with whatever timerRemaining says.
+          // behavior: pause with whatever timerRemaining says, since we
+          // have no wall-clock anchor to resume from.
           state.timerState = 'paused';
           save();
         }
@@ -3125,31 +3137,18 @@ try {
     countdownRemaining = 0;
   }
 
-  function beginActualSession() {
-    SFX.startTimer();
-    state.timerState = 'running';
-    // Anchor the session to a wall-clock end time. Now + whatever is
-    // left on the clock. The tick reads this directly rather than
-    // decrementing timerRemaining, so Chrome's background-tab throttling
-    // (which clamps setInterval to ~1/min after 5 min backgrounded) can't
-    // make the timer silently lose real-world time.
-    if (!state.timerRemaining || state.timerRemaining <= 0) {
-      state.timerRemaining = state.sessionDurationSec || 600;
-    }
-    state.timerEndsAt = Date.now() + (state.timerRemaining * 1000);
-    save();
-    render();
-    try { if (typeof MsgLog !== 'undefined') MsgLog.push('Shuttle in motion. Master Loom primed.'); } catch(_){}
-    // NOTE: The 10-minute honor-system check-in is DELIBERATELY NOT
-    // armed here any more. For 10-min sessions it was a no-op (session
-    // ends before the check fires). For 20/30/60-min sessions it popped
-    // a modal every 10 min asking "did you focus for 10 minutes?", which
-    // broke flow during long deep-work runs and got blamed for credit
-    // loss. The end-of-session confirmation modal is the canonical
-    // honesty check for every session length now.
-    try { cancelWorkCheckIn(); } catch (_) {}
+  // Start (or restart) the 1 Hz timer tick that reads state.timerEndsAt and
+  // updates state.timerRemaining / rendering each time the second count
+  // changes. Safe to call multiple times — it clears any existing interval
+  // first. This is the ONLY place setInterval is armed for the timer, so
+  // both beginActualSession() and the popup-reload resume path go through
+  // this function.
+  //
+  // v3.19.11: extracted from beginActualSession so popup reloads can
+  // re-attach the tick without starting a fresh session.
+  function armTimerTick() {
     if (timerInterval) clearInterval(timerInterval);
-    var lastRenderedSec = -1;
+    var lastRenderedSec = state.timerRemaining || -1;
     timerInterval = setInterval(() => {
       try {
         // Wall-clock-based remaining. Robust to background tab throttling
@@ -3185,6 +3184,32 @@ try {
         console.error('Timer tick error:', err);
       }
     }, 1000);
+  }
+
+  function beginActualSession() {
+    SFX.startTimer();
+    state.timerState = 'running';
+    // Anchor the session to a wall-clock end time. Now + whatever is
+    // left on the clock. The tick reads this directly rather than
+    // decrementing timerRemaining, so Chrome's background-tab throttling
+    // (which clamps setInterval to ~1/min after 5 min backgrounded) can't
+    // make the timer silently lose real-world time.
+    if (!state.timerRemaining || state.timerRemaining <= 0) {
+      state.timerRemaining = state.sessionDurationSec || 600;
+    }
+    state.timerEndsAt = Date.now() + (state.timerRemaining * 1000);
+    save();
+    render();
+    try { if (typeof MsgLog !== 'undefined') MsgLog.push('Shuttle in motion. Master Loom primed.'); } catch(_){}
+    // NOTE: The 10-minute honor-system check-in is DELIBERATELY NOT
+    // armed here any more. For 10-min sessions it was a no-op (session
+    // ends before the check fires). For 20/30/60-min sessions it popped
+    // a modal every 10 min asking "did you focus for 10 minutes?", which
+    // broke flow during long deep-work runs and got blamed for credit
+    // loss. The end-of-session confirmation modal is the canonical
+    // honesty check for every session length now.
+    try { cancelWorkCheckIn(); } catch (_) {}
+    armTimerTick();
   }
 
   function startTimer() {
@@ -4006,6 +4031,15 @@ try {
       buildShuffledTabOrder();
       render();
 
+      // v3.19.11: if a pomodoro session was still running when this popup
+      // loaded (see the wall-clock resync logic in load()), re-arm the
+      // 1 Hz tick so the display picks back up where real time actually
+      // is. The reload-handler used to auto-pause here, which froze the
+      // timer whenever the popup briefly lost focus. Now it stays running.
+      if (state.timerState === 'running' && state.timerEndsAt && state.timerEndsAt > Date.now()) {
+        try { armTimerTick(); } catch (_) {}
+      }
+
       // Kick off the 1-minute rotation timer. The countdown progress bar
       // only becomes visible during the final 10s before each re-shuffle.
       startTabRotationTimer();
@@ -4052,6 +4086,11 @@ try {
       // of snapping straight to the correct remaining time. If the
       // session would already have ended while we weren't looking, this
       // fires the completion path right away so the user gets credit.
+      //
+      // v3.19.11: also re-arms the tick interval if it got lost (e.g.
+      // service-worker suspension, browser throttling leaving the
+      // interval stale). Belt-and-suspenders against the "frozen
+      // timer while a modal is up" bug.
       document.addEventListener('visibilitychange', function() {
         if (document.hidden) return;
         if (state.timerState !== 'running') return;
@@ -4073,6 +4112,12 @@ try {
           save();
           renderTimer();
           renderBlockProgress();
+          // If the tick interval isn't running (e.g. it was killed by
+          // browser throttling or a modal race), restart it so the
+          // display keeps updating every second.
+          if (!timerInterval) {
+            try { armTimerTick(); } catch (_) {}
+          }
         }
       });
 
