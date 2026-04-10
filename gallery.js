@@ -17,34 +17,40 @@
   // most also cost money ($, shown as coins in state). Textiles come from
   // focus sessions; money comes from streaks/combos/marathons/employees.
   //
-  // Pink is the deliberate TEACHING PURCHASE (v3.18.9): 200 textiles, zero
+  // Pink is the deliberate TEACHING PURCHASE (v3.19.13): 30 textiles, zero
   // money. It's the very first thing a new player can buy after the free
-  // Green starter, priced so that a single day of focused work is enough to
-  // experience the "spend textiles → unlock a color → see it on the canvas"
-  // loop. White follows as the second gentle tier (still cheap, but adds the
-  // money-cost mechanic). After Teal the curve ramps into multi-trillion-
-  // textile trophies.
+  // Green starter, priced so that about five hours of focused work is
+  // enough to experience the "spend textiles → unlock a color → see it on
+  // the canvas" loop. White is the second gentle tier at 200 textiles,
+  // still money-free. Every color from Teal onward has shifted one slot
+  // cheaper vs. the pre-v3.19.13 curve — each color now costs what the
+  // NEXT color up used to cost. The grand-finale Amber tier is now 8T
+  // textiles instead of the old 32T. Rationale: the old prices were sold
+  // in the comment as "a single day of focused work" for Pink, but 1
+  // textile = 10 minutes of real focus, which made the old 200-Pink
+  // actually a full working week. The shifted curve restores the intended
+  // pacing.
   var COLOR_SHOP = [
     { color: '#00ff88', cost: 0,                coinCost: 0,              name: 'Green' },     // starter, free
-    { color: '#ff6b9d', cost: 200,              coinCost: 0,              name: 'Pink' },      // teaching purchase — textiles only
-    { color: '#ffffff', cost: 400,              coinCost: 30,             name: 'White' },
-    { color: '#4ecdc4', cost: 8000,             coinCost: 400,            name: 'Teal' },
-    { color: '#ffa502', cost: 32000,            coinCost: 1600,           name: 'Orange' },
-    { color: '#ff4757', cost: 128000,           coinCost: 6400,           name: 'Red' },
-    { color: '#5352ed', cost: 512000,           coinCost: 25600,          name: 'Blue' },
-    { color: '#ffd700', cost: 2000000,          coinCost: 100000,         name: 'Gold' },
-    { color: '#ff00ff', cost: 8000000,          coinCost: 400000,         name: 'Magenta' },
-    { color: '#00ffff', cost: 32000000,         coinCost: 1600000,        name: 'Cyan' },
-    { color: '#9b59b6', cost: 128000000,        coinCost: 6400000,        name: 'Purple' },
-    { color: '#e056fd', cost: 500000000,        coinCost: 25000000,       name: 'Lavender' },
-    { color: '#f9ca24', cost: 2000000000,       coinCost: 100000000,      name: 'Yellow' },
-    { color: '#6ab04c', cost: 8000000000,       coinCost: 400000000,      name: 'Forest' },
-    { color: '#eb4d4b', cost: 32000000000,      coinCost: 1600000000,     name: 'Crimson' },
-    { color: '#c0392b', cost: 128000000000,     coinCost: 6400000000,     name: 'Dark Red' },
-    { color: '#1abc9c', cost: 500000000000,     coinCost: 25000000000,    name: 'Emerald' },
-    { color: '#3498db', cost: 2000000000000,    coinCost: 100000000000,   name: 'Sky Blue' },
-    { color: '#2c3e50', cost: 8000000000000,    coinCost: 400000000000,   name: 'Midnight' },
-    { color: '#f39c12', cost: 32000000000000,   coinCost: 1600000000000,  name: 'Amber' },
+    { color: '#ff6b9d', cost: 30,               coinCost: 0,              name: 'Pink' },      // teaching #1 — textiles only
+    { color: '#ffffff', cost: 200,              coinCost: 0,              name: 'White' },     // teaching #2 — textiles only
+    { color: '#4ecdc4', cost: 400,              coinCost: 30,             name: 'Teal' },      // first money-cost tier
+    { color: '#ffa502', cost: 8000,             coinCost: 400,            name: 'Orange' },
+    { color: '#ff4757', cost: 32000,            coinCost: 1600,           name: 'Red' },
+    { color: '#5352ed', cost: 128000,           coinCost: 6400,           name: 'Blue' },
+    { color: '#ffd700', cost: 512000,           coinCost: 25600,          name: 'Gold' },
+    { color: '#ff00ff', cost: 2000000,          coinCost: 100000,         name: 'Magenta' },
+    { color: '#00ffff', cost: 8000000,          coinCost: 400000,         name: 'Cyan' },
+    { color: '#9b59b6', cost: 32000000,         coinCost: 1600000,        name: 'Purple' },
+    { color: '#e056fd', cost: 128000000,        coinCost: 6400000,        name: 'Lavender' },
+    { color: '#f9ca24', cost: 500000000,        coinCost: 25000000,       name: 'Yellow' },
+    { color: '#6ab04c', cost: 2000000000,       coinCost: 100000000,      name: 'Forest' },
+    { color: '#eb4d4b', cost: 8000000000,       coinCost: 400000000,      name: 'Crimson' },
+    { color: '#c0392b', cost: 32000000000,      coinCost: 1600000000,     name: 'Dark Red' },
+    { color: '#1abc9c', cost: 128000000000,     coinCost: 6400000000,     name: 'Emerald' },
+    { color: '#3498db', cost: 500000000000,     coinCost: 25000000000,    name: 'Sky Blue' },
+    { color: '#2c3e50', cost: 2000000000000,    coinCost: 100000000000,   name: 'Midnight' },
+    { color: '#f39c12', cost: 8000000000000,    coinCost: 400000000000,   name: 'Amber' },
   ];
   // ===== Canvas upgrade pricing — DUAL CURRENCY (textiles + money $) =====
   // 8x8 is the free starter. The first two tiers (12x12, 16x16) are gentle starter

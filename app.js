@@ -1,5 +1,5 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.12)
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.13)
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
