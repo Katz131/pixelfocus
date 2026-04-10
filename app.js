@@ -1,5 +1,5 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.11)
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.12)
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
@@ -3209,6 +3209,12 @@ try {
     // loss. The end-of-session confirmation modal is the canonical
     // honesty check for every session length now.
     try { cancelWorkCheckIn(); } catch (_) {}
+    // v3.19.12: clear the focus-confirmation latch so a fresh session
+    // gets a fresh chance to arm the modal. Without this, if the
+    // previous session ever left the latch set (shouldn't happen, but
+    // belt-and-suspenders), the next session's completion modal
+    // would silently refuse to show.
+    try { clearFocusConfirmLatch(); } catch (_) {}
     armTimerTick();
   }
 
@@ -3318,6 +3324,9 @@ try {
     state.combo = 0;
     // Reset stops the honor-system check-in clock.
     try { cancelWorkCheckIn(); } catch (_) {}
+    // v3.19.12: a manual reset clears the focus-confirmation latch
+    // so the next completed session can arm a fresh modal.
+    try { clearFocusConfirmLatch(); } catch (_) {}
     save();
     render();
   }
@@ -3607,27 +3616,65 @@ try {
   }
 
   // ============== FOCUS CONFIRMATION ==============
+  // v3.19.12: module-scoped guard preventing the double-credit bug.
+  // Previously, showFocusConfirmation() could be called more than once
+  // in rapid succession (e.g. the armTimerTick completion path firing
+  // at the same instant as the visibilitychange-on-return handler, or
+  // the load() reload handler's deferred call racing with either of
+  // those). Each call used addEventListener('click', ...) on the same
+  // yesBtn without first clearing previous handlers, so the Yes button
+  // would accumulate N listeners and a single click would fire
+  // awardSessionReward N times — giving 4 textiles for a 20-min
+  // session instead of 2 (exactly what Giulia reported).
+  //
+  // The fix is a simple one-shot latch: set _focusConfirmArmed = true
+  // the first time the modal is shown, refuse to re-arm while it's
+  // still showing, and clear the latch the moment either button is
+  // clicked (or a fresh session / reset begins).
+  var _focusConfirmArmed = false;
+  function clearFocusConfirmLatch() { _focusConfirmArmed = false; }
   function showFocusConfirmation() {
     const reward = getSessionReward(state.sessionDurationSec || 600);
     const total = reward.blocks + reward.bonus;
     const modal = document.getElementById('focusConfirmModal');
     if (!modal) {
+      // No modal DOM — direct-award fallback. Guard it too.
+      if (_focusConfirmArmed) return;
+      _focusConfirmArmed = true;
       awardSessionReward(reward);
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
+      _focusConfirmArmed = false;
       save(); render();
       return;
     }
+    // Guard: if we've already armed this confirmation and the modal
+    // is visible waiting for the user's answer, any additional call
+    // must be a no-op. Otherwise we'd stack another pair of click
+    // listeners on the same Yes/No buttons and a single click would
+    // award credit multiple times.
+    if (_focusConfirmArmed && modal.style.display === 'flex') return;
+    _focusConfirmArmed = true;
     // Update modal copy to reflect the session length
     var modalTitle = document.getElementById('focusModalTitle');
     var modalSub = document.getElementById('focusModalSub');
     if (modalTitle) modalTitle.textContent = 'Did you actually focus?';
     if (modalSub) modalSub.textContent = 'Completing the ' + reward.label + ' will earn ' + total + ' textile' + (total === 1 ? '' : 's') + (reward.bonus > 0 ? ' (' + reward.blocks + ' + ' + reward.bonus + ' commitment bonus)' : '') + '.';
     modal.style.display = 'flex';
+    // Defensive: clone the Yes/No buttons NOW (before attaching new
+    // listeners), so any stale handlers from a previous render cycle
+    // are stripped. Belt-and-suspenders alongside the latch above.
+    var yesBtnOld = document.getElementById('focusYesBtn');
+    var noBtnOld = document.getElementById('focusNoBtn');
+    if (yesBtnOld) yesBtnOld.replaceWith(yesBtnOld.cloneNode(true));
+    if (noBtnOld) noBtnOld.replaceWith(noBtnOld.cloneNode(true));
     const yesBtn = document.getElementById('focusYesBtn');
     const noBtn = document.getElementById('focusNoBtn');
     function closeModal() { modal.style.display = 'none'; yesBtn.replaceWith(yesBtn.cloneNode(true)); noBtn.replaceWith(noBtn.cloneNode(true)); }
     yesBtn.addEventListener('click', function() {
+      // If another click path already consumed the latch, bail.
+      if (!_focusConfirmArmed) { closeModal(); return; }
+      _focusConfirmArmed = false;
       closeModal();
       awardSessionReward(reward);
       state.timerRemaining = state.sessionDurationSec || 600;
@@ -3637,6 +3684,8 @@ try {
       SFX.blockEarned();
     });
     noBtn.addEventListener('click', function() {
+      if (!_focusConfirmArmed) { closeModal(); return; }
+      _focusConfirmArmed = false;
       closeModal();
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';

@@ -3,7 +3,7 @@ REM ============================================================
 REM PixelFocus extension packager (double-click to run)
 REM
 REM Just double-click this file in File Explorer.
-REM It will create "pixelfocus-v3.19.11.zip" right next to itself
+REM It will create "pixelfocus-v3.19.12.zip" right next to itself
 REM in this same folder. Send that zip to your friend.
 REM
 REM This script ONLY reads source files and writes a zip.
@@ -24,7 +24,7 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
   "$src = (Get-Location).Path;" ^
-  "$version = '3.19.11';" ^
+  "$version = '3.19.12';" ^
   "$staging = Join-Path $env:TEMP ('pixelfocus-build-' + [Guid]::NewGuid().ToString('N'));" ^
   "$outZip = Join-Path $src ('pixelfocus-v' + $version + '.zip');" ^
   "New-Item -ItemType Directory -Path $staging -Force | Out-Null;" ^
@@ -48,7 +48,7 @@ if errorlevel 1 (
 ) else (
     echo.
     echo The zip file is now sitting in this same folder:
-    echo   %~dp0pixelfocus-v3.19.11.zip
+    echo   %~dp0pixelfocus-v3.19.12.zip
     echo.
     echo That is the file to send to your friend.
     echo.
