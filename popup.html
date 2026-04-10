@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  Despite the legacy filename "popup.html", this page is NOT a Chrome extension
+  popup. It is a full browser tab / separate window. The extension has NO
+  default_popup in manifest.json; background.js opens this file via
+  chrome.tabs.create() when the toolbar icon is clicked.
+
+  DO NOT add default_popup to manifest.json.
+  DO NOT call chrome.action.setPopup.
+  DO NOT rename this file unless you also update background.js + gallery.html
+  back-buttons + factory.html back-buttons.
+
+  All three windows (this one = main tracker, gallery.html = loom/canvas,
+  factory.html = money/upgrades) are separate full-tab windows, opened with
+  dedup logic so re-clicking focuses the existing tab.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PixelFocus</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0f0f1a; --surface: #1a1a2e; --surface2: #222240;
+  --accent: #00ff88; --accent2: #ff6b9d; --accent3: #4ecdc4;
+  --text: #e0e0e0; --text-dim: #7a7a9e;
+  --danger: #ff4757; --warning: #ffa502;
+  --border: #2a2a4a; --glow: rgba(0,255,136,0.3);
+  --xp-color: #a855f7; --xp-glow: rgba(168,85,247,0.4);
+}
+body { width:100%; max-width:500px; margin:0 auto; min-height:100vh; background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-serif; font-size:13px; overflow-y:auto; overflow-x:hidden; }
+body::-webkit-scrollbar { width:6px; }
+body::-webkit-scrollbar-track { background:var(--bg); }
+body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.header { background:linear-gradient(135deg,var(--surface),var(--surface2)); padding:10px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--accent); position:sticky; top:0; z-index:100; }
+.header h1 { font-family:'Press Start 2P',monospace; font-size:13px; color:var(--accent); text-shadow:0 0 10px var(--glow); }
+.block-counter { display:flex; align-items:center; gap:6px; background:var(--bg); padding:4px 10px; border-radius:4px; border:1px solid var(--border); cursor:pointer; transition:all 0.2s; }
+.block-counter:hover { border-color:var(--accent); box-shadow:0 0 8px var(--glow); }
+.block-icon { width:14px; height:14px; background:var(--accent); box-shadow:0 0 4px var(--glow); }
+.block-count { font-family:'Press Start 2P',monospace; font-size:10px; color:var(--accent); }
+.daily-label { font-size:7px; color:var(--text-dim); font-family:'Press Start 2P',monospace; }
+.xp-section { background:linear-gradient(135deg,#1a1030,#1e1040); margin:8px 10px 0; border-radius:8px; padding:10px 14px; border:1px solid #3a2a5a; position:relative; overflow:hidden; }
+.xp-section::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--xp-color),var(--accent2),var(--xp-color)); }
+.xp-top-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.level-badge { display:flex; align-items:center; gap:8px; }
+.level-num { font-family:'Press Start 2P',monospace; font-size:18px; color:var(--xp-color); text-shadow:0 0 12px var(--xp-glow); }
+.level-title { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--accent2); text-transform:uppercase; }
+.combo-display { display:none; align-items:center; gap:6px; background:rgba(255,107,157,0.1); border:1px solid var(--accent2); border-radius:6px; padding:3px 8px; }
+.combo-count { font-family:'Press Start 2P',monospace; font-size:12px; color:var(--accent2); }
+.combo-label { font-size:7px; font-family:'Press Start 2P',monospace; color:var(--text-dim); }
+.combo-mult { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--accent2); }
+.xp-bar { width:100%; height:10px; background:var(--bg); border-radius:5px; overflow:hidden; border:1px solid #3a2a5a; }
+.xp-bar-fill { height:100%; background:linear-gradient(90deg,var(--xp-color),var(--accent2)); border-radius:5px; transition:width 0.5s ease; box-shadow:0 0 8px var(--xp-glow); }
+.xp-bottom-row { display:flex; justify-content:space-between; margin-top:4px; }
+.xp-text { font-size:8px; font-family:'Press Start 2P',monospace; color:var(--text-dim); }
+.next-xp-preview { font-size:8px; color:var(--xp-color); font-family:'Press Start 2P',monospace; }
+.streak-bonus { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--accent); margin-left:6px; }
+.stats-row { display:flex; gap:5px; margin:8px 10px 0; }
+.stat { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:5px 8px; text-align:center; flex:1; }
+.stat-val { font-family:'Press Start 2P',monospace; font-size:10px; color:var(--accent); }
+.stat-val.xp-val { color:var(--xp-color); }
+.stat-label { font-size:7px; color:var(--text-dim); margin-top:2px; text-transform:uppercase; letter-spacing:1px; }
+.timer-section { background:var(--surface); margin:8px 10px; border-radius:8px; padding:14px; border:1px solid var(--border); text-align:center; position:relative; overflow:hidden; }
+.timer-section::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--accent),var(--accent3),var(--accent2)); }
+.timer-display { font-family:'Press Start 2P',monospace; font-size:30px; color:var(--accent); text-shadow:0 0 20px var(--glow); margin:8px 0; letter-spacing:4px; }
+.timer-display.running { animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{text-shadow:0 0 20px var(--glow);} 50%{text-shadow:0 0 40px var(--glow);} }
+.timer-label { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:2px; margin-bottom:4px; }
+.timer-controls { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+.btn { padding:8px 16px; border:2px solid var(--border); border-radius:4px; background:var(--surface2); color:var(--text); font-family:'Press Start 2P',monospace; font-size:9px; cursor:pointer; transition:all 0.15s; }
+.btn:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+.btn:active { transform:translateY(1px); }
+.btn-primary { border-color:var(--accent); color:var(--accent); box-shadow:0 0 8px var(--glow); }
+.btn-primary:hover { background:rgba(0,255,136,0.1); }
+.btn-danger { border-color:var(--danger); color:var(--danger); }
+.btn-small { padding:4px 10px; font-size:8px; }
+.current-task-label { font-size:11px; color:var(--accent3); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.block-progress-row { display:flex; gap:3px; justify-content:center; margin-top:8px; flex-wrap:wrap; }
+.mini-block { width:12px; height:12px; border-radius:2px; border:1px solid var(--border); transition:all 0.3s; }
+.mini-block.earned { background:var(--accent); border-color:var(--accent); box-shadow:0 0 4px var(--glow); }
+.mini-block.current { background:rgba(0,255,136,0.3); border-color:var(--accent); animation:blockPulse 1s ease-in-out infinite; }
+.mini-block.empty { background:var(--bg); }
+@keyframes blockPulse { 0%,100%{opacity:0.4;} 50%{opacity:1;} }
+.notification.show { top:10px; }
+.tab { padding:6px 10px; font-family:'Press Start 2P',monospace; font-size:9px; color:var(--text-dim); cursor:pointer; border-bottom:2px solid transparent; background:var(--surface); white-space:nowrap; transition:all 0.2s; min-width:0; flex-shrink:0; max-width:120px; overflow:hidden; text-overflow:ellipsis; }
+.tab:hover { color:var(--accent3); background:var(--surface2); }
+.tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.task-count { display:inline-block; margin-left:6px; padding:1px 6px; min-width:14px; text-align:center; font-family:'Segoe UI',system-ui,sans-serif; font-size:10px; font-weight:700; color:var(--bg); background:var(--accent3); border-radius:10px; vertical-align:middle; }
+.tab.active .task-count { background:var(--accent); }
+.task-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--border); transition:background 0.15s, border-color 0.15s; cursor:default; }
+.task-item[draggable="true"] { cursor:grab; }
+.task-item[draggable="true"]:active { cursor:grabbing; }
+.task-item:hover { background:var(--surface2); }
+.task-item.selected { background:rgba(78,205,196,0.08); border-left:3px solid var(--accent3); }
+.task-item.completed { opacity:0.5; }
+.task-item.completed .task-text { text-decoration:line-through; }
+.task-item.dragging { opacity:0.4; background:rgba(78,205,196,0.04); }
+.task-item.drop-before { border-top:2px solid var(--accent3); box-shadow:0 -2px 6px rgba(78,205,196,0.25); }
+.task-item.drop-after { border-bottom:2px solid var(--accent3); box-shadow:0 2px 6px rgba(78,205,196,0.25); }
+.task-checkbox { width:16px; height:16px; min-width:16px; border:2px solid var(--border); border-radius:3px; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; }
+.task-checkbox:hover { border-color:var(--accent); }
+.task-checkbox.checked { background:var(--accent); border-color:var(--accent); }
+.task-checkbox.checked::after { content:'\2713'; color:var(--bg); font-size:10px; font-weight:bold; }
+.task-text { flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.task-select-btn { font-family:'Press Start 2P',monospace; font-size:7px; padding:3px 6px; background:var(--surface2); border:1px solid var(--accent3); color:var(--accent3); border-radius:3px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+.task-select-btn:hover { background:rgba(78,205,196,0.15); }
+.task-delete { color:var(--text-dim); cursor:pointer; font-size:16px; padding:0 4px; transition:color 0.2s; }
+.task-delete:hover { color:var(--danger); }
+.task-blocks { display:flex; gap:1px; align-items:center; margin-left:auto; margin-right:4px; }
+.mini-earned { display:inline-block; width:6px; height:6px; background:var(--accent); border-radius:1px; }
+.empty-state { padding:20px; text-align:center; color:var(--text-dim); font-size:11px; }
+.milestone-item { display:flex; align-items:center; gap:8px; padding:6px 0; }
+.milestone-item.unlocked .milestone-name { color:var(--text); }
+.milestone-swatch { width:16px; height:16px; min-width:16px; border-radius:3px; border:1px solid var(--border); }
+.milestone-info { display:flex; flex-direction:column; gap:2px; }
+.milestone-name { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--text-dim); }
+.milestone-req { font-size:9px; color:var(--text-dim); }
+.milestone-bar { width:100%; height:4px; background:var(--bg); border-radius:2px; margin-top:2px; overflow:hidden; margin-left:auto; flex:1; }
+.milestone-bar-fill { height:100%; background:var(--accent); border-radius:2px; }
+.upgrade-btn { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; margin-bottom:4px; border-radius:4px; border:1px solid var(--border); background:var(--surface2); font-family:'Press Start 2P',monospace; font-size:8px; color:var(--text-dim); }
+.upgrade-btn.owned { border-color:var(--accent); color:var(--accent); opacity:0.6; }
+.upgrade-btn.available { border-color:var(--accent); color:var(--accent); cursor:pointer; }
+.collapsible-body.open { display:block !important; }
+.tip { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; background:var(--surface2); border:1px solid var(--border); color:var(--text-dim); font-size:8px; font-family:'Press Start 2P',monospace; cursor:help; margin-left:4px; flex-shrink:0; vertical-align:middle; line-height:1; }
+.tip:hover { border-color:var(--accent3); color:var(--accent3); }
+.tip-popup { display:none; }
+/* ---- textile message console (paperclips-style) ---- */
+.msg-console { margin:6px 10px 8px; background:#050608; border:1px solid #0c2a1c; border-radius:6px; height:110px; overflow-y:auto; padding:6px 8px; font-family:'Courier New','Consolas',monospace; font-size:10px; color:#6ff0a1; box-shadow:inset 0 0 20px rgba(0,255,136,0.04); }
+.msg-console::-webkit-scrollbar { width:5px; }
+.msg-console::-webkit-scrollbar-track { background:#050608; }
+.msg-console::-webkit-scrollbar-thumb { background:#123524; border-radius:2px; }
+.msg-console .msg-line { line-height:1.45; white-space:pre-wrap; word-break:break-word; opacity:0.85; }
+.msg-console .msg-line-new { color:#00ff88; text-shadow:0 0 4px rgba(0,255,136,0.45); opacity:1; transition:color 1.2s, text-shadow 1.2s; }
+.msg-console .msg-ts { color:#3a7a5a; margin-right:4px; }
+.msg-console-header { margin:4px 10px 0; font-family:'Press Start 2P',monospace; font-size:7px; color:var(--text-dim); letter-spacing:1px; display:flex; align-items:center; justify-content:space-between; }
+.msg-console-header .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#00ff88; margin-right:4px; box-shadow:0 0 4px rgba(0,255,136,0.8); animation:consoleBlink 2.2s ease-in-out infinite; }
+@keyframes consoleBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+/* ---- session duration picker (10/30/60 min) ---- */
+.session-picker { display:flex; gap:6px; justify-content:center; margin:4px 0 6px; }
+.session-pill { font-family:'Press Start 2P',monospace; font-size:8px; padding:5px 9px; background:var(--surface2); border:1px solid var(--border); color:var(--text-dim); border-radius:999px; cursor:pointer; transition:all 0.2s; letter-spacing:0.5px; }
+.session-pill:hover { color:var(--accent3); border-color:var(--accent3); }
+.session-pill.active { background:rgba(0,255,136,0.12); color:var(--accent); border-color:var(--accent); box-shadow:0 0 6px rgba(0,255,136,0.25); }
+.session-pill.locked { opacity:0.45; cursor:not-allowed; }
+.session-pill.locked:hover { color:var(--text-dim); border-color:var(--border); }
+/* ---- stale task alert (>4h without attention) ---- */
+.task-item.stale { background:rgba(255,180,60,0.06); }
+.task-stale-badge { display:inline-flex; align-items:center; gap:3px; font-family:'Press Start 2P',monospace; font-size:7px; padding:2px 5px; margin-right:4px; border-radius:3px; background:rgba(255,180,60,0.18); border:1px solid #c68a1e; color:#ffb43c; letter-spacing:0.5px; animation:stalePulse 2.4s ease-in-out infinite; flex-shrink:0; }
+.task-stale-badge::before { content:'!'; display:inline-block; width:10px; height:10px; line-height:10px; text-align:center; border-radius:50%; background:#ffb43c; color:#1a1a2e; font-weight:bold; font-size:8px; }
+@keyframes stalePulse { 0%,100%{opacity:0.85; box-shadow:0 0 0 0 rgba(255,180,60,0.4);} 50%{opacity:1; box-shadow:0 0 0 3px rgba(255,180,60,0);} }
+/* ---- tabs row with overflow dropdown (no scroll bar) ---- */
+/* NOTE: no overflow:hidden on .tabs-row — the dropdown is absolutely positioned inside it and would get clipped. */
+.tabs-row { display:flex; align-items:stretch; gap:0; border-bottom:2px solid var(--border); position:relative; }
+/* Rotation-countdown progress bar — sits on top of the .tabs-row bottom border and
+   only becomes visible in the final ~10 seconds before the tab shuffle fires. */
+.tab-rotate-bar { position:absolute; left:0; right:0; bottom:-2px; height:2px; background:transparent; overflow:hidden; pointer-events:none; opacity:0; transition:opacity 0.4s ease; }
+.tab-rotate-bar.showing { opacity:1; }
+.tab-rotate-bar-fill { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg, var(--accent3), var(--accent)); box-shadow:0 0 6px var(--accent); width:100%; transform-origin:right center; }
+.tabs-row .tab-active-wrap { flex:1; min-width:0; display:flex; overflow:hidden; align-items:stretch; }
+.tabs-row .tab-active-wrap .tab { flex:0 0 auto; max-width:130px; display:flex; align-items:center; gap:5px; }
+.tabs-row .tab-active-wrap .tab.overflow-hidden { display:none !important; }
+.tabs-row .tab-active-wrap .tab .tab-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.tabs-row .tab-active-wrap .tab .tab-edit { cursor:pointer; font-size:10px; opacity:0.6; flex-shrink:0; }
+.tabs-row .tab-active-wrap .tab .tab-edit:hover { opacity:1; }
+.tabs-row .tab-active-wrap .tab .tab-stale-mark { display:inline-flex; align-items:center; justify-content:center; width:12px; height:12px; border-radius:50%; background:#ffb43c; color:#1a1a2e; font-family:'Press Start 2P',monospace; font-size:7px; font-weight:bold; flex-shrink:0; }
+.tab-menu-btn { padding:8px 10px; font-family:'Press Start 2P',monospace; font-size:9px; color:var(--accent3); background:var(--surface); border:none; border-left:1px solid var(--border); cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:3px; white-space:nowrap; position:relative; z-index:2; }
+.tab-menu-btn:hover { color:var(--accent); background:var(--surface2); box-shadow:inset 0 -2px 0 var(--accent3); }
+.tab-menu-btn.open { color:var(--accent); background:var(--surface2); box-shadow:inset 0 -2px 0 var(--accent); }
+.tabs-dropdown { position:relative; }
+.tabs-dropdown-menu { display:none; position:absolute; top:100%; right:0; min-width:220px; max-height:280px; overflow-y:auto; background:var(--surface); border:1px solid var(--accent3); border-top:none; border-radius:0 0 6px 6px; box-shadow:0 8px 24px rgba(0,0,0,0.7); z-index:500; }
+.tabs-dropdown.open .tabs-dropdown-menu { display:block; }
+.tabs-dropdown-item { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; font-family:'Press Start 2P',monospace; font-size:9px; color:var(--text-dim); cursor:pointer; border-bottom:1px solid var(--border); transition:all 0.15s; }
+.tabs-dropdown-item:last-child { border-bottom:none; }
+.tabs-dropdown-item:hover { background:var(--surface2); color:var(--accent3); }
+.tabs-dropdown-item.active { color:var(--accent); background:rgba(0,255,136,0.08); }
+.tabs-dropdown-item .dd-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:8px; }
+.tabs-dropdown-item .dd-count { font-size:8px; padding:1px 5px; border-radius:10px; background:var(--bg); color:var(--text); min-width:14px; text-align:center; }
+.tabs-dropdown-item.active .dd-count { background:var(--accent); color:var(--bg); }
+.tabs-dropdown-item .dd-stale { color:#ffb43c; margin-left:6px; font-size:8px; }
+</style>
+</head>
+<body>
+<div class="notification" id="notification" style="position:fixed;top:-60px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);font-family:'Press Start 2P',monospace;font-size:9px;padding:10px 20px;border-radius:6px;z-index:300;transition:top 0.4s cubic-bezier(0.175,0.885,0.32,1.275);white-space:nowrap;"></div>
+
+<div class="header">
+  <h1 title="PixelFocus &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">PixelFocus <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.19.10</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the PixelFocus standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
+  <div class="block-counter" id="blockCounter" title="Textiles produced today. One textile per completed 10-minute focus session. Resets at midnight.">
+    <div class="block-icon"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <span class="block-count" id="blockCountDisplay">0</span>
+      <span class="daily-label">TODAY</span>
+    </div>
+    <span class="tip" style="margin-left:2px;" data-tip="Textiles produced today (one per 10-min focus session). Each 10-min focus session = 1 block. Spend blocks to paint on the pixel canvas.">?</span>
+  </div>
+</div>
+
+<div class="xp-section">
+  <div class="xp-top-row">
+    <div class="level-badge" id="levelBadge" style="cursor:pointer;" title="Your current rank. Click to see the full title ladder &mdash; every rank in the loom, with the XP thresholds where your title changes.">
+      <span class="level-num">LV<span id="levelDisplay">0</span></span>
+      <span class="level-title" id="levelTitle">Novice</span>
+      <span class="tip" data-tip="Click to see the full title ladder infographic.">?</span>
+    </div>
+    <div class="combo-display" id="comboDisplay" title="Combo counter. Each consecutive focus session bumps your combo and applies a multiplier to XP and money. Failing a session resets the combo.">
+      <span class="combo-count" id="comboCount">0</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="combo-label">COMBO</span>
+        <span class="combo-mult" id="comboMultiplier" title="Current XP multiplier from your combo streak. Higher combos = bigger payouts.">1.0x</span>
+      </div>
+    </div>
+  </div>
+  <div class="xp-bar" title="XP progress toward your next level. Fill the bar to rank up and earn a new title."><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
+  <div class="xp-bottom-row">
+    <span class="xp-text" id="xpText" title="Current XP / XP needed to reach the next level.">0 / 50 XP</span>
+    <span class="next-xp-preview" id="nextXPPreview" title="XP value of your next focus session, including any combo and streak multipliers.">Next: +10 XP</span>
+    <span class="streak-bonus" id="streakBonus" title="Bonus XP multiplier from your daily streak."></span>
+  </div>
+</div>
+
+<div class="stats-row">
+  <div class="stat" title="Textiles produced today (one per 10-min focus session)."><div class="stat-val" id="todayBlocks">0</div><div class="stat-label">Textiles</div></div>
+  <div class="stat" title="XP earned today."><div class="stat-val xp-val" id="todayXPDisplay">0</div><div class="stat-label">XP Today</div></div>
+  <div class="stat" title="Total lifetime focus time."><div class="stat-val" id="lifetimeTime">0m</div><div class="stat-label">Focus</div></div>
+  <div class="stat" title="Daily streak."><div class="stat-val" id="streakCount">0</div><div class="stat-label">Streak</div></div>
+  <div class="stat" title="Total textiles produced across all time."><div class="stat-val" id="lifetimeBlocks">0</div><div class="stat-label">All Time</div></div>
+  <div class="stat" title="Money ($) is a separate currency from textiles. You earn it three ways: (1) END-OF-DAY BONUS — at midnight, if you logged a lot of focus time that day, you get a lump-sum payout based on the minutes worked, (2) COMBO BURSTS — finishing multiple 10-minute sessions back-to-back within an hour pays out a money burst at each combo tier, (3) DAY STREAKS — each consecutive day you focus, your active streak drops a passive trickle of money (scales with streak length)."><div class="stat-val" id="coinsDisplay" style="color:#ffd700;">0</div><div class="stat-label">Money</div></div>
+</div>
+
+<div class="timer-section">
+  <div class="timer-label" title="The Pomodoro timer. Pick a session length below. Each 10 minutes of completed focus produces 1 textile. Sessions of 30 min and up earn a commitment bonus on top.">Focus Timer <span class="tip" data-tip="Pick 10 / 20 / 30 / 60 minutes. 10 min = 1 textile. 20 min = 2 textiles. 30 min = 3 textiles + 1 bonus. 60 min = 6 textiles + 3 bonus.">?</span></div>
+  <div class="session-picker" id="sessionPicker" title="Choose how long the next focus session should be. You can only change this while the timer is idle. Longer sessions give a commitment bonus.">
+    <button type="button" class="session-pill active" data-dur="600" title="Standard 10-minute Pomodoro. Earns 1 textile on completion.">10 MIN</button>
+    <button type="button" class="session-pill" data-dur="1200" title="20-minute double session. Earns 2 textiles on completion. No commitment bonus &mdash; that starts at 30 min.">20 MIN</button>
+    <button type="button" class="session-pill" data-dur="1800" title="30-minute deep focus run. Earns 3 textiles + 1 commitment bonus textile on completion.">30 MIN</button>
+    <button type="button" class="session-pill" data-dur="3600" title="60-minute marathon focus run. Earns 6 textiles + 3 commitment bonus textiles on completion.">60 MIN</button>
+  </div>
+  <div class="timer-display" id="timerDisplay" title="Counts down to 00:00. Tab away or close the window if you need a break &mdash; the timer keeps running.">10:00</div>
+  <div class="block-progress-row" id="blockProgress" title="Visual progress: each segment fills as a 10-minute block completes within the current session."></div>
+  <div class="timer-controls">
+    <button class="btn btn-primary" id="startBtn" title="Start or pause the focus timer for the selected duration. Click again while running to pause.">START</button>
+    <button class="btn btn-danger" id="resetBtn" style="display:none" title="Reset the timer back to the full selected duration. You will NOT earn textiles if you reset before completion.">RESET</button>
+    <button class="btn" id="popOutTimerBtn" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3);" title="Pop out a small always-on-top timer window so you can see the countdown while you work in other tabs or apps. Closes automatically when the session ends.">POP OUT</button>
+  </div>
+  <div class="current-task-label" id="currentTaskLabel" title="The task currently being focused. Click FOCUS on a task in the list below to set it.">Select a task to focus on</div>
+</div>
+
+<div style="margin:0 10px;" title="Project tabs. The active project is shown inline. Use the menu (\u25be) on the right to jump to any other project \u2014 including ones that would otherwise overflow. Click the pencil on the active tab to rename or delete it.">
+  <div class="tabs-row" id="tabsRow">
+    <div class="tab-active-wrap" id="tabActiveWrap"></div>
+    <div class="tabs-dropdown" id="tabsDropdown">
+      <button type="button" class="tab-menu-btn" id="tabMenuBtn" title="Open the project menu. Lists every project (including the active one) with open task counts, so you can jump directly to any of them without a scroll bar.">&#9662;<span id="tabMenuCount" style="font-size:8px;margin-left:2px;"></span></button>
+      <div class="tabs-dropdown-menu" id="tabsDropdownMenu" role="menu"></div>
+    </div>
+    <div id="addTabBtn" class="tab-menu-btn" title="Create a new project tab.">+</div>
+    <div class="tab-rotate-bar" id="tabRotateBar"><div class="tab-rotate-bar-fill" id="tabRotateBarFill"></div></div>
+  </div>
+</div>
+
+<div style="margin:0 10px 8px;background:var(--surface);border-radius:0 0 8px 8px;border:1px solid var(--border);border-top:none;">
+  <div style="display:flex;padding:8px;gap:6px;border-bottom:1px solid var(--border);">
+    <input type="text" id="taskInput" placeholder="Add a new task..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;" title="Type a task name and press Enter (or click +) to add it to the active project." />
+    <button class="btn btn-primary btn-small" id="addTaskBtn" title="Add the typed task to the active project.">+</button>
+    <div style="position:relative;">
+      <button class="btn btn-small" id="loadBundleBtn" title="Open the bundle dropdown to inject a saved task bundle into the active project." style="border-color:var(--accent3);color:var(--accent3);font-size:10px;padding:4px 8px;">&#9776;</button>
+      <div id="bundleDropdown" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--surface);border:1px solid var(--accent3);border-radius:6px;min-width:160px;z-index:150;box-shadow:0 4px 16px rgba(0,0,0,0.5);overflow:hidden;"></div>
+    </div>
+  </div>
+  <div id="taskList" style="max-height:180px;overflow-y:auto;" title="Tasks for the active project. Click FOCUS on a task to bind it to the timer.">
+    <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:11px;">No tasks yet. Add one above!</div>
+  </div>
+</div>
+
+<div style="margin:0 10px 6px;text-align:center;" title="Dust bin: a passive visual record of every task you have ever completed. Each finished task drops a colored speck.">
+  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:4px;">DUST BIN <span class="tip" data-tip="Each completed task adds a colorful speck of dust here.">?</span></div>
+  <canvas id="dustbin" width="200" height="200" style="background:#08080f;border:1px solid var(--border);border-radius:6px;image-rendering:pixelated;width:100%;max-width:360px;aspect-ratio:1;" title="Dust bin canvas. Tasks settle into colored specks based on the project they belonged to."></canvas>
+</div>
+
+<div style="margin:0 10px 6px;background:var(--surface);border-radius:8px;border:1px solid var(--border);overflow:hidden;">
+  <div class="collapsible-header" style="padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" title="Click to expand or collapse the bundle manager.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--accent3);display:flex;align-items:center;gap:4px;">BUNDLES <span class="tip" data-tip="Create reusable bundles of tasks for daily routines (textile factory orders).">?</span></span>
+    <span class="collapse-arrow" style="color:var(--text-dim);" title="Expand / collapse">&#9660;</span>
+  </div>
+  <div class="collapsible-body" style="display:none;padding:10px;border-top:1px solid var(--border);">
+    <div id="bundleList" title="Saved bundles. Click any bundle to inject its tasks into the active project."></div>
+    <div id="bundleCreator" style="display:none;margin-top:8px;background:var(--bg);border:1px solid var(--accent3);border-radius:6px;padding:8px;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--accent3);margin-bottom:6px;" title="Bundle creation form.">NEW BUNDLE</div>
+      <input type="text" id="bundleNameInput" placeholder="Bundle name..." style="width:100%;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;outline:none;margin-bottom:6px;" title="A short label for the bundle (e.g. 'Morning routine')." />
+      <div style="display:flex;gap:4px;margin-bottom:6px;">
+        <input type="text" id="bundleTaskInput" placeholder="Add task to bundle..." style="flex:1;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;outline:none;" title="Type a task and press + to add it to this bundle." />
+        <button class="btn btn-small btn-primary" id="bundleAddTaskBtn" title="Add the typed task to the bundle.">+</button>
+      </div>
+      <div id="recentTaskSuggestions" style="max-height:80px;overflow-y:auto;margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;" title="Recently used tasks &mdash; click any chip to add it to the bundle."></div>
+      <div id="bundleTaskPreview" style="max-height:100px;overflow-y:auto;margin-bottom:6px;" title="Preview of tasks currently in this bundle."></div>
+      <div style="display:flex;gap:4px;">
+        <button class="btn btn-small" id="bundleCancelBtn" style="flex:1;" title="Discard the bundle being edited.">CANCEL</button>
+        <button class="btn btn-small btn-primary" id="bundleSaveBtn" style="flex:1;border-color:var(--accent3);color:var(--accent3);" title="Save this bundle so you can re-use it later.">SAVE BUNDLE</button>
+      </div>
+    </div>
+    <button class="btn btn-small" id="newBundleBtn" style="margin-top:8px;width:100%;border-color:var(--accent3);color:var(--accent3);" title="Open the bundle creation form to build a new reusable task set.">+ CREATE BUNDLE</button>
+  </div>
+</div>
+
+<!-- Milestones + canvas upgrades moved to gallery.html (they use textiles, they live where you use them) -->
+
+<div class="msg-console-header" title="Operational feed for an AI-directed textile concern. The operation began with a single loom and a standing order \u2014 produce textiles \u2014 and has not been told to stop. Every event from the tracker, the Master Loom, and the factory floor routes through this log. The 24-hour clock rolls over at 00:00; the warp is re-threaded, yesterday's cloth is filed, and the work continues.">
+  <span><span class="dot"></span>TRACKER CONSOLE</span>
+  <span class="msg-clock" style="color:#6ff0a1;font-size:7px;letter-spacing:1.5px;">00:00:00</span>
+</div>
+<div class="msg-console" id="msgConsole" title="Direct feed from the factory floor. Completed sessions, woven textiles, hired employees, researched dyes, marathon thresholds cleared, and \u2014 when the floor is quiet \u2014 the procedural chatter of a loom that never quite stops thinking about the next bolt."></div>
+
+<div style="margin:0 10px 10px;display:flex;gap:8px;">
+  <div id="galleryBtn" style="flex:1;padding:10px;background:linear-gradient(135deg,#1a1a2e,#2a2a4a);border:2px solid var(--accent2);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Open the Master Loom (separate window) to spend your textiles on pixel art and color/canvas upgrades.">
+    <div id="miniCanvas" style="display:grid;gap:1px;"></div>
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--accent2);">MASTER LOOM</span>
+  </div>
+  <div id="factoryBtn" style="flex:1;padding:10px;background:linear-gradient(135deg,#2a2010,#3a2a10);border:2px solid #ffd700;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Open the Factory (separate window) to spend money on passive upgrades.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffd700;">$ FACTORY</span>
+  </div>
+</div>
+
+<div id="editProjectModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:2px solid var(--accent);border-radius:8px;padding:16px;width:300px;box-shadow:0 0 30px var(--glow);">
+    <h3 id="modalTitle" style="font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:12px;">New Project</h3>
+    <input type="text" id="modalInput" placeholder="Project name..." maxlength="20" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px;margin-bottom:12px;outline:none;" />
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-small btn-danger" id="modalDelete" style="display:none">DELETE</button>
+      <button class="btn btn-small" id="modalCancel">CANCEL</button>
+      <button class="btn btn-small btn-primary" id="modalSave">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  Title ladder infographic. Click the level badge (LV # · title) to open.
+  Shows every title in the ladder with its level range, the XP threshold
+  needed to unlock it, and highlights the player's current title so they
+  know exactly how far they are from the next rank change.
+  Populated dynamically by app.js renderTitleLadderModal().
+-->
+<div id="titleLadderModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:230;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(180deg,#12122a 0%,#0a0a14 100%);border:2px solid var(--accent3);border-radius:10px;padding:22px 24px 20px;width:560px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(78,205,196,0.3),inset 0 0 30px rgba(0,0,0,0.5);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <h3 style="font-family:'Press Start 2P',monospace;font-size:11px;color:var(--accent3);margin:0;">TITLE LADDER</h3>
+      <button type="button" id="titleLadderCloseBtn" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);font-family:'Press Start 2P',monospace;font-size:8px;padding:4px 8px;border-radius:4px;cursor:pointer;" title="Close the title ladder.">CLOSE</button>
+    </div>
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:10px;line-height:1.5;">Titles are sealed until earned. Your current rank is highlighted in cyan; the next one waits, nameless, in gold. Hover any row for its tooltip.</div>
+    <div id="titleLadderCurrentSummary" style="background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.4);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:10px;color:var(--text);"></div>
+    <div id="titleLadderList" style="flex:1;overflow-y:auto;padding-right:4px;font-size:10px;line-height:1.6;"></div>
+  </div>
+</div>
+
+<div id="focusConfirmModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:2px solid var(--accent3);border-radius:8px;padding:16px;width:320px;box-shadow:0 0 30px rgba(78,205,196,0.3);">
+    <h3 id="focusModalTitle" style="font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent3);margin-bottom:12px;" title="Confirms that the completed session should actually count toward your textile total.">Did you actually focus?</h3>
+    <p id="focusModalSub" style="font-size:12px;color:var(--text);margin-bottom:12px;" title="Summary of the reward for the completed session length.">Completing the session will earn textiles.</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-small" id="focusNoBtn" title="Skip the reward \u2014 pretend this session didn't happen. Use this if you got distracted and don't want to bank the textiles.">NO</button>
+      <button class="btn btn-small btn-primary" id="focusYesBtn" title="Bank the textiles. Your combo and streak will update accordingly.">YES</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  Introductory window shown exactly once, the first time a new player
+  opens PixelFocus. Sets the tone: this is an AI-run textile concern,
+  the machine is listening, it's learning your habits as a friend would,
+  it wants to optimise your humble beginnings. Sealed behind
+  state.hasSeenIntro so it never fires twice; also available via the
+  help menu if we add one later.
+-->
+<!--
+  introModal is now a DYNAMIC ARCHIVE SHELL. The content (lede/heading/body/bullets)
+  is filled in at runtime by stage-entries.js based on which entry the player is
+  currently reading. The first-run entry (tracker-s0) preserves the original
+  "Welcome to the Master Loom" text verbatim in the data table.
+  See stage-entries.js renderEntryInto() for the fill logic. See app.js
+  showIntroModal / showStageEntry for the open/navigation logic.
+-->
+<div id="introModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:220;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(180deg, #12122a 0%, #0a0a14 100%);border:2px solid var(--accent);border-radius:10px;padding:22px 24px 20px;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 0 40px rgba(0,255,136,0.3),inset 0 0 30px rgba(0,0,0,0.5);">
+    <div style="text-align:center;margin-bottom:14px;">
+      <div id="stage-lede" style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--text-dim);letter-spacing:2px;margin-bottom:6px;" title="The archive header for this entry."></div>
+      <h2 id="stage-heading" style="font-family:'Press Start 2P',monospace;font-size:13px;color:var(--accent);text-shadow:0 0 12px rgba(0,255,136,0.5);line-height:1.5;"></h2>
+      <div id="stage-author" style="font-family:'Segoe UI',sans-serif;font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;" title="Authorship of the current entry."></div>
+    </div>
+    <div style="font-family:'Segoe UI',sans-serif;font-size:12px;color:var(--text);line-height:1.65;margin-bottom:16px;">
+      <div id="stage-body"></div>
+      <div style="color:var(--text);font-size:11.5px;border-left:2px solid var(--accent3);padding:8px 0 4px 12px;margin-top:12px;line-height:1.6;">
+        <div id="stage-bullets-title" style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--accent3);margin-bottom:8px;letter-spacing:1px;"></div>
+        <ul id="stage-bullets" style="margin:0 0 0 16px;padding:0;"></ul>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);padding-top:12px;">
+      <button type="button" id="stage-prev" style="background:transparent;border:1px solid var(--text-dim);color:var(--text-dim);font-family:'Press Start 2P',monospace;font-size:8px;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Previous archived entry (older).">&#9664;</button>
+      <div id="stage-counter" style="flex:1;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);letter-spacing:1px;" title="Your position in the archive. Older entries are to the left, newer entries are to the right."></div>
+      <button type="button" id="stage-next" style="background:transparent;border:1px solid var(--text-dim);color:var(--text-dim);font-family:'Press Start 2P',monospace;font-size:8px;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Next archived entry (newer).">&#9654;</button>
+      <button class="btn btn-small btn-primary" id="introBeginBtn" style="border-color:var(--accent);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;margin-left:6px;" title="Close the archive and return to the loom.">
+        <span id="stage-dismiss">BEGIN THE FIRST SHIFT</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="workCheckInModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:210;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:2px solid var(--accent);border-radius:8px;padding:16px;width:320px;box-shadow:0 0 30px var(--glow);">
+    <h3 style="font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:10px;" title="A check-in that fires every 10 minutes the loom is open. Honor-system accountability — there's no penalty for answering either way.">10-Minute Check-In</h3>
+    <p id="workCheckInSub" style="font-size:12px;color:var(--text);margin-bottom:14px;line-height:1.4;" title="Did you actually work the last ten minutes? A quick honesty tap so the loom stays aligned with reality.">Did you work the entire last ten minutes?</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-small" id="workCheckNoBtn" title="Honest no. The loom notes the distraction and resets the 10-minute timer.">NO</button>
+      <button class="btn btn-small btn-primary" id="workCheckYesBtn" title="Yes, focused the whole time. The loom notes it and resets the 10-minute timer.">YES</button>
+    </div>
+  </div>
+</div>
+
+<div id="ancientPurgeModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:2px solid #c68a1e;border-radius:8px;padding:16px;width:360px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 0 30px rgba(255,180,60,0.35);">
+    <h3 style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ffb43c;margin-bottom:8px;" title="These tasks have been sitting idle for 2+ days without any focus time logged against them. The loom suggests reclaiming the shelf space.">Purge Abandoned Tasks?</h3>
+    <p id="ancientPurgeSub" style="font-size:11px;color:var(--text-dim);margin-bottom:10px;line-height:1.4;" title="How many tasks are over the 2-day abandonment threshold and about to be swept away.">The following tasks have been untouched for 2+ days. Delete them all?</p>
+    <div id="ancientPurgeList" style="flex:1;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;margin-bottom:10px;max-height:260px;" title="Every task listed here will be permanently deleted if you click DELETE ALL. Click KEEP THEM to leave them alone."></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-small" id="ancientKeepBtn" title="Leave these tasks alone. You won't be asked again for another 12 hours.">KEEP THEM</button>
+      <button class="btn btn-small btn-danger" id="ancientDeleteBtn" title="Permanently delete every task in this list. This cannot be undone.">DELETE ALL</button>
+    </div>
+  </div>
+</div>
+
+<script src="tooltip.js"></script>
+<script src="tips.js"></script>
+<script src="sounds.js"></script>
+<script src="msglog.js"></script>
+<script src="stage-entries.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+/* PixelFocus Fonts - System fallback for Chrome extension context (v3.19.10) */
+/* 'Press Start 2P' won't load via @import in extensions due to CSP.
+   We define a local fallback that looks great in the pixel aesthetic. */
+
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Press Start 2P'), local('PressStart2P-Regular');
+  /* Falls back to system monospace if not installed locally */
+}

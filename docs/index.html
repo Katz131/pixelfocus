@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PixelFocus &mdash; Gamified Pomodoro tracker with a 74-rank textile dystopia</title>
+<meta name="description" content="PixelFocus is a gamified Pomodoro todo list Chrome extension. Earn textiles by staying focused, weave pixel art, stack a factory empire, and climb a 74-rank title ladder from hand-loom weaver to heat-death transcendence.">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg2: #111;
+    --panel: #161616;
+    --border: #222;
+    --text: #e8e8e8;
+    --text-dim: #888;
+    --accent: #00ff88;
+    --accent2: #4ecdc4;
+    --accent3: #ffd700;
+    --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .pixel {
+    font-family: "Press Start 2P", "Courier New", monospace;
+    letter-spacing: 0.5px;
+  }
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  header.hero {
+    text-align: center;
+    padding: 60px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  header.hero h1 {
+    font-size: 28px;
+    margin: 0 0 12px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0, 255, 136, 0.35);
+  }
+  header.hero .tagline {
+    font-size: 15px;
+    color: var(--text-dim);
+    max-width: 580px;
+    margin: 0 auto 28px;
+    line-height: 1.55;
+  }
+  .version-badge {
+    display: inline-block;
+    font-family: "Press Start 2P", "Courier New", monospace;
+    font-size: 10px;
+    padding: 8px 14px;
+    background: rgba(0, 255, 136, 0.08);
+    border: 1px solid rgba(0, 255, 136, 0.45);
+    border-radius: 4px;
+    color: var(--accent);
+    margin-bottom: 24px;
+  }
+  .version-badge .v-number {
+    color: var(--accent3);
+  }
+  .cta-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  a.btn {
+    display: inline-block;
+    padding: 14px 26px;
+    background: var(--accent);
+    color: #000;
+    text-decoration: none;
+    font-family: "Press Start 2P", "Courier New", monospace;
+    font-size: 11px;
+    border-radius: 6px;
+    border: 2px solid var(--accent);
+    transition: transform 0.1s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 24px rgba(0, 255, 136, 0.25);
+  }
+  a.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 32px rgba(0, 255, 136, 0.45);
+  }
+  a.btn.secondary {
+    background: transparent;
+    color: var(--accent2);
+    border-color: var(--accent2);
+    box-shadow: none;
+  }
+  a.btn.secondary:hover {
+    background: rgba(78, 205, 196, 0.08);
+    box-shadow: 0 0 20px rgba(78, 205, 196, 0.25);
+  }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px 32px;
+    margin: 24px 0;
+  }
+  section h2 {
+    font-family: "Press Start 2P", "Courier New", monospace;
+    font-size: 13px;
+    color: var(--accent2);
+    margin: 0 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 1px;
+  }
+  section p {
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+  section p:last-child { margin-bottom: 0; }
+  ol.install-steps {
+    padding-left: 0;
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+  }
+  ol.install-steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 14px 14px 14px 54px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  ol.install-steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    background: var(--accent);
+    color: #000;
+    font-family: "Press Start 2P", "Courier New", monospace;
+    font-size: 10px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  code {
+    background: #000;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    color: var(--accent3);
+    border: 1px solid var(--border);
+  }
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+  }
+  .feature {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+  .feature h3 {
+    font-family: "Press Start 2P", "Courier New", monospace;
+    font-size: 10px;
+    color: var(--accent3);
+    margin: 0 0 8px;
+    letter-spacing: 0.5px;
+  }
+  .feature p {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 0;
+    line-height: 1.55;
+  }
+  .privacy-note {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+    border-left: 3px solid var(--accent);
+    padding: 8px 14px;
+    background: rgba(0, 255, 136, 0.03);
+    margin-top: 16px;
+  }
+  footer {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+  footer a { color: var(--accent2); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @media (max-width: 560px) {
+    header.hero h1 { font-size: 22px; }
+    section { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="version-badge">
+    v<span class="v-number" id="versionNumber">3.19.10</span> &middot; Loom Edition
+  </div>
+  <h1 class="pixel">PixelFocus</h1>
+  <p class="tagline">A gamified Pomodoro todo list for Chrome. Earn textiles by staying focused, weave them into pixel art, stack a factory empire, and climb seventy-four sealed title ranks from hand-loom weaver to heat-death transcendence.</p>
+  <div class="cta-row">
+    <a class="btn" id="downloadBtn" href="#">&#x25BC; Download latest</a>
+    <a class="btn secondary" href="#install">How to install</a>
+  </div>
+</header>
+
+<section>
+  <h2>What it is</h2>
+  <p>PixelFocus wraps a 10-minute focus timer in a 74-rank progression system. Every completed session gives you a textile, XP toward your next rank, and once you hit Tier 3, coins that feed an upgrade-tree factory. The title ladder climbs from pre-industrial hand-loom workshops through Victorian mills, corporate oligarchy, smart factories, cyberpunk uploads, and eventually Dyson-scale cosmic megastructures &mdash; all with sardonic tooltips in the voice of a wry omniscient narrator haunting a bureaucratic office nightmare.</p>
+  <p>Titles and tier names stay sealed behind fog-of-war until you reach them. You do not get to see where the ladder is going.</p>
+</section>
+
+<section>
+  <h2>Features</h2>
+  <div class="feature-grid">
+    <div class="feature">
+      <h3>Wall-clock timer</h3>
+      <p>Defeats Chrome's background-tab throttling by pinning the session end to <code>Date.now()</code>.</p>
+    </div>
+    <div class="feature">
+      <h3>Pop-out timer</h3>
+      <p>Always-on-top floating timer via the Document Picture-in-Picture API. Works above every other window.</p>
+    </div>
+    <div class="feature">
+      <h3>74 sealed ranks</h3>
+      <p>Ten tiers from <em>The Craft</em> to <em>Universal Transcendence</em>. Locked titles show only &ldquo;???&rdquo; until earned.</p>
+    </div>
+    <div class="feature">
+      <h3>Pixel art loom</h3>
+      <p>Spend textiles to weave increasingly large pixel artworks. Your gallery survives extension reloads.</p>
+    </div>
+    <div class="feature">
+      <h3>Factory upgrades</h3>
+      <p>Tier 3+ unlocks a separate money currency and a sprawling upgrade tree with ten income engines.</p>
+    </div>
+    <div class="feature">
+      <h3>Zero telemetry</h3>
+      <p>Everything runs locally in <code>chrome.storage.local</code>. No accounts, no cloud, no network calls.</p>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <h2>Install</h2>
+  <ol class="install-steps">
+    <li>Click the green <strong>Download latest</strong> button above to grab <code id="zipName">pixelfocus-v3.19.10.zip</code>.</li>
+    <li>Unzip it anywhere you like &mdash; for example, <code>C:\PixelFocus\</code>.</li>
+    <li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+    <li>Flip the <strong>Developer mode</strong> switch on in the top-right corner.</li>
+    <li>Click <strong>Load unpacked</strong> and pick the unzipped folder.</li>
+    <li>Click the extension icon in your toolbar to open PixelFocus.</li>
+  </ol>
+  <div class="privacy-note">To update later, download the new zip, unzip it over the old folder, and click the reload arrow under PixelFocus at <code>chrome://extensions</code>. Your saved progress lives in Chrome's storage and survives reloads.</div>
+</section>
+
+<section>
+  <h2>Privacy</h2>
+  <p>PixelFocus stores everything &mdash; todo items, XP, textiles, coins, gallery, factory progress, streak history &mdash; in <code>chrome.storage.local</code>, which lives exclusively on your device. It does not transmit data, use analytics, phone home, or require an account. The <code>tabs</code> permission is used only to open the gallery and factory as full-tab pages. The <code>notifications</code> permission is used only to announce the end of a focus session. The <code>alarms</code> permission is used only to schedule end-of-session checks.</p>
+</section>
+
+</div>
+
+<footer>
+  PixelFocus is open source under the MIT License &middot; <a href="https://github.com/Katz131/pixelfocus">Source on GitHub</a> &middot; Made with wasted time and rescued time in equal measure
+</footer>
+
+<script>
+  // Hydrate the download button at runtime by hitting the GitHub
+  // Releases API for the latest release. Falls back to a hard-coded
+  // version if offline, so the page still renders usefully as a
+  // local file. Works on GitHub Pages and also works opened directly
+  // from the filesystem.
+  (function () {
+    var FALLBACK_VERSION = "3.19.10";
+    var REPO_SLUG = "Katz131/pixelfocus";
+    var downloadBtn = document.getElementById("downloadBtn");
+    var versionNumberEl = document.getElementById("versionNumber");
+    var zipNameEl = document.getElementById("zipName");
+
+    function setVersion(version, zipUrl) {
+      if (versionNumberEl) versionNumberEl.textContent = version;
+      if (zipNameEl) zipNameEl.textContent = "pixelfocus-v" + version + ".zip";
+      if (downloadBtn) {
+        downloadBtn.href = zipUrl;
+        downloadBtn.textContent = "\u25BC Download v" + version;
+      }
+    }
+
+    // Default to the fallback version immediately.
+    setVersion(
+      FALLBACK_VERSION,
+      "https://github.com/" + REPO_SLUG + "/releases/latest/download/pixelfocus-v" + FALLBACK_VERSION + ".zip"
+    );
+
+    // Only hit the API when we're on github.io (i.e. published).
+    // When opened as a local file, skip the fetch and use the fallback.
+    if (location.hostname.indexOf("github.io") === -1) return;
+
+    fetch("https://api.github.com/repos/" + REPO_SLUG + "/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !data.tag_name) return;
+        var tag = data.tag_name;
+        var version = tag.replace(/^v/, "");
+        var zipAsset = (data.assets || []).find(function (a) {
+          return /pixelfocus-v.*\.zip$/.test(a.name);
+        });
+        var url = zipAsset
+          ? zipAsset.browser_download_url
+          : "https://github.com/" + REPO_SLUG + "/releases/latest";
+        setVersion(version, url);
+      })
+      .catch(function () { /* offline — keep fallback */ });
+  })();
+</script>
+</body>
+</html>

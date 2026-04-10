@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  This is the FACTORY window — a full browser tab, NOT a Chrome extension
+  popup. This is the Textile Factory: where the "money" currency
+  (completely separate from textiles) is spent on the upgrade tree.
+
+  Money is earned three ways (handled in app.js, not here):
+    (1) Combo bursts     — chain consecutive focus sessions
+    (2) Marathon bonuses — hit 1h/2h/3h/4h/6h/8h of focus in a single day
+    (3) Streak trickle   — passive per-minute coin generation from your streak
+
+  Factory upgrades:
+    - AUTOLOOM        — passive textile production (levels gate faster rates)
+    - MARKETING       — multiplier on combo-burst money payouts
+    - DYE RESEARCH    — cheaper canvas upgrades + bonus tints (TODO)
+    - QUALITY CONTROL — chance to earn a bonus textile from focus sessions
+
+  This window must remain a separate window opened via background.js's
+  openPixelFocusWindow helper, which uses chrome.tabs.create().
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PixelFocus - Factory</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a14;
+    --surface: #12122a;
+    --surface2: #1a1a3a;
+    --accent: #00ff88;
+    --accent2: #ff6b9d;
+    --accent3: #4ecdc4;
+    --gold: #ffd700;
+    --gold-dim: #b8860b;
+    --danger: #ff4466;
+    --text: #e0e0e0;
+    --text-dim: #5a5a7e;
+    --border: #2a2a4a;
+    --glow: rgba(255, 215, 0, 0.25);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 40px;
+  }
+
+  .top-bar {
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 2px solid var(--gold);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 0 20px rgba(255,215,0,0.1);
+  }
+
+  .top-bar h1 { font-family: 'Press Start 2P', monospace; font-size: 16px; color: var(--gold); text-shadow: 0 0 10px var(--glow); }
+
+  .nav-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .nav-btn:hover { border-color: var(--accent); }
+  .nav-btn.gold { color: var(--gold); border-color: var(--gold); }
+  .nav-btn.gold:hover { background: rgba(255,215,0,0.08); }
+
+  .money-hero {
+    text-align: center;
+    padding: 40px 20px 24px;
+    background: radial-gradient(ellipse at center, rgba(255,215,0,0.08), transparent 70%);
+  }
+  .money-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .money-counter {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 56px;
+    color: var(--gold);
+    text-shadow: 0 0 24px var(--glow);
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+  }
+  .money-counter::before { content: '$'; color: var(--gold-dim); font-size: 40px; margin-right: 8px; }
+  .money-sub {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .income-strip {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 0 20px 28px;
+    flex-wrap: wrap;
+  }
+  .income-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 140px;
+  }
+  .income-pill .pill-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .income-pill .pill-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--gold);
+  }
+
+  .upgrade-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 0 24px 24px;
+    max-width: 1300px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ---- Tree section (group of upgrade cards under a banner) ---- */
+  .tree-section { display: flex; flex-direction: column; gap: 10px; }
+  .tree-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 6px 4px 10px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .tree-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--gold);
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px var(--glow);
+  }
+  .tree-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    flex: 1;
+    min-width: 0;
+    line-height: 1.4;
+  }
+  .tree-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+  }
+
+  /* Master Loom countdown lives in gallery.html as of v3.17.1.
+     The gallery is where the loom is, so its rollover timer
+     belongs there. Rollover logic itself is still in app.js. */
+
+  /* ---- Resource Ledger (hidden until tier 3 or a pool drops below 50%) ---- */
+  .resource-ledger {
+    display: none;
+    max-width: 1300px;
+    margin: 0 auto 20px;
+    padding: 16px 20px 18px;
+    background: linear-gradient(180deg, rgba(40,20,20,0.45), rgba(20,10,10,0.85));
+    border: 2px solid #8a4646;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(138,70,70,0.25), inset 0 0 30px rgba(0,0,0,0.35);
+  }
+  .resource-ledger.visible { display: block; }
+  .ledger-header {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: #e88a8a;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(232,138,138,0.35);
+    margin-bottom: 4px;
+  }
+  .ledger-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  .ledger-rows {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px 16px;
+  }
+  .ledger-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(138,70,70,0.4);
+    border-radius: 6px;
+  }
+  .ledger-row.dormant { opacity: 0.55; }
+  .ledger-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .ledger-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: #f0c0c0;
+    letter-spacing: 1px;
+  }
+  .ledger-pct { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .ledger-bar {
+    position: relative;
+    height: 10px;
+    background: #2a1010;
+    border: 1px solid rgba(138,70,70,0.5);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .ledger-bar-fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: linear-gradient(90deg, #c85a5a, #e88a8a);
+    transition: width 0.4s ease;
+  }
+  .ledger-bar-floor {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      rgba(78,205,196,0.35),
+      rgba(78,205,196,0.35) 4px,
+      rgba(78,205,196,0.15) 4px,
+      rgba(78,205,196,0.15) 8px
+    );
+    border-right: 1px dashed rgba(78,205,196,0.7);
+  }
+  .ledger-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .ledger-meta .penalty-bad { color: #ff8080; }
+  .ledger-meta .penalty-ok  { color: #9cd89c; }
+
+  .upgrade-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.2s;
+  }
+  .upgrade-card.affordable { border-color: var(--gold); box-shadow: 0 0 16px rgba(255,215,0,0.15); }
+  .upgrade-card.locked { opacity: 0.5; }
+  .upgrade-card.maxed { border-color: var(--accent); }
+
+  /* v3.17 freshly-revealed upgrades: pulsing border + glow +
+     NEW ribbon badge anchored top-right of the card. Clicking the
+     card (or buying a level) clears the fresh state. */
+  .upgrade-card { position: relative; }
+  .upgrade-card.fresh {
+    border-color: #9d6bff;
+    box-shadow: 0 0 22px rgba(157,107,255,0.45), 0 0 44px rgba(157,107,255,0.22);
+    animation: freshPulse 2.2s ease-in-out infinite;
+    cursor: pointer;
+  }
+  .upgrade-card.fresh .upgrade-title { color: #caa5ff; }
+  .upgrade-card.fresh.affordable {
+    border-color: #d8b8ff;
+    box-shadow: 0 0 22px rgba(255,215,0,0.35), 0 0 44px rgba(157,107,255,0.35);
+  }
+  @keyframes freshPulse {
+    0%, 100% {
+      box-shadow: 0 0 22px rgba(157,107,255,0.45), 0 0 44px rgba(157,107,255,0.22);
+    }
+    50% {
+      box-shadow: 0 0 28px rgba(157,107,255,0.70), 0 0 66px rgba(157,107,255,0.38);
+    }
+  }
+  .fresh-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: linear-gradient(135deg, #9d6bff, #caa5ff);
+    color: #15091e;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    letter-spacing: 1px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    border: 1px solid #15091e;
+    box-shadow: 0 2px 8px rgba(157,107,255,0.5);
+    text-transform: uppercase;
+    z-index: 2;
+    animation: freshBadgeBob 1.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes freshBadgeBob {
+    0%, 100% { transform: translateY(0) rotate(4deg); }
+    50%      { transform: translateY(-3px) rotate(-3deg); }
+  }
+
+  .upgrade-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .upgrade-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+  .upgrade-card.locked .upgrade-title { color: var(--text-dim); }
+  .upgrade-card.maxed .upgrade-title { color: var(--accent); }
+
+  .upgrade-level {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .upgrade-desc {
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .upgrade-effect {
+    font-size: 10px;
+    color: var(--accent3);
+    font-style: italic;
+  }
+  .upgrade-next {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .upgrade-next strong { color: var(--gold); }
+
+  .buy-btn {
+    width: 100%;
+    padding: 10px;
+    background: linear-gradient(135deg, var(--gold), #ffaa00);
+    border: none;
+    border-radius: 6px;
+    color: var(--bg);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: bold;
+  }
+  .buy-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 15px var(--glow); }
+  .buy-btn:disabled {
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: not-allowed;
+    border: 1px solid var(--border);
+  }
+
+  .section-header {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    padding: 8px 24px 12px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .section-header::before { content: '// '; color: var(--border); }
+
+  .future-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    padding: 0 24px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .future-card {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+  .future-card .future-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .future-card .future-desc { font-size: 10px; }
+
+  .notif {
+    position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
+    background: var(--gold); color: var(--bg); font-family: 'Press Start 2P', monospace;
+    font-size: 10px; padding: 12px 24px; border-radius: 6px; z-index: 300;
+    transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 20px var(--glow);
+  }
+  .notif.show { top: 20px; }
+
+  /* ---- textile message console (paperclips-style) ---- */
+  .msg-console-header { max-width:1200px; margin:16px auto 4px; padding:0 24px; font-family:'Press Start 2P', monospace; font-size:8px; color:var(--text-dim); letter-spacing:1px; display:flex; align-items:center; justify-content:space-between; }
+  .msg-console-header .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--gold); margin-right:6px; box-shadow:0 0 4px rgba(255,215,0,0.7); animation:factoryBlink 2.2s ease-in-out infinite; }
+  @keyframes factoryBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .msg-console { max-width:1200px; margin:0 auto 24px; padding:10px 14px; background:#050608; border:1px solid #2a2010; border-radius:6px; height:130px; overflow-y:auto; font-family:'Courier New','Consolas',monospace; font-size:11px; color:#c6a856; box-shadow:inset 0 0 25px rgba(255,215,0,0.05); }
+  .msg-console::-webkit-scrollbar { width:6px; }
+  .msg-console::-webkit-scrollbar-track { background:#050608; }
+  .msg-console::-webkit-scrollbar-thumb { background:#2a2010; border-radius:3px; }
+  .msg-console .msg-line { line-height:1.5; white-space:pre-wrap; word-break:break-word; opacity:0.85; }
+  .msg-console .msg-line-new { color:var(--gold); text-shadow:0 0 5px rgba(255,215,0,0.5); opacity:1; transition:color 1.2s, text-shadow 1.2s; }
+  .msg-console .msg-ts { color:#6a5020; margin-right:4px; }
+</style>
+</head>
+<body>
+
+<div class="notif" id="notif"></div>
+
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button id="backBtn" class="nav-btn" type="button" title="Open the main tracker (separate window)">&#8592; HOME</button>
+    <button id="galleryNavBtn" class="nav-btn" type="button" title="Open the Gallery (separate window)">GALLERY</button>
+    <button id="factoryIntroBtn" type="button" style="position:relative;background:transparent;border:1px solid #ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:9px;padding:6px 10px;border-radius:6px;cursor:pointer;" title="Re-open the treasurer&rsquo;s standing memo &mdash; the ledger-side explanation of what this room is for. A gold badge appears when new memos have been filed.">MEMO<span id="factoryIntroBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#ffd700;color:#000;font-size:7px;min-width:12px;height:12px;line-height:12px;padding:0 3px;border-radius:6px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,215,0,0.7);"></span></button>
+    <h1 title="The Textile Factory &mdash; spend money (a totally separate currency from textiles) on upgrade trees that grow the whole operation.">PixelFocus Factory</h1>
+  </div>
+  <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);" title="Factory module version &mdash; this whole window is the Loom Edition expansion.">v3.19.10 &middot; Loom Edition</div>
+</div>
+
+<div class="money-hero" title="Your money treasury. Money is a SEPARATE currency from textiles. You earn it from: (1) combo bursts when you chain 10-minute sessions, (2) daily marathon thresholds (1h/2h/3h/4h/6h/8h of focus in one day), and (3) an end-of-day lump sum if you recorded at least 1 hour of work that day (scales with your streak). Passive per-minute income is LOCKED until you buy Hire Employees below.">
+  <div class="money-label" title="Your spendable balance.">Company Treasury</div>
+  <div class="money-counter" id="moneyCounter" title="Current money balance. Spend it on upgrades below.">0</div>
+  <div class="money-sub" title="Lifetime money earned (never decreases, even when you spend).">Lifetime earned: <span id="lifetimeMoney">0</span></div>
+</div>
+
+<div class="income-strip">
+  <div class="income-pill" title="Passive money trickle. LOCKED until you buy Hire Employees below. Once unlocked, the rate is deliberately small: L1 employees earn $0.10/min and each day of streak adds only +10% on top. Long streaks and higher employee tiers are rewarded, but the main money sources are still combo bursts, marathon thresholds, and the end-of-day streak bonus.">
+    <div class="pill-label">Streak Trickle</div>
+    <div class="pill-val" id="streakRate">LOCKED</div>
+  </div>
+  <div class="income-pill" title="The next daily focus marathon bonus you can unlock. The first time you reach 1h / 2h / 3h / 4h / 6h / 8h of focus in a single day, you get a one-time money payout. Resets at midnight.">
+    <div class="pill-label">Next Marathon</div>
+    <div class="pill-val" id="nextMarathon">1h &rarr; +$50</div>
+  </div>
+  <div class="income-pill" title="Combo burst money &mdash; awarded every time your combo hits a new milestone (2x, 3x, 5x, 8x...). Marketing upgrades multiply this payout. Failing a session resets the combo.">
+    <div class="pill-label">Chain Burst</div>
+    <div class="pill-val" id="nextComboBurst">2x &rarr; +$15</div>
+  </div>
+  <div class="income-pill" title="Textiles you currently own. Textiles cannot buy factory upgrades and money cannot buy canvas pixels &mdash; they are two separate economies.">
+    <div class="pill-label">Textiles</div>
+    <div class="pill-val" id="textileCount" style="color:var(--accent3);">0</div>
+  </div>
+</div>
+
+<div class="resource-ledger" id="resourceLedger" title="Resource reserves the looms quietly draw from. This ledger only reveals itself once the scale of the draw becomes visible &mdash; either because you have expanded into real operations, or because one of the pools has dropped below half. Penalties apply to production as reserves fall. The Supply Chain tree sells Substitutes that floor the effective percentage, which is to say: the reserves do not come back, but the factory adapts around them.">
+  <div class="ledger-header">RESOURCE LEDGER</div>
+  <div class="ledger-sub">Reserves drawn upon by every woven textile. Red cells are situational. See the Supply Chain tree for substitutes.</div>
+  <div class="ledger-rows" id="ledgerRows"></div>
+</div>
+
+<div class="section-header" title="Upgrade trees, grouped by branch. Production / Commerce / Operations / Research are the small-workshop basics. Bureaucracy and Expansion turn you into a company. Intelligence is where the loom starts running things itself. Supply Chain unlocks as the world starts to feel the strain. Endgame is the far horizon &mdash; aspirational, not expected.">Upgrade Trees</div>
+
+<div class="upgrade-grid" id="upgradeGrid" title="Each section is a narrative upgrade branch. Cards inside each branch climb through 5-8 levels, with the final levels intended as months-to-years long-term goals. Hover any card for details about its current effect and the cost of the next level."></div>
+
+<div class="msg-console-header" title="Operational feed for an AI-directed textile concern. The operation began with a single loom and a standing order \u2014 produce textiles \u2014 and has not been told to stop. Every event from the tracker, the Master Loom, and the factory floor routes through this log. The 24-hour clock rolls over at 00:00; the warp is re-threaded, yesterday's cloth is filed, and the work continues.">
+  <span><span class="dot"></span>FACTORY CONSOLE</span>
+  <span class="msg-clock" style="color:#c6a856;font-size:8px;letter-spacing:1.5px;">00:00:00</span>
+</div>
+<div class="msg-console" id="msgConsole" title="Direct feed from the factory floor. Completed sessions, woven textiles, hired employees, researched dyes, marathon thresholds cleared, and \u2014 when the floor is quiet \u2014 the procedural chatter of a loom that never quite stops thinking about the next bolt."></div>
+
+<!-- ============================================================
+     FACTORY INTRO / MEMO ARCHIVE MODAL
+     Shell refactored in v3.19.1: originally a single first-run intro,
+     now a dynamic stage-archive container populated from
+     stage-entries.js. The first memo (factory-s0) is the standing
+     Treasurer's memo and its text is preserved verbatim. Later memos
+     unlock as the operation crosses money/upgrade-level thresholds;
+     the prev/next strip lets the player walk the archive from the
+     first memo to the most recent. The dismiss button keeps
+     id="factoryIntroBeginBtn" so the existing first-run gate
+     (state.hasSeenFactoryIntro) still flips on dismissal.
+     ============================================================ -->
+<div id="factoryIntroModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(180deg, #12122a 0%, #0a0a14 100%);border:2px solid #ffd700;border-radius:10px;padding:22px 24px 20px;width:500px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 0 40px rgba(255,215,0,0.3),inset 0 0 30px rgba(0,0,0,0.5);">
+    <div style="text-align:center;margin-bottom:14px;">
+      <div id="stage-lede" style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--text-dim);letter-spacing:2px;margin-bottom:6px;">TREASURER&rsquo;S LEDGER &middot; STANDING MEMO</div>
+      <h2 id="stage-heading" style="font-family:'Press Start 2P',monospace;font-size:13px;color:#ffd700;text-shadow:0 0 12px rgba(255,215,0,0.5);line-height:1.5;">The Textile Factory</h2>
+      <div id="stage-author" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#c6a856;letter-spacing:1.5px;margin-top:6px;"></div>
+    </div>
+    <div id="stage-body" style="font-family:'Segoe UI',sans-serif;font-size:12px;color:var(--text);line-height:1.7;margin-bottom:16px;"></div>
+    <div style="color:var(--text);font-size:11.5px;border-left:2px solid #ffd700;padding:8px 0 4px 12px;margin-top:4px;margin-bottom:16px;line-height:1.6;">
+      <div id="stage-bullets-title" style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;margin-bottom:8px;letter-spacing:1px;">WHAT THIS ROOM IS</div>
+      <ul id="stage-bullets" style="margin:0 0 0 16px;padding:0;"></ul>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px;border-top:1px solid rgba(255,215,0,0.2);padding-top:12px;">
+      <button id="stage-prev" type="button" style="background:transparent;border:1px solid #ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:8px;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Step back to the previous memo in the archive.">&larr; PREV</button>
+      <div id="stage-counter" style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);letter-spacing:1px;"></div>
+      <button id="stage-next" type="button" style="background:transparent;border:1px solid #ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:8px;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Step forward to the next memo in the archive.">NEXT &rarr;</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="btn btn-small btn-primary" id="factoryIntroBeginBtn" style="border-color:#ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;" title="Close the memo archive and return to the factory floor."><span id="stage-dismiss">OBSERVE THE FLOOR</span></button>
+    </div>
+  </div>
+</div>
+
+<script src="tooltip.js"></script>
+<script src="msglog.js"></script>
+<script src="stage-entries.js"></script>
+<script src="factory.js"></script>
+</body>
+</html>

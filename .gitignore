@@ -1,0 +1,49 @@
+# PixelFocus .gitignore
+# ----------------------------------------------------------
+# Keep the repo clean: source files only, no build artifacts,
+# no local editor junk, no local Chrome extension state.
+
+# Build output from package-extension.bat — generated on demand
+pixelfocus-v*.zip
+
+# Local scratch / notes that shouldn't ship
+*.local
+*.local.*
+scratch/
+notes.local.md
+
+# OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+# Editor cruft
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-*
+
+# Node / tooling (in case we add build scripts later)
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Python cruft (in case any helper scripts creep in)
+__pycache__/
+*.pyc
+
+# Chrome unpacked extension state files (if any land here)
+.extension-cache/
+
+# Working drafts, backups, temp files, and scratch cruft
+*.bak
+*.bak.*
+*.tmp
+*_new.js
+background_new.js
+sync_test*.txt
+test_write.txt
