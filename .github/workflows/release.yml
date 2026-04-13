@@ -46,7 +46,11 @@ jobs:
 
       - name: Stage extension files
         run: |
-          STAGING="staging/pixelfocus-v${{ steps.version.outputs.version }}"
+          # Use a fixed folder name so every release extracts to the same
+          # path. This prevents Chrome from assigning a new extension ID
+          # when users unzip an update — a different folder = different ID
+          # = wiped chrome.storage.local = lost progress.
+          STAGING="staging/pixelfocus"
           mkdir -p "$STAGING/icons"
           # Copy only the files that ship in the extension — not the
           # build scripts, README, LICENSE, docs/, or .github/.
@@ -75,7 +79,7 @@ jobs:
         run: |
           cd staging
           ZIP_NAME="pixelfocus-v${{ steps.version.outputs.version }}.zip"
-          zip -r "../$ZIP_NAME" "pixelfocus-v${{ steps.version.outputs.version }}"
+          zip -r "../$ZIP_NAME" "pixelfocus"
           cd ..
           ls -la "$ZIP_NAME"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"

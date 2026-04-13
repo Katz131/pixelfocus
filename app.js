@@ -1261,6 +1261,10 @@ try {
         }
         if (patched) save();
       })();
+      // v3.20.21: ensure recurring tasks are present for today even if
+      // the day rollover already fired (e.g. the user completed them all
+      // yesterday and the rollover only reset counters, not re-added tasks).
+      populateRecurringTasks();
       syncMilestoneColors();
       // v3.20.0 Stage 2: ensure personnel roster is in sync with
       // employeesLevel. Personnel.reconcileRoster only grows the roster
@@ -1370,6 +1374,9 @@ try {
       // date comparison (state.dustBurnDate vs todayStr()) so it doesn't
       // need resetting — a new day means a new todayStr() automatically.
       state.dustCompletedToday = 0;
+
+      // v3.20.21: Populate recurring tasks for the new day.
+      populateRecurringTasks();
 
       state.lastActiveDate = today;
       state.sessionBlocks = 0;
@@ -3242,12 +3249,21 @@ try {
       const staleBadgeHtml = stale
         ? `<span class="task-stale-badge" title="This task has been waiting ${formatStaleAge(task)} without any focus sessions logged against it. Consider attending to it, or delete it if it's no longer relevant.">AGING ${formatStaleAge(task)}</span>`
         : '';
+      const isRec = task.recurring || isRecurringText(task.text);
+      const recurBadge = isRec
+        ? '<span class="task-recur-badge" title="This task recurs daily. It will reappear tomorrow when completed. Complete it and click STOP RECURRING on the toast to remove it from the daily schedule.">\u21BB</span>'
+        : '';
+      const recurBtn = (!task.completed && !isRec)
+        ? '<button class="task-recur-btn" title="Make this task recurring. It will be auto-added to your list every morning. You can stop it anytime from the toast that appears when you complete it.">\u21BB</button>'
+        : '';
       item.innerHTML = `
         <div class="task-checkbox${task.completed ? ' checked' : ''}" title="${task.completed ? 'Mark as not done.' : 'Mark this task complete. A speck of dust drops into the dust bin. Complete 3+ tasks today to unlock the daily burn.'}"></div>
         ${staleBadgeHtml}
+        ${recurBadge}
         <span class="task-text">${escHtml(task.text)}</span>
         ${blocksHtml}
         ${!task.completed ? `<button class="task-select-btn" title="Pin this task as your current focus target. While it's pinned, every textile earned from a completed focus session gets credited to THIS task (the little dots next to the task name track how many sessions you've finished while it was pinned). Pinned tasks never get flagged as aging, since they're being actively worked on. Click FOCUS again on the same task to unpin it. Only one task can be pinned at a time &mdash; picking a new one swaps the pin.">FOCUS</button>` : ''}
+        ${recurBtn}
         <span class="task-delete" title="Delete this task. Cannot be undone.">\u00d7</span>
       `;
       item.querySelector('.task-checkbox').addEventListener('click', (e) => { e.stopPropagation(); toggleTask(task.id); });
@@ -3263,6 +3279,15 @@ try {
       }
       const focusBtn = item.querySelector('.task-select-btn');
       if (focusBtn) focusBtn.addEventListener('click', (e) => { e.stopPropagation(); selectTask(task.id); });
+      const recurBtn2 = item.querySelector('.task-recur-btn');
+      if (recurBtn2) recurBtn2.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addRecurringTemplate(task.text, findTaskProject(task.id));
+        task.recurring = true;
+        notify('\u21BB \u201C' + task.text + '\u201D will now recur daily.', '#00ff88');
+        save();
+        render();
+      });
       item.querySelector('.task-delete').addEventListener('click', (e) => { e.stopPropagation(); deleteTask(task.id); });
 
       // ===== Drag-to-reorder wiring =====
@@ -4090,6 +4115,172 @@ try {
     try { checkTrackerStageUnlocks(); } catch (_) {}
   }
 
+  // ============== RECURRING TASKS (v3.20.21) ==============
+  // Recurring tasks are templates stored in state.recurringTasks[].
+  // Each day rollover, any template whose text isn't already present
+  // in its project's active (uncompleted) task list is auto-added.
+  // When a recurring task is completed, a toast asks if you still
+  // want it tomorrow; clicking STOP RECURRING removes the template.
+  //
+  // Schema:  { id: string, text: string, project: string }
+  //   id      — unique ID for the template (not the daily task instance)
+  //   text    — the task text, matched case-insensitively for dedup
+  //   project — which project/tab to add it to
+
+  function getRecurringTasks() {
+    if (!state.recurringTasks) state.recurringTasks = [];
+    return state.recurringTasks;
+  }
+
+  function isRecurringText(text) {
+    var lc = text.toLowerCase();
+    return getRecurringTasks().some(function(r) {
+      return r.text.toLowerCase() === lc;
+    });
+  }
+
+  function addRecurringTemplate(text, project) {
+    if (isRecurringText(text)) return; // already recurring
+    if (!state.recurringTasks) state.recurringTasks = [];
+    state.recurringTasks.push({
+      id: 'rec_' + Date.now(),
+      text: text,
+      project: project || state.activeProject || 'default'
+    });
+    save();
+  }
+
+  function removeRecurringTemplate(text) {
+    if (!state.recurringTasks) return;
+    var lc = text.toLowerCase();
+    state.recurringTasks = state.recurringTasks.filter(function(r) {
+      return r.text.toLowerCase() !== lc;
+    });
+    save();
+  }
+
+  // Called during checkDayRollover — populates today's task list with
+  // any recurring templates that aren't already present.
+  function populateRecurringTasks() {
+    var templates = getRecurringTasks();
+    if (templates.length === 0) return;
+    templates.forEach(function(tmpl) {
+      var pid = tmpl.project || 'default';
+      if (!state.tasks[pid]) state.tasks[pid] = [];
+      var lc = tmpl.text.toLowerCase();
+      var alreadyExists = state.tasks[pid].some(function(t) {
+        return !t.completed && t.text.toLowerCase() === lc;
+      });
+      if (alreadyExists) return;
+      state.tasks[pid].push({
+        id: Date.now().toString() + '_' + Math.floor(Math.random() * 1000),
+        text: tmpl.text,
+        completed: false,
+        blocksEarned: 0,
+        createdAt: Date.now(),
+        recurring: true  // flag so the UI can show the ↻ icon
+      });
+    });
+  }
+
+  // Toast shown when a recurring task is completed.
+  function showRecurringToast(taskText) {
+    var host = document.getElementById('popupDispatchToasts');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'popupDispatchToasts';
+      host.setAttribute('aria-live', 'polite');
+      host.style.cssText =
+        'position:fixed;top:56px;right:16px;z-index:4000;' +
+        'display:flex;flex-direction:column;gap:10px;pointer-events:none;max-width:310px;';
+      document.body.appendChild(host);
+    }
+
+    // Inject styles if not already present.
+    if (!document.getElementById('recurringToastStyles')) {
+      var style = document.createElement('style');
+      style.id = 'recurringToastStyles';
+      style.textContent =
+        '.recurring-toast {' +
+          'pointer-events:auto;' +
+          'background:#0f0a0a;' +
+          'border:1px solid #3a5a3a;' +
+          'border-left:3px solid #00ff88;' +
+          'color:#e6d3c4;' +
+          'padding:10px 28px 10px 12px;' +
+          'font-family:"Courier New",monospace;' +
+          'font-size:11px;line-height:1.45;' +
+          'box-shadow:0 6px 18px rgba(0,0,0,0.45);' +
+          'position:relative;' +
+          'animation:rec-in 220ms ease-out;' +
+        '}' +
+        '@keyframes rec-in { 0%{transform:translateX(18px);opacity:0;} 100%{transform:translateX(0);opacity:1;} }' +
+        '.recurring-toast .rec-head {' +
+          'font-weight:bold;letter-spacing:0.08em;color:#00ff88;font-size:10px;margin-bottom:4px;' +
+        '}' +
+        '.recurring-toast .rec-body {' +
+          'color:#d6c6b4;font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:12px;line-height:1.5;margin-bottom:8px;' +
+        '}' +
+        '.recurring-toast .rec-close {' +
+          'position:absolute;top:4px;right:6px;background:transparent;border:none;color:#8a8a6a;font-size:12px;cursor:pointer;padding:2px 4px;' +
+        '}' +
+        '.recurring-toast .rec-close:hover { color:#00ff88; }' +
+        '.recurring-toast .rec-stop-btn {' +
+          'background:transparent;border:1px solid #d4a857;color:#d4a857;' +
+          'font-family:"Press Start 2P",monospace;font-size:7px;padding:4px 10px;' +
+          'border-radius:4px;cursor:pointer;letter-spacing:0.5px;' +
+        '}' +
+        '.recurring-toast .rec-stop-btn:hover {' +
+          'background:rgba(212,168,87,0.15);box-shadow:0 0 8px rgba(212,168,87,0.3);' +
+        '}';
+      document.head.appendChild(style);
+    }
+
+    var node = document.createElement('div');
+    node.className = 'recurring-toast';
+
+    var head = document.createElement('div');
+    head.className = 'rec-head';
+    head.textContent = '\u21BB RECURRING TASK';
+
+    var body = document.createElement('div');
+    body.className = 'rec-body';
+    body.textContent = '\u201C' + taskText + '\u201D will appear again tomorrow. Still want it?';
+
+    var stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'rec-stop-btn';
+    stopBtn.textContent = 'STOP RECURRING';
+    stopBtn.title = 'Are you sure you don\u2019t want this task to recur anymore? Click to remove it from the daily schedule.';
+    stopBtn.addEventListener('click', function() {
+      removeRecurringTemplate(taskText);
+      body.textContent = 'Removed. \u201C' + taskText + '\u201D won\u2019t appear again.';
+      stopBtn.style.display = 'none';
+      setTimeout(function() {
+        if (node.parentNode) node.parentNode.removeChild(node);
+      }, 3000);
+    });
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'rec-close';
+    close.textContent = '\u2715';
+    close.addEventListener('click', function() {
+      if (node.parentNode) node.parentNode.removeChild(node);
+    });
+
+    node.appendChild(close);
+    node.appendChild(head);
+    node.appendChild(body);
+    node.appendChild(stopBtn);
+    host.appendChild(node);
+
+    // Auto-dismiss after 20 seconds.
+    setTimeout(function() {
+      if (node.parentNode) node.parentNode.removeChild(node);
+    }, 20000);
+  }
+
   // ============== TASK MANAGEMENT ==============
   function addTask() {
     const text = taskInput.value.trim();
@@ -4148,6 +4339,10 @@ try {
     task.completed = !task.completed;
     if (task.completed) {
       SFX.completeTask();
+      // v3.20.21: if this is a recurring task, show the "still want it?" toast
+      if (task.recurring || isRecurringText(task.text)) {
+        setTimeout(function() { showRecurringToast(task.text); }, 600);
+      }
       // Add a colored pixel to the dustbin scatter plot
       if (!state.dustPixels) state.dustPixels = [];
       var palette = state.unlockedColors || ['#00ff88'];

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon Resizer</title></head>
+<body style="background:#222;color:#fff;font-family:monospace;padding:20px;">
+<h2>Icon Resizer</h2>
+<input type="file" id="fileInput" accept="image/*" />
+<br><br>
+<div id="status"></div>
+<canvas id="c128" width="128" height="128" style="border:1px solid #555;"></canvas>
+<canvas id="c48" width="48" height="48" style="border:1px solid #555;"></canvas>
+<canvas id="c16" width="16" height="16" style="border:1px solid #555;"></canvas>
+<br><br>
+<a id="dl128" style="display:none;color:#0f0;">Download 128x128</a>
+<a id="dl48" style="display:none;color:#0f0;margin-left:10px;">Download 48x48</a>
+<a id="dl16" style="display:none;color:#0f0;margin-left:10px;">Download 16x16</a>
+
+<script>
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var img = new Image();
+  img.onload = function() {
+    var sizes = [128, 48, 16];
+    sizes.forEach(function(s) {
+      var canvas = document.getElementById('c' + s);
+      canvas.width = s;
+      canvas.height = s;
+      var ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, s, s);
+
+      var dataUrl = canvas.toDataURL('image/png');
+      var link = document.getElementById('dl' + s);
+      link.href = dataUrl;
+      link.download = 'icon' + s + '.png';
+      link.style.display = 'inline';
+      link.textContent = 'Download ' + s + 'x' + s;
+
+      window['icon' + s + 'Data'] = dataUrl;
+    });
+    document.getElementById('status').textContent = 'Done! All sizes generated.';
+  };
+  img.src = URL.createObjectURL(file);
+});
+</script>
+</body>
+</html>

@@ -268,14 +268,14 @@
 <section id="install">
   <h2>Install</h2>
   <ol class="install-steps">
-    <li>Click the green <strong>Download latest</strong> button above. In most cases this downloads <code id="zipName">pixelfocus-v3.19.17.zip</code> directly to your <code>Downloads</code> folder. <em>If instead it takes you to a GitHub Releases page, scroll down to the <strong>Assets</strong> section (below the release notes) and click the <code>pixelfocus-v3.19.17.zip</code> file there to download it.</em></li>
+    <li>Click the green <strong>Download latest</strong> button above. In most cases this downloads <code id="zipName">pixelfocus-v3.20.20.zip</code> directly to your <code>Downloads</code> folder. <em>If instead it takes you to a GitHub Releases page, scroll down to the <strong>Assets</strong> section (below the release notes) and click the <code>pixelfocus-v3.20.20.zip</code> file there to download it.</em></li>
     <li>Find the downloaded zip and unzip it &mdash; right-click the file and choose <strong>Extract All</strong> on Windows, or double-click it on Mac. Put the unzipped folder somewhere you won&rsquo;t accidentally delete it, like <code>C:\PixelFocus\</code> or <code>~/PixelFocus/</code>.</li>
     <li>Open Chrome (or Brave / Edge) and paste <code>chrome://extensions</code> into the address bar, then press Enter.</li>
     <li>Flip the <strong>Developer mode</strong> switch on in the top-right corner of that page.</li>
     <li>Click the <strong>Load unpacked</strong> button (top-left) and select the unzipped folder from step 2.</li>
     <li>PixelFocus is now installed. Click the puzzle-piece icon in your browser toolbar, then click the pin icon next to PixelFocus so it stays visible. Then click the PixelFocus icon to open it.</li>
   </ol>
-  <div class="privacy-note"><strong>Updating later:</strong> when a new version ships, repeat steps 1&ndash;2 (download the new zip, unzip it over the old folder), then go to <code>chrome://extensions</code> and click the little circular <strong>reload arrow</strong> on the PixelFocus card. Your saved textiles, gallery progress, factory upgrades, and streak data all live in Chrome&rsquo;s local storage and survive reloads untouched.</div>
+  <div class="privacy-note"><strong>Updating later:</strong> when a new version ships, download the new zip and <strong>unzip it over the same folder</strong> you used for the original install &mdash; replace all existing files. Then go to <code>chrome://extensions</code> and click the little circular <strong>reload arrow</strong> on the PixelFocus card. Your saved textiles, gallery progress, factory upgrades, and streak data all live in Chrome&rsquo;s local storage and survive reloads untouched. <strong>Important:</strong> do NOT load the update as a new unpacked extension from a different folder &mdash; that would create a second copy with a fresh empty save. Always overwrite the original folder and reload.</div>
 </section>
 
 <section>
@@ -296,7 +296,7 @@
   // local file. Works on GitHub Pages and also works opened directly
   // from the filesystem.
   (function () {
-    var FALLBACK_VERSION = "3.20.19";
+    var FALLBACK_VERSION = "3.20.20";
     var REPO_SLUG = "Katz131/pixelfocus";
     var downloadBtn = document.getElementById("downloadBtn");
     var versionNumberEl = document.getElementById("versionNumber");
