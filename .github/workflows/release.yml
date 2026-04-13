@@ -53,7 +53,11 @@ jobs:
           for f in manifest.json background.js popup.html app.js \
                    gallery.html gallery.js factory.html factory.js \
                    stage-entries.js msglog.js sounds.js tips.js \
-                   tooltip.js fonts.css; do
+                   tooltip.js fonts.css personnel.js research.js \
+                   incinerator.js incinerator.html incinerator-window.js \
+                   employees.html employees.js research.html research-window.js \
+                   house.js house.html house-window.js house-dispatch.js \
+                   popup-dispatch.js ratiocinatory.html ratiocinatory.js; do
             if [ -f "$f" ]; then
               cp "$f" "$STAGING/$f"
               echo "  + $f"
