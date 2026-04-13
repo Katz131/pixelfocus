@@ -56,7 +56,11 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
   chrome.storage.local.get('pixelFocusState', function(result) {
     var state = result.pixelFocusState;
     if (!state) return;
-    var today = new Date().toISOString().slice(0, 10);
+    // v3.20.17: use LOCAL date, not UTC — must match app.js todayStr().
+    var _d = new Date();
+    var _mm = _d.getMonth() + 1;
+    var _dd = _d.getDate();
+    var today = _d.getFullYear() + '-' + (_mm < 10 ? '0' : '') + _mm + '-' + (_dd < 10 ? '0' : '') + _dd;
     if (state.lastActiveDate === today) return;
 
     if (state.lastActiveDate) {

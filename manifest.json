@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PixelFocus",
-  "version": "3.20.17",
+  "version": "3.20.18",
   "description": "Gamified Pomodoro todo list - earn pixel blocks by staying focused and build pixel art!",
   "permissions": [
     "storage",

@@ -1276,7 +1276,14 @@ try {
   }
 
   function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+    // Use LOCAL date, not UTC — the countdown timer and the player's
+    // sense of "today" are both local-midnight-based, so the rollover
+    // must match. toISOString() returns UTC which fires hours early
+    // in western timezones and hours late in eastern ones.
+    var d = new Date();
+    var mm = d.getMonth() + 1;
+    var dd = d.getDate();
+    return d.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
   }
 
   function checkComboTimeout() {
@@ -1359,11 +1366,10 @@ try {
       // user's owned size, not the starter 8x8.
       state.marathonBonusesToday = [];
 
-      // v3.20.17: Reset daily dust counters. Dust itself persists in the
-      // bin across days (it accumulates until burned), but the daily task
-      // count and burn flag reset so the threshold applies fresh each day.
+      // v3.20.17: Reset daily dust task counter. The burn flag is now a
+      // date comparison (state.dustBurnDate vs todayStr()) so it doesn't
+      // need resetting — a new day means a new todayStr() automatically.
       state.dustCompletedToday = 0;
-      state.dustBurnedToday = false;
 
       state.lastActiveDate = today;
       state.sessionBlocks = 0;
@@ -4239,7 +4245,7 @@ try {
         }
         done = Math.max(done, spkToday);
         var gateReached = done >= DUST_TASK_GATE;
-        var alreadyBurned = !!state.dustBurnedToday;
+        var alreadyBurned = (state.dustBurnDate === todayStr());
 
         // Disable burn button if gate not met or already burned today.
         if (burnBtn) {
@@ -4294,7 +4300,9 @@ try {
       notify('The Materials Incinerator has not been commissioned yet.', '#d4a857');
       return;
     }
-    if (state.dustBurnedToday) {
+    // v3.20.18: compare burn date instead of a boolean — survives
+    // window reloads and spurious day-rollover resets.
+    if (state.dustBurnDate === todayStr()) {
       notify('Already burned today \u2014 the annex rests until tomorrow.', '#d4a857');
       return;
     }
@@ -4328,7 +4336,7 @@ try {
     // Clear the bin visually and mark today as burned.
     var count = (state.dustPixels || []).length;
     state.dustPixels = [];
-    state.dustBurnedToday = true;
+    state.dustBurnDate = todayStr();
     try {
       if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
         var pct = (delta * 100).toFixed(2);
