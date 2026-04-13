@@ -465,12 +465,16 @@
 
 <div class="top-bar">
   <div style="display:flex;align-items:center;gap:12px;">
-    <button id="backBtn" class="nav-btn" type="button" title="Open the main tracker (separate window)">&#8592; HOME</button>
+    <button id="backBtn" class="nav-btn" type="button" title="Open the main tracker &mdash; your to-do list (separate window).">&#8592; TO-DO LIST</button>
+    <button id="houseNavBtn" class="nav-btn" type="button" title="Walk home. The House shows a rap sheet on your family, vital signs, and telecoms.">HOUSE</button>
     <button id="galleryNavBtn" class="nav-btn" type="button" title="Open the Gallery (separate window)">GALLERY</button>
+    <button id="employeesNavBtn" class="nav-btn" type="button" title="Open the Employee Management Center &mdash; a roster of every employee currently on the books, with bios, pool, and tenure. Hidden until the Hire Employees upgrade is purchased.">PERSONNEL</button>
+    <button id="researchNavBtn" class="nav-btn" type="button" title="Open the Research Lab &mdash; conduct experiments on members of the personnel roster. Hidden until the Research Lab upgrade is purchased. Some subjects do not come back.">RESEARCH</button>
+    <button id="incineratorNavBtn" class="nav-btn" type="button" title="Open the Incinerator &mdash; a Tier-7 late-game annex that converts employees into permanent passive-income fuel. Hidden until the Commission the Incinerator upgrade is purchased.">INCINERATOR</button>
     <button id="factoryIntroBtn" type="button" style="position:relative;background:transparent;border:1px solid #ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:9px;padding:6px 10px;border-radius:6px;cursor:pointer;" title="Re-open the treasurer&rsquo;s standing memo &mdash; the ledger-side explanation of what this room is for. A gold badge appears when new memos have been filed.">MEMO<span id="factoryIntroBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#ffd700;color:#000;font-size:7px;min-width:12px;height:12px;line-height:12px;padding:0 3px;border-radius:6px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,215,0,0.7);"></span></button>
     <h1 title="The Textile Factory &mdash; spend money (a totally separate currency from textiles) on upgrade trees that grow the whole operation.">PixelFocus Factory</h1>
   </div>
-  <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);" title="Factory module version &mdash; this whole window is the Loom Edition expansion.">v3.19.13 &middot; Loom Edition</div>
+  <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);" title="Factory module version &mdash; this whole window is the Loom Edition expansion.">v3.20.17 &middot; Loom Edition</div>
 </div>
 
 <div class="money-hero" title="Your money treasury. Money is a SEPARATE currency from textiles. You earn it from: (1) combo bursts when you chain 10-minute sessions, (2) daily marathon thresholds (1h/2h/3h/4h/6h/8h of focus in one day), and (3) an end-of-day lump sum if you recorded at least 1 hour of work that day (scales with your streak). Passive per-minute income is LOCKED until you buy Hire Employees below.">
@@ -552,6 +556,9 @@
 <script src="tooltip.js"></script>
 <script src="msglog.js"></script>
 <script src="stage-entries.js"></script>
+<script src="personnel.js"></script>
+<script src="research.js"></script>
+<script src="incinerator.js"></script>
 <script src="factory.js"></script>
 </body>
 </html>

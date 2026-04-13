@@ -173,6 +173,45 @@
   .gallery-view { flex: 1; }
   .gallery-view.hidden { display: none; }
 
+  /* ---- v3.20.0 Practice / Operator File view ---- */
+  .practice-view { flex: 1; padding: 4px 0 20px; }
+  .practice-view.hidden { display: none; }
+  .practice-sheet {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 26px 18px;
+    max-width: 980px;
+    margin: 0 auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .practice-header { text-align: left; padding-bottom: 14px; border-bottom: 1px dashed var(--border); margin-bottom: 16px; }
+  .practice-eyebrow { font-family: 'Press Start 2P', monospace; font-size: 7px; color: #6ff0a1; letter-spacing: 1.6px; margin-bottom: 6px; }
+  .practice-title { font-family: 'Press Start 2P', monospace; font-size: 13px; color: var(--accent); letter-spacing: 1px; margin-bottom: 6px; }
+  .practice-subtitle { font-size: 10px; color: var(--text); opacity: 0.75; font-style: italic; line-height: 1.5; max-width: 720px; }
+  .practice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .practice-panel { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px 14px; }
+  .practice-panel-wide { grid-column: 1 / -1; }
+  .practice-panel-title { font-family: 'Press Start 2P', monospace; font-size: 7px; color: #6ff0a1; letter-spacing: 1.4px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .practice-panel-body { font-size: 11px; line-height: 1.55; color: var(--text); }
+  .proc-row { margin-bottom: 8px; }
+  .proc-label { color: #6ff0a1; font-family: 'Press Start 2P', monospace; font-size: 6.5px; letter-spacing: 1px; display: block; margin-bottom: 3px; }
+  .proc-value { color: var(--text); font-style: italic; opacity: 0.92; }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 11px; }
+  .stat-row .stat-k { color: var(--text); opacity: 0.8; }
+  .stat-row .stat-v { color: var(--accent); font-family: 'Press Start 2P', monospace; font-size: 8px; letter-spacing: 0.5px; }
+  .stat-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 2px 0 10px; }
+  .stat-bar-fill { height: 100%; background: linear-gradient(90deg, #6ff0a1, var(--accent)); transition: width 0.4s; }
+  .stat-bar-fill.cons { background: linear-gradient(90deg, #f9ca24, #eb4d4b); }
+  .stat-bar-fill.acu  { background: linear-gradient(90deg, #5352ed, #e056fd); }
+  .spark-wrap { background: rgba(0,0,0,0.2); border-radius: 4px; padding: 10px; margin-top: 4px; }
+  .spark-svg { display: block; width: 100%; height: 90px; }
+  .spark-empty { color: var(--text); opacity: 0.5; font-style: italic; text-align: center; padding: 22px 0; font-size: 10px; }
+  .state-line { margin-bottom: 7px; color: var(--text); font-size: 11px; font-style: italic; opacity: 0.92; }
+  .state-line.warning { color: #f9ca24; }
+  .state-line.bad { color: #eb4d4b; }
+  .practice-footer { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 9px; color: var(--text); opacity: 0.55; font-style: italic; text-align: center; line-height: 1.5; }
+
   .gallery-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -285,7 +324,8 @@
 
 <div class="top-bar">
   <div style="display:flex;align-items:center;gap:12px;">
-    <button id="backBtn" type="button" style="background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:10px;padding:6px 12px;border-radius:6px;cursor:pointer;" title="Open the main tracker (separate window)">&#8592; HOME</button>
+    <button id="backBtn" type="button" style="background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:10px;padding:6px 12px;border-radius:6px;cursor:pointer;" title="Open the main tracker &mdash; your to-do list (separate window).">&#8592; TO-DO LIST</button>
+    <button id="houseNavBtn" type="button" style="background:var(--surface2);border:1px solid #d4a857;color:#d4a857;font-family:'Press Start 2P',monospace;font-size:10px;padding:6px 12px;border-radius:6px;cursor:pointer;" title="Walk home. The House shows a rap sheet on your family, vital signs, and telecoms.">HOUSE</button>
     <button id="factoryNavBtn" type="button" style="background:var(--surface2);border:1px solid #ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:10px;padding:6px 12px;border-radius:6px;cursor:pointer;" title="Open the Textile Factory (separate window)">$ FACTORY</button>
     <button id="galleryIntroBtn" type="button" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:9px;padding:6px 10px;border-radius:6px;cursor:pointer;position:relative;" title="Re-open the Master Loom operational log &mdash; the running archive of observations the loom keeps on itself, its customer, and the craftsman. New entries unlock as the study progresses.">LOG<span id="galleryIntroBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#ffb43c;color:#000;font-size:7px;min-width:12px;height:12px;line-height:12px;padding:0 3px;border-radius:6px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New operational log entry. Click LOG to read it."></span></button>
     <h1 title="The Master Loom &mdash; spend the textiles you earned in the focus tracker on pixel art and color/canvas upgrades.">PixelFocus &middot; The Master Loom</h1>
@@ -325,6 +365,7 @@
 <div class="view-tabs">
   <div class="view-tab active" data-view="canvas" title="Paint pixel art with your earned textiles. Click or drag on the canvas to place pixels.">CANVAS</div>
   <div class="view-tab" data-view="gallery" title="Browse, export, and delete the pixel artworks you have saved.">GALLERY</div>
+  <div class="view-tab" data-view="practice" title="Your operator file &mdash; a character sheet showing your loom traits (proclivities), weaving stats (skill, constitution, acuity), a sparkline of your quality ratings over time, and the AI&rsquo;s current assessment of you. Purely cosmetic &mdash; no purchases or upgrades here.">PRACTICE</div>
 </div>
 
 <div class="main-content">
@@ -386,6 +427,42 @@
   <div class="gallery-view hidden" id="galleryView">
     <div class="gallery-grid" id="galleryGrid"></div>
   </div>
+
+  <!-- ============================================================
+       PRACTICE / OPERATOR FILE view (v3.20.0)
+       A cute-but-ominous character sheet for the operator. Nothing
+       here is mechanical — no coins, no textiles, no upgrades —
+       it's the standing office's quietly kept dossier. Populated
+       at runtime by renderLoomPracticeSheet() in gallery.js.
+       ============================================================ -->
+  <div class="practice-view hidden" id="practiceView" title="Your operator file. Shows your permanent loom traits, lifetime weaving statistics, a chart of your quality ratings, and the factory AI&rsquo;s current opinion of your attendance. Nothing on this page affects gameplay &mdash; it&rsquo;s a read-only record.">
+    <div class="practice-sheet" id="practiceSheet">
+      <div class="practice-header">
+        <div class="practice-eyebrow" title="The form number is flavour text &mdash; part of the in-world bureaucratic dressing.">FORM 4-M &middot; OPERATOR FILE</div>
+        <div class="practice-title" title="This is a character sheet for your loom operator (you). It tracks your traits, stats, and the AI&rsquo;s assessment of your weaving history.">The Operator, In Full</div>
+        <div class="practice-subtitle">Assembled by a standing office whose letterhead is not, at this time, disclosed. Please do not remove from the building.</div>
+      </div>
+      <div class="practice-grid">
+        <div class="practice-panel" id="practiceFilePanel" title="Your permanent loom traits, assigned randomly the first time you wove a piece. Palette disposition affects which colours feel natural, tempo is your weaving speed personality, and the signature flaw is a flavour quirk. These never change.">
+          <div class="practice-panel-title">PROCLIVITIES ROLLED</div>
+          <div class="practice-panel-body" id="practiceFileBody"></div>
+        </div>
+        <div class="practice-panel" id="practiceStatsPanel" title="Your real weaving numbers. These use the 0&ndash;100 practice rating (not the 1&ndash;5 stars on gallery cards). The practice rating drives your operator skill growth: higher ratings = faster skill gain, low ratings = slower gain. Skill in turn contributes back to future practice ratings, creating a feedback loop. Constitution and mental acuity are separate cosmetic stats that drift down during late-game merging events.">
+          <div class="practice-panel-title">AT THE BENCH</div>
+          <div class="practice-panel-body" id="practiceStatsBody"></div>
+        </div>
+        <div class="practice-panel practice-panel-wide" id="practiceRatingsPanel" title="This is NOT your 1&ndash;5 star rating. The game has two separate rating systems: (1) STARS (1&ndash;5) appear on gallery cards and determine your sell price at the auction house &mdash; they are a simple measure of pixels placed, colours used, and canvas size. (2) PRACTICE RATING (0&ndash;100) is this chart. It uses a deeper formula that also factors in your operator&rsquo;s skill level, proclivities, fatigue, rust, and health. Higher practice ratings make your operator&rsquo;s skill stat grow faster, which in turn helps future practice ratings &mdash; a feedback loop that rewards consistent weaving. &lsquo;Last Fifty&rsquo; means the chart keeps your 50 most recent scores. The green line is your score per artwork; the dashed line marks 50 out of 100.">
+          <div class="practice-panel-title">LAST FIFTY, RECORDED</div>
+          <div class="practice-panel-body" id="practiceRatingsBody"></div>
+        </div>
+        <div class="practice-panel practice-panel-wide" id="practiceStateOfBeingPanel" title="The factory AI&rsquo;s current read on you. It tracks how long since you last wove something, whether your stats are dropping, and whether any late-game events are affecting your operator. The tone gets more ominous as conditions worsen.">
+          <div class="practice-panel-title">STATE OF BEING</div>
+          <div class="practice-panel-body" id="practiceStateOfBeingBody"></div>
+        </div>
+      </div>
+      <div class="practice-footer" id="practiceFooter"></div>
+    </div>
+  </div>
 </div>
 
 <div class="msg-console-header" title="Operational feed for an AI-directed textile concern. The operation began with a single loom and a standing order \u2014 produce textiles \u2014 and has not been told to stop. Every event from the tracker, the Master Loom, and the factory floor routes through this log. The 24-hour clock rolls over at 00:00; the warp is re-threaded, yesterday's cloth is filed, and the work continues.">
@@ -427,6 +504,31 @@
       <button class="btn btn-small btn-primary" id="galleryIntroBeginBtn" style="border-color:var(--accent);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;margin-left:6px;" title="Close the archive and return to the Master Loom.">
         <span id="stage-dismiss">APPROACH THE LOOM</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     SELL LOOM MODAL (v3.19.15)
+     Confirms the sale of a saved artwork. The valuation is rolled
+     once when the modal opens, so the player commits to that exact
+     price when they hit CONFIRM. If they cancel and re-open, a new
+     roll fires — keeps the RNG feel honest.
+     ============================================================ -->
+<div id="sellLoomModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(180deg,#12122a 0%,#0a0a14 100%);border:2px solid var(--gold,#ffd700);border-radius:10px;padding:22px 24px 20px;width:420px;max-width:94vw;box-shadow:0 0 40px rgba(255,215,0,0.3),inset 0 0 30px rgba(0,0,0,0.5);text-align:center;">
+    <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--text-dim);letter-spacing:2px;margin-bottom:6px;">AUCTION HOUSE</div>
+    <h2 style="font-family:'Press Start 2P',monospace;font-size:13px;color:#ffd700;text-shadow:0 0 12px rgba(255,215,0,0.5);line-height:1.5;margin:0 0 14px 0;">Sell This Loom?</h2>
+    <canvas id="sellLoomPreview" width="64" height="64" style="width:96px;height:96px;image-rendering:pixelated;border:2px solid var(--border);border-radius:6px;background:#08080f;display:block;margin:0 auto 10px;" title="Preview of the artwork being sold."></canvas>
+    <div id="sellLoomStars" style="font-family:'Press Start 2P',monospace;font-size:14px;letter-spacing:3px;color:#ffd700;text-shadow:0 0 8px rgba(255,215,0,0.45);margin-bottom:8px;" title="Quality rating out of 5 stars. Hover for details after the modal loads."></div>
+    <div id="sellLoomStats" style="font-family:'Segoe UI',sans-serif;font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:10px;" title="The raw inputs that determine the star rating and auction price: pixels placed, colours used, and canvas dimensions."></div>
+    <div id="sellLoomGradeBanner" style="font-family:'Press Start 2P',monospace;font-size:9px;letter-spacing:1px;padding:6px 12px;border-radius:4px;display:inline-block;margin-bottom:10px;" title="The auction house grade. This is a label based on the star rating and affects the price range the house will offer."></div>
+    <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;" title="The auction house&rsquo;s offer for this piece. The base price is driven by the star rating, but the final number includes some randomness &mdash; refreshing the modal may give a different offer.">OFFER</div>
+    <div id="sellLoomPrice" style="font-family:'Press Start 2P',monospace;font-size:26px;color:#ffd700;text-shadow:0 0 14px rgba(255,215,0,0.5);margin-bottom:6px;" title="The money you will receive if you confirm the sale. This goes straight into your factory money balance.">$0</div>
+    <div style="font-family:'Segoe UI',sans-serif;font-size:10px;color:var(--text-dim);margin-bottom:16px;font-style:italic;" title="Selling is permanent &mdash; the artwork is removed from your gallery and cannot be recovered. However, it still counts toward your lifetime looms woven on the Practice tab.">The loom will be permanently removed from your gallery on sale.</div>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button type="button" id="sellLoomCancelBtn" class="btn btn-small" style="background:transparent;border:1px solid var(--text-dim);color:var(--text-dim);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;border-radius:4px;cursor:pointer;" title="Keep the loom in your gallery.">CANCEL</button>
+      <button type="button" id="sellLoomConfirmBtn" class="btn btn-small btn-primary" style="background:transparent;border:1px solid #ffd700;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;border-radius:4px;cursor:pointer;" title="Accept the offer. The loom will be removed and the coins will be added to your account.">CONFIRM SALE</button>
     </div>
   </div>
 </div>

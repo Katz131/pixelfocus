@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  house.html  —  v3.20.1 Stage 5  (The House)
+
+  A short, quiet window the player sees at the start of every session. It is
+  an antechamber to the factory, not a replacement for it. The entire window
+  lists, in small print, the number and general condition of the things at
+  home. When the late-game Land Bridge is commissioned, this window is
+  replaced by a single refusal paragraph on the same letterhead.
+
+  State read:  state.lifetimeCoins, state.streak, state.employeesLevel,
+               state.researchLabUnlocked, state.incineratorUnlocked,
+               state.landBridgeBuilt, state.personnelRoster
+  State write: NONE. The house never mutates save state.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PixelFocus &mdash; The House</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg:       #0f110e;
+    --surface:  #181a14;
+    --surface2: #22261c;
+    --ink:      #d8d3bc;
+    --ink-dim:  #8e886e;
+    --accent:   #d4a857;     /* warm lamp light */
+    --accent2:  #a9c28b;     /* window plant */
+    --danger:   #b94a3c;     /* the red of the letter on the desk */
+    --border:   #2c2f24;
+    --glow:     rgba(212,168,87,0.18);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  .top-bar {
+    background: linear-gradient(135deg, var(--surface), var(--surface2));
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .top-bar h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--glow);
+    letter-spacing: 2px;
+  }
+  .nav-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-right: 6px;
+  }
+  .nav-btn:hover { border-color: var(--accent); }
+  .nav-btn.warm { color: var(--accent); border-color: var(--accent); }
+  .nav-btn.cold { color: var(--ink-dim); }
+
+  .stage {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 28px 24px 40px;
+  }
+
+  .hero {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 22px 24px;
+    margin-bottom: 22px;
+  }
+  .hero .eyebrow {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .hero h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 14px;
+    color: var(--ink);
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+  }
+  .hero p {
+    color: var(--ink-dim);
+    line-height: 1.6;
+    font-size: 12px;
+    max-width: 58ch;
+  }
+  .hero p + p { margin-top: 10px; }
+
+  .sheet {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 22px;
+  }
+  .sheet-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+
+  .sheet-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .sheet-row:last-child { border-bottom: none; }
+  .sheet-row .label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--ink-dim);
+    min-width: 130px;
+    letter-spacing: 1px;
+  }
+  .sheet-row .count {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--ink);
+    min-width: 40px;
+  }
+  .sheet-row .note {
+    color: var(--ink-dim);
+    font-size: 11px;
+    line-height: 1.4;
+    font-style: italic;
+  }
+
+  .condition {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .condition-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--ink-dim);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .condition-value {
+    font-size: 13px;
+    color: var(--accent2);
+    font-style: italic;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* VITAL SIGNS                                                        */
+  /* A small readout panel styled to look like an unloved janitor's-     */
+  /* cupboard security monitor. Monospaced, faintly green, locked to    */
+  /* a fixed-width column grid so the numbers line up vertically.       */
+  /* ------------------------------------------------------------------ */
+  .vitals {
+    margin-top: 18px;
+    border: 1px solid #2b3a23;
+    background: #090b07;
+    border-radius: 8px;
+    padding: 14px 16px 12px;
+    box-shadow:
+      0 0 16px rgba(169,194,139,0.06) inset,
+      0 0 0 1px #13170e inset;
+    font-family: 'Press Start 2P', 'Courier New', monospace;
+  }
+  .vitals-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed #253019;
+  }
+  .vitals-title {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: #a9c28b;
+    text-shadow: 0 0 6px rgba(169,194,139,0.35);
+  }
+  .vitals-feed {
+    font-size: 7px;
+    letter-spacing: 1px;
+    color: #5c6b4a;
+  }
+  .vitals-led {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #7fa862;
+    box-shadow: 0 0 6px #7fa862;
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: vitalsPulse 2.2s infinite ease-in-out;
+  }
+  @keyframes vitalsPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+  }
+
+  .vital-row {
+    display: grid;
+    grid-template-columns: 68px 56px 56px 70px 1fr;
+    column-gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 8px;
+    color: #a9c28b;
+    border-bottom: 1px dotted #1e2615;
+  }
+  .vital-row:last-child { border-bottom: none; }
+  .vital-row .v-label {
+    color: #7a8c62;
+    letter-spacing: 1px;
+    font-size: 7px;
+  }
+  .vital-row .v-hr,
+  .vital-row .v-temp,
+  .vital-row .v-seen {
+    color: #c7d9a9;
+    font-size: 8px;
+    white-space: nowrap;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .vital-row .v-mood {
+    font-size: 7px;
+    color: #7a8c62;
+    letter-spacing: 1px;
+    text-align: right;
+  }
+
+  /* Wellbeing bar. Green early, amber mid, red late. A single narrow */
+  /* horizontal meter under the vital rows.                            */
+  .vitals-footer {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #253019;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .vitals-footer .wb-label {
+    font-size: 7px;
+    letter-spacing: 1px;
+    color: #5c6b4a;
+    min-width: 80px;
+  }
+  .wb-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 2px;
+    background: #141a0d;
+    overflow: hidden;
+    border: 1px solid #1e2615;
+  }
+  .wb-fill {
+    height: 100%;
+    width: 0%;
+    background: #7fa862;
+    transition: width 0.3s ease, background 0.3s ease;
+    box-shadow: 0 0 6px rgba(127,168,98,0.4);
+  }
+  .wb-fill.tier-good { background: #7fa862; box-shadow: 0 0 6px rgba(127,168,98,0.4); }
+  .wb-fill.tier-mid  { background: #d4a857; box-shadow: 0 0 6px rgba(212,168,87,0.4); }
+  .wb-fill.tier-bad  { background: #b94a3c; box-shadow: 0 0 6px rgba(185,74,60,0.4); }
+  .vitals-footer .wb-value {
+    font-size: 7px;
+    color: #c7d9a9;
+    min-width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* TELECOMMUNICATIONS                                                 */
+  /* Two small rows sitting inside the vitals panel, between the member */
+  /* rows and the wellbeing bar. They share the monitor aesthetic but   */
+  /* carry a status dot and a short line of flavour prose.              */
+  /* ------------------------------------------------------------------ */
+  .comms-divider {
+    margin: 10px 0 6px;
+    padding-top: 8px;
+    border-top: 1px dashed #253019;
+    font-size: 7px;
+    letter-spacing: 2px;
+    color: #5c6b4a;
+  }
+  .comms-row {
+    display: grid;
+    grid-template-columns: 68px 90px 1fr;
+    column-gap: 10px;
+    align-items: start;
+    padding: 6px 0;
+    border-bottom: 1px dotted #1e2615;
+  }
+  .comms-row:last-of-type { border-bottom: none; }
+  .comms-row .c-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    color: #7a8c62;
+    letter-spacing: 1px;
+    padding-top: 2px;
+  }
+  .comms-row .c-status {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    letter-spacing: 1px;
+    padding-top: 2px;
+    white-space: nowrap;
+  }
+  .comms-row .c-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .comms-row .c-note {
+    /* Telemetry readout — tabular, monospaced, no prose. */
+    font-family: 'Courier New', ui-monospace, monospace;
+    font-size: 9px;
+    color: #8aa06a;
+    line-height: 1.5;
+    letter-spacing: 0.3px;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .c-open   { color: #7fa862; }
+  .c-open   .c-dot { background: #7fa862; animation: commsPulse 2.2s infinite ease-in-out; }
+  .c-warn   { color: #d4a857; }
+  .c-warn   .c-dot { background: #d4a857; animation: commsPulseWarn 1.4s infinite ease-in-out; }
+  .c-down   { color: #b94a3c; }
+  .c-down   .c-dot { background: #b94a3c; box-shadow: 0 0 6px #b94a3c; }
+  @keyframes commsPulse      { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @keyframes commsPulseWarn  { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  .begin-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 14px;
+  }
+  .begin-btn {
+    background: var(--surface2);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    padding: 14px 24px;
+    letter-spacing: 2px;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 0 14px var(--glow);
+  }
+  .begin-btn:hover { background: rgba(212,168,87,0.08); }
+
+  /* DENIAL VIEW — shown only after the land bridge is commissioned.
+     Everything about the family is replaced with a single short form
+     letter set in the same font as the stamp at the post office. */
+  .denial {
+    border: 1px solid var(--danger);
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 26px 28px;
+    margin-bottom: 22px;
+    box-shadow: 0 0 14px rgba(185,74,60,0.10) inset;
+  }
+  .denial-stamp {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--danger);
+    margin-bottom: 12px;
+  }
+  .denial p {
+    color: var(--ink);
+    line-height: 1.7;
+    font-size: 12px;
+    max-width: 58ch;
+  }
+  .denial .footer {
+    margin-top: 16px;
+    font-size: 10px;
+    color: var(--ink-dim);
+    font-style: italic;
+  }
+
+  /* ============================================================
+     DISPATCH TOASTS (house-dispatch.js)
+     A passive-aggressive note from the factory AI that appears in
+     the top-right of the HOUSE screen after the player has lingered
+     for a while. At most one per visit.
+     ============================================================ */
+  #dispatchToasts {
+    position: fixed;
+    top: 56px;
+    right: 16px;
+    z-index: 4000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    max-width: 320px;
+  }
+  .dispatch-toast {
+    pointer-events: auto;
+    background: #0f0a0a;
+    border: 1px solid #5a1f1f;
+    border-left: 3px solid #c03a3a;
+    color: #e6d3c4;
+    padding: 10px 28px 10px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    position: relative;
+    animation: dispatch-in 220ms ease-out;
+  }
+  @keyframes dispatch-in {
+    0%   { transform: translateX(18px); opacity: 0; }
+    100% { transform: translateX(0);     opacity: 1; }
+  }
+  .dispatch-head {
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    color: #e08a8a;
+    font-size: 10px;
+    margin-bottom: 4px;
+  }
+  .dispatch-body {
+    color: #d6c6b4;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .dispatch-close {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: transparent;
+    border: none;
+    color: #8a6a6a;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .dispatch-close:hover { color: #e08a8a; }
+
+  /* Arrival text — brief ring animation + slightly different border */
+  .arrival-toast {
+    border-left-color: #d4a857;
+    animation: arrival-ring 0.12s ease-in-out 3, dispatch-in 220ms ease-out;
+  }
+  .arrival-toast .dispatch-head {
+    color: #d4a857;
+  }
+  @keyframes arrival-ring {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-3px); }
+    75%      { transform: translateX(3px); }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:4px;">
+    <h1 title="The House &mdash; a small, deliberately spare antechamber to the factory.">HOUSE</h1>
+  </div>
+  <div style="display:flex;align-items:center;">
+    <button id="toPopupBtn" class="nav-btn warm" type="button" title="Leave the house and begin the day&rsquo;s textile work. This is the same main tracker you already know.">BEGIN TEXTILE WORK</button>
+    <button id="toLoomBtn" class="nav-btn" type="button" title="Walk directly to the Master Loom.">MASTER LOOM</button>
+    <button id="toFactoryBtn" class="nav-btn" type="button" title="Walk directly to the Textile Factory.">FACTORY</button>
+  </div>
+</div>
+
+<div class="stage">
+
+  <!-- STANDARD VIEW: family rap sheet. Rendered by house-window.js. -->
+  <div id="houseStandardView">
+    <div class="hero">
+      <div class="eyebrow" id="houseChapterEyebrow">THE HOUSE &middot; MORNING</div>
+      <h2>A small house at the edge of a factory town.</h2>
+      <p>
+        The kettle is on. Somewhere in the next room a child is turning
+        the pages of a book about a different, smaller house. The factory
+        is a short walk away. You will be expected at the loom in an
+        appreciable number of minutes, a fact the house absorbs without
+        comment.
+      </p>
+      <p id="houseMoodLine" style="color:var(--accent2);">
+        Things, at the moment, are <em>as they should be</em>. Not better,
+        not worse. The light in the hallway has not yet been dimmed.
+      </p>
+    </div>
+
+    <div class="sheet" id="houseRapSheet">
+      <div class="sheet-title">RAP SHEET &middot; HOUSEHOLD</div>
+      <div class="sheet-row">
+        <div class="label">SPOUSE</div>
+        <div class="count" id="spouseCount">&mdash;</div>
+        <div class="note" id="spouseNote">Present. Reading the weekend supplement.</div>
+      </div>
+      <div class="sheet-row">
+        <div class="label">CHILDREN</div>
+        <div class="count" id="kidCount">&mdash;</div>
+        <div class="note" id="kidNote">One colouring at the table. (Two on good days.)</div>
+      </div>
+      <div class="sheet-row">
+        <div class="label">PETS</div>
+        <div class="count" id="petCount">&mdash;</div>
+        <div class="note" id="petNote">Variable. None have names the forms will accept.</div>
+      </div>
+
+      <div class="condition">
+        <div class="condition-label">CONDITION</div>
+        <div class="condition-value" id="conditionValue">Settling in.</div>
+      </div>
+
+      <!-- VITAL SIGNS PANEL
+           A small readout panel that pulls from the house's own security
+           monitor. The rows are populated at render time from
+           house.getRapSheet(state).members. The bar underneath tracks the
+           aggregate wellbeing scalar, which is the thing that actually
+           rises while the factory is doing well and falls once the factory
+           begins consuming people. -->
+      <div class="vitals" id="vitalsPanel">
+        <div class="vitals-header">
+          <div class="vitals-title"><span class="vitals-led"></span>VITAL SIGNS &middot; INTERIOR FEED</div>
+          <div class="vitals-feed" id="vitalsFeedTag">CH 2B / CAM 04</div>
+        </div>
+        <div id="vitalRows"></div>
+
+        <!-- TELECOMMUNICATIONS: phone + internet status with a short
+             line of prose. Populated by house-window.js from
+             sheet.telecoms. -->
+        <div class="comms-divider">EXTERIOR COMMUNICATIONS</div>
+        <div id="commsRows"></div>
+
+        <div class="vitals-footer">
+          <div class="wb-label">HOUSEHOLD WB</div>
+          <div class="wb-track"><div id="wbFill" class="wb-fill"></div></div>
+          <div class="wb-value" id="wbValue">&mdash;</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="begin-row">
+      <button id="beginWorkBtn" class="begin-btn" type="button" title="Leave the house through the side door and walk to the loom. The main tracker window will open; the house stays where you left it.">BEGIN TEXTILE WORK &rsaquo;</button>
+    </div>
+  </div>
+
+  <!-- DENIAL VIEW: shown only after the land bridge is commissioned.
+       Populated dynamically by house-window.js so the exact prose can
+       live in house.js and be edited from one place. -->
+  <div id="houseDenialView" style="display:none;">
+    <div class="denial">
+      <div class="denial-stamp">NOTICE OF REDIRECTED TRANSIT &middot; FORM H/2b</div>
+      <p id="denialBody">&mdash;</p>
+      <div class="footer">
+        Filed with a standing office whose letterhead is not, at this time,
+        disclosed. No reply is expected.
+      </div>
+    </div>
+    <div class="begin-row">
+      <button id="beginWorkBtn2" class="begin-btn" type="button" title="The house is not currently reachable. You may still walk to the factory.">TO THE FACTORY &rsaquo;</button>
+    </div>
+  </div>
+</div>
+
+<script src="msglog.js"></script>
+<script src="personnel.js"></script>
+<!-- Toast host for factory dispatches (passive-aggressive notes from the
+     factory AI, fired once per visit after the player lingers for a while).
+     Populated by house-dispatch.js. -->
+<div id="dispatchToasts" aria-live="polite"></div>
+
+<script src="house.js"></script>
+<script src="house-window.js"></script>
+<script src="house-dispatch.js"></script>
+
+</body>
+</html>

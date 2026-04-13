@@ -2,7 +2,7 @@
 
 > A gamified Pomodoro todo list Chrome extension — earn textiles by staying focused, weave them into pixel art, and stack money for a sprawling factory empire. Terry Gilliam office dystopia, Stanley Parable narrator voice, seventy-four sealed title ranks, and a pop-out timer that survives background-tab throttling.
 
-**Current version:** `v3.19.13`
+**Current version:** `v3.19.17`
 
 ---
 
@@ -14,11 +14,11 @@ Titles and tier names stay sealed behind fog-of-war until you earn them. The lad
 
 ## Install (Developer Mode, unpacked)
 
-1. Download the latest `pixelfocus-v3.19.13.zip` from the [Releases page](https://github.com/Katz131/pixelfocus/releases/latest).
+1. Download the latest `pixelfocus-v3.19.17.zip` from the [Releases page](https://github.com/Katz131/pixelfocus/releases/latest).
 2. Unzip it anywhere you like — for example, `C:\PixelFocus\`.
 3. Open Chrome (or Brave / Edge) and go to `chrome://extensions`.
 4. Flip the **Developer mode** switch on in the top-right corner.
-5. Click **Load unpacked** and select the unzipped `pixelfocus-v3.19.13` folder.
+5. Click **Load unpacked** and select the unzipped `pixelfocus-v3.19.17` folder.
 6. Pin the extension by clicking the puzzle-piece icon in your toolbar and hitting the pin next to PixelFocus.
 
 That's it. Click the extension icon to open the main window.
@@ -43,7 +43,7 @@ PixelFocus stores all of its state (todo items, XP, textiles, coins, gallery, fa
 
 ## Building from source
 
-You don't need a build step to run PixelFocus — it's vanilla HTML / CSS / JS with no framework and no transpiler. If you want to package a release zip yourself (instead of downloading one from Releases), double-click `package-extension.bat` in this folder. It will produce `pixelfocus-v3.19.13.zip` next to itself using PowerShell's built-in `Compress-Archive`. No Node, no npm, no toolchain.
+You don't need a build step to run PixelFocus — it's vanilla HTML / CSS / JS with no framework and no transpiler. If you want to package a release zip yourself (instead of downloading one from Releases), double-click `package-extension.bat` in this folder. It will produce `pixelfocus-v3.19.17.zip` next to itself using PowerShell's built-in `Compress-Archive`. No Node, no npm, no toolchain.
 
 ## File map
 

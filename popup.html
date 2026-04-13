@@ -80,6 +80,9 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 .btn-primary:hover { background:rgba(0,255,136,0.1); }
 .btn-danger { border-color:var(--danger); color:var(--danger); }
 .btn-small { padding:4px 10px; font-size:8px; }
+#burnDustBtn:not(:disabled):hover { background:rgba(212,168,87,0.15); box-shadow:0 0 10px rgba(212,168,87,0.4); text-shadow:0 0 6px rgba(212,168,87,0.6); transition:all 0.15s ease; }
+#burnDustBtn:not(:disabled):active { background:rgba(212,168,87,0.25); box-shadow:0 0 14px rgba(212,168,87,0.6); }
+#burnDustBtn:disabled { cursor:not-allowed; }
 .current-task-label { font-size:11px; color:var(--accent3); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .block-progress-row { display:flex; gap:3px; justify-content:center; margin-top:8px; flex-wrap:wrap; }
 .mini-block { width:12px; height:12px; border-radius:2px; border:1px solid var(--border); transition:all 0.3s; }
@@ -188,7 +191,13 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <div class="notification" id="notification" style="position:fixed;top:-60px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);font-family:'Press Start 2P',monospace;font-size:9px;padding:10px 20px;border-radius:6px;z-index:300;transition:top 0.4s cubic-bezier(0.175,0.885,0.32,1.275);white-space:nowrap;"></div>
 
 <div class="header">
-  <h1 title="PixelFocus &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">PixelFocus <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.19.13</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the PixelFocus standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
+  <!-- v3.19.17: profile picture avatar + title grouped so flex space-between
+       still pushes the block counter to the far right. Avatar hidden until
+       the player picks a loom via the Gallery PROFILE button. -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <canvas id="profileAvatar" width="16" height="16" style="display:none;width:32px;height:32px;image-rendering:pixelated;border:2px solid var(--accent);border-radius:50%;background:#08080f;cursor:pointer;box-shadow:0 0 8px rgba(0,255,136,0.3);" title="Your profile picture. Click to open the gallery and pick a different loom."></canvas>
+  <h1 title="PixelFocus &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">PixelFocus <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.20.17</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the PixelFocus standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
+  </div>
   <div class="block-counter" id="blockCounter" title="Textiles produced today. One textile per completed 10-minute focus session. Resets at midnight.">
     <div class="block-icon"></div>
     <div style="display:flex;flex-direction:column;align-items:center;">
@@ -275,9 +284,13 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </div>
 </div>
 
-<div style="margin:0 10px 6px;text-align:center;" title="Dust bin: a passive visual record of every task you have ever completed. Each finished task drops a colored speck.">
-  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:4px;">DUST BIN <span class="tip" data-tip="Each completed task adds a colorful speck of dust here.">?</span></div>
-  <canvas id="dustbin" width="200" height="200" style="background:#08080f;border:1px solid var(--border);border-radius:6px;image-rendering:pixelated;width:100%;max-width:360px;aspect-ratio:1;" title="Dust bin canvas. Tasks settle into colored specks based on the project they belonged to."></canvas>
+<div style="margin:0 10px 6px;text-align:center;" title="Dust bin: a visual record of completed tasks. Each finished task drops a colored speck. Once you have the Materials Incinerator, you can burn the pile once per day for a streak-scaled coin payout &mdash; but only if you completed 3+ tasks that day. If you forget to burn before midnight, the day&rsquo;s payout is lost. The number of specks is cosmetic; the payout scales with your streak, not your task count.">
+  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:4px;">DUST BIN <span class="tip" data-tip="Every completed task drops a coloured speck into this pile. The specks are cosmetic &mdash; they don&rsquo;t determine the payout. Once you commission the Materials Incinerator (Supply tree in the Factory), you can burn once per day for a coin payout scaled by your day streak ($50 base + $15/streak day) plus a tiny permanent passive income boost (+0.05% per burn, capped at +5%). You need 3+ tasks done that day to unlock the burn. If you forget to burn before midnight, that day&rsquo;s payout is gone.">?</span></div>
+  <canvas id="dustbin" width="200" height="200" style="background:#08080f;border:1px solid var(--border);border-radius:6px;image-rendering:pixelated;width:100%;max-width:360px;aspect-ratio:1;" title="Dust bin canvas. Each completed task drops a colored speck here. The specks are cosmetic &mdash; the daily burn payout is based on your streak, not the number of specks. Burn once per day (after 3+ tasks) or the day&rsquo;s payout is lost."></canvas>
+  <div id="dustBurnRow" style="display:none;margin-top:6px;display:flex;flex-direction:column;align-items:center;gap:4px;">
+    <button id="burnDustBtn" class="btn btn-small" type="button" style="border-color:#d4a857;color:#d4a857;font-family:'Press Start 2P',monospace;font-size:8px;padding:6px 14px;letter-spacing:1px;" title="Daily incineration. Complete 3+ tasks today to unlock, then burn once for a flat coin payout that scales with your day streak ($50 base + $15 per streak day). Also adds a small permanent boost to factory passive income (+0.05% per burn, capped at +5% lifetime). You can only burn once per day &mdash; if you forget, that day&rsquo;s payout is lost. The dust specks in the bin are cosmetic; the payout is streak-based, not speck-based.">BURN DUST</button>
+    <div id="burnDustHint" style="font-size:9px;color:var(--text-dim);font-style:italic;" title="Today&rsquo;s burn preview. Shows the coin payout you&rsquo;ll receive (streak-scaled) and how many tasks remain before the incinerator unlocks for the day. The payout does not depend on how many tasks you completed &mdash; only that you reached the 3-task minimum.">&mdash;</div>
+  </div>
 </div>
 
 <div style="margin:0 10px 6px;background:var(--surface);border-radius:8px;border:1px solid var(--border);overflow:hidden;">
@@ -313,13 +326,19 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 </div>
 <div class="msg-console" id="msgConsole" title="Direct feed from the factory floor. Completed sessions, woven textiles, hired employees, researched dyes, marathon thresholds cleared, and \u2014 when the floor is quiet \u2014 the procedural chatter of a loom that never quite stops thinking about the next bolt."></div>
 
-<div style="margin:0 10px 10px;display:flex;gap:8px;">
-  <div id="galleryBtn" style="flex:1;padding:10px;background:linear-gradient(135deg,#1a1a2e,#2a2a4a);border:2px solid var(--accent2);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Open the Master Loom (separate window) to spend your textiles on pixel art and color/canvas upgrades.">
+<div style="margin:0 10px 10px;display:flex;gap:8px;flex-wrap:wrap;">
+  <div id="houseBtn" style="flex:1;min-width:100px;padding:10px;background:linear-gradient(135deg,#181a14,#22261c);border:2px solid #d4a857;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Walk home. Open the House (separate window) to see the rap sheet on the household &mdash; the number and condition of the things waiting for you at home.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#d4a857;">HOUSE</span>
+  </div>
+  <div id="galleryBtn" style="flex:1;min-width:100px;padding:10px;background:linear-gradient(135deg,#1a1a2e,#2a2a4a);border:2px solid var(--accent2);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Open the Master Loom (separate window) to spend your textiles on pixel art and color/canvas upgrades.">
     <div id="miniCanvas" style="display:grid;gap:1px;"></div>
     <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--accent2);">MASTER LOOM</span>
   </div>
-  <div id="factoryBtn" style="flex:1;padding:10px;background:linear-gradient(135deg,#2a2010,#3a2a10);border:2px solid #ffd700;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Open the Factory (separate window) to spend money on passive upgrades.">
+  <div id="factoryBtn" style="flex:1;min-width:100px;padding:10px;background:linear-gradient(135deg,#2a2010,#3a2a10);border:2px solid #ffd700;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;" title="Open the Factory (separate window) to spend money on passive upgrades.">
     <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffd700;">$ FACTORY</span>
+  </div>
+  <div id="ratiocinatoryBtn" style="display:none;flex:1;padding:10px;background:linear-gradient(135deg,#1a1030,#2a1a50);border:2px solid #9d8eff;border-radius:8px;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 0 14px rgba(157,142,255,0.18);" title="Open The Ratiocinatory (Section IX/b) - the bureaucratic annex where the loom is made to think. Unlocked via the Ratiocinatory requisition in the factory.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#9d8eff;letter-spacing:1px;">&sect;IX RATIOCINATORY</span>
   </div>
 </div>
 
@@ -434,6 +453,8 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <script src="sounds.js"></script>
 <script src="msglog.js"></script>
 <script src="stage-entries.js"></script>
+<script src="personnel.js"></script>
 <script src="app.js"></script>
+<script src="popup-dispatch.js"></script>
 </body>
 </html>

@@ -160,23 +160,14 @@
     } catch (_) {}
   }
 
-  // ===== Debug bar =====
+  // ===== Debug bar (disabled in v3.20.0) =====
   function updateDebug(raw) {
-    if (!debugBar) {
-      debugBar = document.createElement('div');
-      debugBar.id = 'debugInfo';
-      debugBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#111;color:#0f0;font-size:11px;padding:6px 10px;z-index:9999;font-family:monospace;border-top:2px solid #0f0;white-space:nowrap;overflow-x:auto;';
-      document.body.appendChild(debugBar);
+    // Intentionally a no-op. The debug readout is kept around in case we
+    // need to re-enable it later, but it should not be visible to players.
+    if (debugBar && debugBar.parentNode) {
+      debugBar.parentNode.removeChild(debugBar);
+      debugBar = null;
     }
-    var s = raw || {};
-    debugBar.textContent =
-      'DEBUG - blocks=' + (s.blocks != null ? s.blocks : 'N/A') +
-      ' | todayBlocks=' + (s.todayBlocks != null ? s.todayBlocks : 'N/A') +
-      ' | totalLifetime=' + (s.totalLifetimeBlocks != null ? s.totalLifetimeBlocks : 'N/A') +
-      ' | timerState=' + (s.timerState || 'N/A') +
-      ' | canvasSize=' + (s.canvasSize || 'N/A') +
-      ' | pixelsPlaced=' + (s.pixelCanvas ? Object.keys(s.pixelCanvas).length : 0) +
-      ' | colors=' + ((s.unlockedColors || []).length);
   }
 
   // ===== Load / Save =====
@@ -194,6 +185,13 @@
       if (!state.savedArtworks) state.savedArtworks = [];
       if (typeof state.coins !== 'number') state.coins = 0;
       if (typeof state.totalLifetimeBlocks !== 'number') state.totalLifetimeBlocks = 0;
+      // v3.19.15: loom sell + profile picture. profilePicture is a
+      // stand-alone snapshot copy of a saved artwork so selling/deleting
+      // the source doesn't wipe the avatar. loomsSold + coinsFromLoomSales
+      // are lifetime stats for future leaderboard / achievement use.
+      if (typeof state.loomsSold !== 'number') state.loomsSold = 0;
+      if (typeof state.coinsFromLoomSales !== 'number') state.coinsFromLoomSales = 0;
+      if (typeof state.profilePicture !== 'object') state.profilePicture = null;
       // ===== Canvas purchase tracking (explicit ownership, NOT inferred) =====
       // Older saves used `state.canvasSize >= u.size` to decide ownership, which
       // meant any bumped canvasSize silently "unlocked" all smaller tiers even if
@@ -209,9 +207,189 @@
       if (!state.canvasSize || state.canvasSize < 8 || state.canvasSize > maxOwned) {
         state.canvasSize = maxOwned;
       }
+      // ===== v3.20.0 LOOM PRACTICE STATS =====
+      // Cute-but-ominous character sheet for the operator. Numbers climb
+      // slowly with practice (and can DIP), and constitution + mental
+      // acuity decay glacially once the Computer begins "merging."
+      // Proclivities are rolled exactly once per save and saved forever.
+      if (!state.loomStats || typeof state.loomStats !== 'object') {
+        state.loomStats = {};
+      }
+      var ls = state.loomStats;
+      if (typeof ls.totalWoven !== 'number')      ls.totalWoven = 0;
+      if (!Array.isArray(ls.ratings))             ls.ratings = [];       // rolling last 50
+      if (typeof ls.bestRating !== 'number')      ls.bestRating = 0;
+      if (typeof ls.skill !== 'number')           ls.skill = 10;         // 0..100, climbs slowly
+      if (typeof ls.constitution !== 'number')    ls.constitution = 0;   // set by roll
+      if (typeof ls.mentalAcuity !== 'number')    ls.mentalAcuity = 0;   // set by roll
+      if (typeof ls.lastWovenAt !== 'number')     ls.lastWovenAt = 0;
+      if (typeof ls.lastDecayTickAt !== 'number') ls.lastDecayTickAt = 0;
+      if (typeof ls.absentScold !== 'number')     ls.absentScold = 0;   // escalation level
+      // -- Proclivities: rolled exactly once, saved forever. --
+      if (!ls.proclivities || typeof ls.proclivities !== 'object') {
+        ls.proclivities = rollLoomProclivities();
+        // Seed constitution + mental acuity from the roll so every
+        // player starts with a genuinely different baseline.
+        ls.constitution  = ls.proclivities.constitution_seed;
+        ls.mentalAcuity  = ls.proclivities.mental_acuity_seed;
+        ls.rolledAt = Date.now();
+      }
+
+      // -- v3.20.8 Backfill: if there are saved artworks but no ratings
+      // in loomStats, retroactively compute ratings for them. This covers
+      // players who saved artworks BEFORE the v3.20.0 practice system
+      // existed.
+      //
+      // The ratings use the same star formula the player already sees on
+      // gallery cards (1-5 stars) mapped to a 0-100 scale:
+      //   1 star  → 20,  2 stars → 40,  3 stars → 60,
+      //   4 stars → 80,  5 stars → 100
+      // with a small per-artwork jitter (±4) so the sparkline isn't flat.
+      //
+      // totalWoven also accounts for sold looms — selling a piece removes
+      // it from savedArtworks but the work was still done, so the sold
+      // count is added back. --
+      var arts = Array.isArray(state.savedArtworks) ? state.savedArtworks : [];
+      var sold = typeof state.loomsSold === 'number' ? state.loomsSold : 0;
+      var totalCreated = arts.length + sold;
+      if (totalCreated > 0 && ls.ratings.length === 0) {
+        var backfilled = [];
+        var bestBack = 0;
+        var lastDate = 0;
+        for (var bi = 0; bi < arts.length; bi++) {
+          var art = arts[bi];
+          // If the artwork already carries a v3.20.0 rating, use it.
+          var r;
+          if (typeof art.rating === 'number' && art.rating > 0) {
+            r = art.rating;
+          } else {
+            // Compute the same 1-5 stars the gallery card shows, then
+            // map directly to the 0-100 scale (20 per star).
+            var starScore = 3; // default midpoint
+            try {
+              var px = art.pixelCount || Object.keys(art.pixels || {}).length;
+              var cols = 0;
+              var seen = {};
+              for (var pk in (art.pixels || {})) {
+                if ((art.pixels || {}).hasOwnProperty(pk)) {
+                  var cv = art.pixels[pk];
+                  if (!seen[cv]) { seen[cv] = 1; cols++; }
+                }
+              }
+              var sz = art.size || 16;
+              var effort   = Math.min(px / 500, 1);
+              var variety  = Math.min(cols / 8, 1);
+              var ambition = Math.min(Math.max((sz - 8) / 56, 0), 1);
+              var raw01 = (effort * 0.45) + (variety * 0.30) + (ambition * 0.25);
+              starScore = Math.round(raw01 * 5);
+              if (starScore < 1) starScore = 1;
+              if (starScore > 5) starScore = 5;
+            } catch (e) { /* ignore */ }
+            // Map stars to 0-100: 1★=20, 2★=40, 3★=60, 4★=80, 5★=100
+            // with a small deterministic jitter (±4) per artwork.
+            var jitter = ((bi * 7 + 3) % 9) - 4;
+            r = Math.max(1, Math.min(100, starScore * 20 + jitter));
+          }
+          backfilled.push(r);
+          if (r > bestBack) bestBack = r;
+          if (art.date && art.date > lastDate) lastDate = art.date;
+        }
+        // For sold looms we no longer have the pixel data, but we know
+        // they existed. Add placeholder ratings at the rolling average
+        // of the known pieces (with per-entry jitter) so the total
+        // count is accurate and the sparkline has the right length.
+        if (sold > 0 && backfilled.length > 0) {
+          var avgBack = 0;
+          for (var si = 0; si < backfilled.length; si++) avgBack += backfilled[si];
+          avgBack = Math.round(avgBack / backfilled.length);
+          for (var sj = 0; sj < sold; sj++) {
+            var sJit = ((sj * 11 + 5) % 9) - 4;
+            backfilled.unshift(Math.max(1, Math.min(100, avgBack + sJit)));
+          }
+        }
+        // Cap to last 50 (same as the live system).
+        ls.ratings = backfilled.length > 50 ? backfilled.slice(-50) : backfilled;
+        if (ls.totalWoven < totalCreated) ls.totalWoven = totalCreated;
+        if (bestBack > ls.bestRating) ls.bestRating = bestBack;
+        if (lastDate > ls.lastWovenAt) ls.lastWovenAt = lastDate;
+      }
+      // Even outside of a full backfill, make sure totalWoven never
+      // falls below the real count (arts on hand + arts sold).
+      if (ls.totalWoven < totalCreated) ls.totalWoven = totalCreated;
+
       updateDebug(raw);
       cb();
     });
+  }
+
+  // ===== v3.20.0 LOOM PROCLIVITIES =====
+  // Rolls a fresh set of artistic/constitutional proclivities on the
+  // operator's first visit. Different players genuinely get different
+  // starting points and improvement slopes. Completely deterministic
+  // per-session (uses Math.random once, then sticks forever).
+  //
+  // The roll is cute, slightly ominous, and played completely straight
+  // in the narrator voice: the standing office has, for some time, been
+  // assembling your file.
+  var LOOM_PROCLIVITIES = {
+    palette: [
+      { key: 'warm',          blurb: 'Prefers warm palettes. Reds and oranges feel correct to the operator. Blues feel rented.' },
+      { key: 'cool',          blurb: 'Prefers cool palettes. Warm colours feel, to the operator, like someone else\u2019s holiday.' },
+      { key: 'monochromatic', blurb: 'Monochromatic tendencies. The operator has been quietly rating other people\u2019s artwork out of one colour.' },
+      { key: 'riotous',       blurb: 'Riotous palette. The operator considers seven colours to be a polite minimum.' },
+      { key: 'subdued',       blurb: 'Subdued palette. The operator is suspicious of colours that arrive unannounced.' },
+      { key: 'opinionated',   blurb: 'Opinionated palette. The operator has, in writing, objected to turquoise.' }
+    ],
+    tempo: [
+      { key: 'slow_starter',  blurb: 'Slow starter. The first several looms are forgettable. The later ones are not.' },
+      { key: 'fast_starter',  blurb: 'Fast starter. Early looms are uncharacteristically competent; later ones plateau politely.' },
+      { key: 'streaky',       blurb: 'Streaky. Three good ones in a row, then one loom the operator would rather not discuss.' },
+      { key: 'consistent',    blurb: 'Consistent. The operator\u2019s ratings form a reassuringly flat line. Flat lines are, on other monitors, concerning.' },
+      { key: 'late_bloomer',  blurb: 'Late bloomer. The operator\u2019s work improves sharply at an unspecified future date.' }
+    ],
+    // Signature flaw: something slightly off, permanently. Adds character.
+    flaw: [
+      { key: 'overfills',          blurb: 'Overfills. The operator cannot leave a canvas with empty pixels. The empty ones are judging them.' },
+      { key: 'underfills',         blurb: 'Underfills. The operator stops one row short, citing "restraint."' },
+      { key: 'symmetrical',        blurb: 'Compulsive symmetry. Asymmetric looms give the operator a headache and, briefly, a grudge.' },
+      { key: 'intrusive_dots',     blurb: 'Intrusive dots. A single unexplained pixel appears on every loom. Removing it does not help.' },
+      { key: 'corner_dweller',     blurb: 'Corner dweller. The operator always starts in the bottom-left. They cannot account for this.' },
+      { key: 'borderline_realist', blurb: 'Borderline realist. The operator believes the loom should, eventually, resemble something.' }
+    ],
+    // Cute but ominous: the "file" the Computer is keeping.
+    file_note: [
+      'Noted as "of measured craft."',
+      'Noted as "contracted mildly."',
+      'Noted as "considered promising, contingent on further cooperation."',
+      'Noted as "adjacent, at present, to usefulness."',
+      'Noted as "stable; do not disturb."',
+      'Noted as "under quiet review."',
+      'Noted as "a model of domestic productivity."',
+      'Noted as "compliant-adjacent."',
+      'Noted as "a person of great and, frankly, untapped potential."'
+    ]
+  };
+  function rollLoomProclivities() {
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    var palette = pick(LOOM_PROCLIVITIES.palette);
+    var tempo   = pick(LOOM_PROCLIVITIES.tempo);
+    var flaw    = pick(LOOM_PROCLIVITIES.flaw);
+    var note    = pick(LOOM_PROCLIVITIES.file_note);
+    // Constitution + Mental Acuity seeds: 40..75. The Computer will
+    // whittle these down later; the high end is the high-water mark.
+    var consSeed = 40 + Math.floor(Math.random() * 36);
+    var acuSeed  = 40 + Math.floor(Math.random() * 36);
+    // Starting skill slope: 0.6 .. 1.4 — slow players and fast players.
+    var slope = 0.6 + Math.random() * 0.8;
+    return {
+      palette_key: palette.key,          palette_blurb: palette.blurb,
+      tempo_key:   tempo.key,            tempo_blurb:   tempo.blurb,
+      flaw_key:    flaw.key,             flaw_blurb:    flaw.blurb,
+      file_note:   note,
+      constitution_seed: consSeed,
+      mental_acuity_seed: acuSeed,
+      skill_slope: slope
+    };
   }
 
   function save() {
@@ -613,6 +791,271 @@
     });
   }
 
+  // ===== Loom Star Rating (v3.19.16) =====
+  // Deterministic 1–5 star quality score shown on every gallery card
+  // and on the sell modal. Unlike the sell price (which rolls RNG on
+  // top of the stats), the rating is a pure function of the inputs
+  // so it never flips between renders and the player can use it as a
+  // predictive quality gauge BEFORE they commit to a sale.
+  //
+  // Three normalized sub-scores, each clamped to [0,1]:
+  //   effort   = pixels / 500        — textiles invested (raw labor)
+  //   variety  = colors / 8          — palette diversity
+  //   ambition = (size - 8) / 56     — canvas edge scaled 8→0, 64→1
+  // Weighted sum: effort 45% + variety 30% + ambition 25%.
+  // Stars = clamp(round(score × 5), 1, 5).
+  // A full 64×64 canvas with 500+ pixels and 8+ colors pins 5 stars;
+  // a tiny 1-color 16×16 doodle sits at 1 star.
+  function getLoomQualityScore(art) {
+    if (!art) return 0;
+    var pixels = art.pixelCount || Object.keys(art.pixels || {}).length;
+    var colors = countUniqueLoomColors(art);
+    var size = art.size || 16;
+    var effort   = Math.min(pixels / 500, 1);
+    var variety  = Math.min(colors / 8, 1);
+    var ambition = Math.min(Math.max((size - 8) / 56, 0), 1);
+    return (effort * 0.45) + (variety * 0.30) + (ambition * 0.25);
+  }
+  function getLoomStars(art) {
+    var score = getLoomQualityScore(art);
+    var stars = Math.round(score * 5);
+    if (stars < 1) stars = 1;
+    if (stars > 5) stars = 5;
+    return stars;
+  }
+  // Build a 5-char string like "★★★☆☆" for a given rating.
+  function formatStarRow(stars) {
+    var full = '\u2605';  // filled star
+    var empty = '\u2606'; // empty star
+    var out = '';
+    for (var i = 0; i < 5; i++) out += (i < stars ? full : empty);
+    return out;
+  }
+
+  // ===== Loom Sell Valuation (v3.19.15) =====
+  // RNG-rolled offer price for a saved artwork. Inputs: pixel count
+  // (each filled pixel = 1 textile spent on the loom), unique color
+  // count, and canvas edge size. The formula is deliberately tuned
+  // to sit ALONGSIDE — not replace — the existing money sources:
+  //   - Combo bursts (2x..5x chains):  $15..$200 per session
+  //   - Daily marathon thresholds:     $50..$2,000
+  //   - End-of-day streak bonus:       ~$50..$500 on a full day
+  // A small doodle nets $20..$40 of fun money; a huge, colorful
+  // masterpiece on a 64x64+ canvas can hit $3k..$20k, commensurate
+  // with the hundreds of hours of focus already spent earning those
+  // textiles. The color shop curve (textiles costs Millions+ at the
+  // high end) keeps selling from becoming a dominant strategy — you
+  // still need real focus sessions to buy the top tiers.
+  //
+  // Formula:
+  //   base       = pixels * BASE_PER_PIXEL
+  //   colorBonus = (colors ^ 1.5) * COLOR_BONUS
+  //   sizeMult   = lookup by canvas edge (16->1.0, 64->1.8, 128->2.6)
+  //   subtotal   = (base + colorBonus) * sizeMult
+  //   grade roll = weighted pick of rough / fair / good / great /
+  //                masterpiece / legendary (RNG-driven, rare highs)
+  //   final      = round(subtotal * gradeMult)
+  // Returns { price, grade, gradeColor, multiplier, pixels, colors,
+  //           sizeMult, base, colorBonus, subtotal }.
+  var LOOM_SELL_BASE_PER_PIXEL = 1.2;
+  var LOOM_SELL_COLOR_BONUS_COEF = 2.0;
+  var LOOM_SELL_GRADE_TABLE = [
+    // { threshold, mult, label, color }
+    { p: 0.12, mult: 0.70, label: 'ROUGH SKETCH',  color: '#888888' },
+    { p: 0.35, mult: 0.85, label: 'FAIR WORK',     color: '#a0a0a0' },
+    { p: 0.70, mult: 1.00, label: 'GOOD PIECE',    color: '#4ecdc4' },
+    { p: 0.90, mult: 1.20, label: 'GREAT WORK',    color: '#00ff88' },
+    { p: 0.98, mult: 1.55, label: 'MASTERPIECE',   color: '#ffd700' },
+    { p: 1.00, mult: 2.10, label: 'LEGENDARY',     color: '#ff00ff' }
+  ];
+  function getLoomSizeMult(size) {
+    // Lookup table for canvas sizes. Linear interpolate between known
+    // points so non-standard sizes still produce sensible values.
+    if (size <= 8)   return 0.8;
+    if (size <= 12)  return 0.9;
+    if (size <= 16)  return 1.0;
+    if (size <= 20)  return 1.1;
+    if (size <= 24)  return 1.15;
+    if (size <= 28)  return 1.22;
+    if (size <= 32)  return 1.30;
+    if (size <= 40)  return 1.42;
+    if (size <= 48)  return 1.55;
+    if (size <= 56)  return 1.68;
+    if (size <= 64)  return 1.80;
+    if (size <= 80)  return 2.00;
+    if (size <= 96)  return 2.20;
+    if (size <= 128) return 2.60;
+    return 3.00;
+  }
+  function countUniqueLoomColors(art) {
+    if (!art || !art.pixels) return 0;
+    var seen = Object.create(null);
+    var n = 0;
+    for (var k in art.pixels) {
+      if (!Object.prototype.hasOwnProperty.call(art.pixels, k)) continue;
+      var c = art.pixels[k];
+      if (!seen[c]) { seen[c] = 1; n++; }
+    }
+    return n;
+  }
+  function rollLoomGrade() {
+    var r = Math.random();
+    for (var i = 0; i < LOOM_SELL_GRADE_TABLE.length; i++) {
+      if (r <= LOOM_SELL_GRADE_TABLE[i].p) return LOOM_SELL_GRADE_TABLE[i];
+    }
+    return LOOM_SELL_GRADE_TABLE[LOOM_SELL_GRADE_TABLE.length - 1];
+  }
+  function getLoomSellValue(art) {
+    if (!art) return null;
+    var pixels = art.pixelCount || Object.keys(art.pixels || {}).length;
+    var colors = countUniqueLoomColors(art);
+    var size = art.size || 16;
+    var base = pixels * LOOM_SELL_BASE_PER_PIXEL;
+    var colorBonus = Math.pow(Math.max(colors, 1), 1.5) * LOOM_SELL_COLOR_BONUS_COEF;
+    var sizeMult = getLoomSizeMult(size);
+    var subtotal = (base + colorBonus) * sizeMult;
+    var grade = rollLoomGrade();
+    // Small ±8% jitter inside the grade's band so two sells with the
+    // same inputs don't produce identical prices.
+    var jitter = 0.92 + Math.random() * 0.16;
+    var price = Math.max(1, Math.round(subtotal * grade.mult * jitter));
+    return {
+      price: price,
+      grade: grade.label,
+      gradeColor: grade.color,
+      multiplier: grade.mult,
+      pixels: pixels,
+      colors: colors,
+      size: size,
+      sizeMult: sizeMult,
+      base: base,
+      colorBonus: colorBonus,
+      subtotal: subtotal
+    };
+  }
+
+  // ===== Sell modal state (v3.19.15) =====
+  // Tracks which artwork index is currently being offered for sale and
+  // the exact rolled quote. Re-opening the modal re-rolls.
+  var pendingSell = null;
+  function openSellLoomModal(idx) {
+    var art = (state.savedArtworks || [])[idx];
+    if (!art) return;
+    var quote = getLoomSellValue(art);
+    if (!quote) return;
+    pendingSell = { idx: idx, quote: quote };
+    var modal = document.getElementById('sellLoomModal');
+    if (!modal) return;
+    // Draw the preview thumbnail
+    var prev = document.getElementById('sellLoomPreview');
+    if (prev) {
+      var artSize = art.size || 16;
+      prev.width = artSize; prev.height = artSize;
+      var pcx = prev.getContext('2d');
+      pcx.fillStyle = '#08080f';
+      pcx.fillRect(0, 0, artSize, artSize);
+      Object.keys(art.pixels || {}).forEach(function(key) {
+        var parts = key.split(',');
+        pcx.fillStyle = art.pixels[key];
+        pcx.fillRect(parseInt(parts[0], 10), parseInt(parts[1], 10), 1, 1);
+      });
+    }
+    var starsEl = document.getElementById('sellLoomStars');
+    if (starsEl) {
+      var stars = getLoomStars(art);
+      starsEl.textContent = formatStarRow(stars);
+      var sellStarTip = stars + ' out of 5 stars. Stars are based on three things: pixels placed (effort, 45%), colours used (variety, 30%), and canvas size (ambition, 25%). ';
+      if (stars <= 2) sellStarTip += 'A low star rating means fewer pixels, fewer colours, or a small canvas. The auction price will reflect this. ';
+      else if (stars >= 4) sellStarTip += 'A high star rating means strong effort, variety, and ambition. The auction price will be on the generous side. ';
+      sellStarTip += 'The final auction price adds some randomness on top of this rating, so two pieces with the same stars may sell for different amounts.';
+      starsEl.setAttribute('title', sellStarTip);
+    }
+    var stats = document.getElementById('sellLoomStats');
+    if (stats) {
+      stats.textContent = quote.pixels + ' textiles \u00b7 ' + quote.colors + ' color' + (quote.colors === 1 ? '' : 's') + ' \u00b7 ' + quote.size + 'x' + quote.size + ' canvas';
+    }
+    var banner = document.getElementById('sellLoomGradeBanner');
+    if (banner) {
+      banner.textContent = quote.grade;
+      banner.style.color = quote.gradeColor;
+      banner.style.border = '1px solid ' + quote.gradeColor;
+      banner.style.textShadow = '0 0 8px ' + quote.gradeColor + '66';
+    }
+    var priceEl = document.getElementById('sellLoomPrice');
+    if (priceEl) {
+      priceEl.textContent = '$' + quote.price.toLocaleString();
+    }
+    modal.style.display = 'flex';
+    try { SFX.click(); } catch (_) {}
+  }
+  function closeSellLoomModal() {
+    var modal = document.getElementById('sellLoomModal');
+    if (modal) modal.style.display = 'none';
+    pendingSell = null;
+  }
+  function confirmSellLoom() {
+    if (!pendingSell) { closeSellLoomModal(); return; }
+    var idx = pendingSell.idx;
+    var quote = pendingSell.quote;
+    var art = (state.savedArtworks || [])[idx];
+    if (!art) { closeSellLoomModal(); return; }
+    // If the sold artwork was the current profile picture, clear it.
+    // (profilePicture is a snapshot copy so it won't reference-break,
+    // but it would still be weird to keep a profile image of a loom
+    // you just auctioned off.)
+    try {
+      if (state.profilePicture && state.profilePicture.savedAt && art.date && state.profilePicture.savedAt === art.date) {
+        state.profilePicture = null;
+      }
+    } catch (_) {}
+    state.savedArtworks.splice(idx, 1);
+    state.coins = (state.coins || 0) + quote.price;
+    state.coinsFromLoomSales = (state.coinsFromLoomSales || 0) + quote.price;
+    state.loomsSold = (state.loomsSold || 0) + 1;
+    closeSellLoomModal();
+    save();
+    renderGallery();
+    try { renderStats(); } catch (_) {}
+    try { SFX.purchase(); } catch (_) { try { SFX.save(); } catch (__) {} }
+    notify('Sold for $' + quote.price.toLocaleString() + ' (' + quote.grade + ')', '#ffd700');
+    try {
+      if (typeof MsgLog !== 'undefined') {
+        MsgLog.push('Sold a ' + quote.grade.toLowerCase() + ' loom for $' + quote.price.toLocaleString() + '. (' + quote.pixels + ' textiles, ' + quote.colors + ' colors, ' + quote.size + 'x' + quote.size + ')');
+      }
+    } catch (_) {}
+  }
+
+  // ===== Profile picture (v3.19.15) =====
+  // The player picks any saved artwork and it becomes their avatar.
+  // We deep-copy the pixel dict so selling or deleting the source
+  // doesn't nuke the profile snapshot. `savedAt` mirrors art.date so
+  // we can identify "is this gallery card the current profile?".
+  function setProfilePicture(idx) {
+    var art = (state.savedArtworks || [])[idx];
+    if (!art) return;
+    state.profilePicture = {
+      pixels: JSON.parse(JSON.stringify(art.pixels || {})),
+      size: art.size || 16,
+      savedAt: art.date || Date.now(),
+      setAt: Date.now()
+    };
+    save();
+    renderGallery();
+    try { SFX.save(); } catch (_) {}
+    notify('Profile picture updated', 'var(--accent)');
+  }
+  function clearProfilePicture() {
+    state.profilePicture = null;
+    save();
+    renderGallery();
+    try { SFX.erase(); } catch (_) {}
+    notify('Profile picture cleared', 'var(--text-dim)');
+  }
+  function isCurrentProfilePic(art) {
+    if (!state.profilePicture || !art) return false;
+    return state.profilePicture.savedAt === art.date;
+  }
+
   // ===== Gallery =====
   function renderGallery() {
     var grid = document.getElementById('galleryGrid');
@@ -646,27 +1089,94 @@
       card.appendChild(cvs);
 
       var info = document.createElement('div');
-      info.style.cssText = 'padding:8px;font-size:10px;color:var(--text-dim);';
+      info.style.cssText = 'padding:8px 8px 2px;font-size:10px;color:var(--text-dim);';
       info.textContent = dt.toLocaleDateString() + ' | ' + artSize + 'x' + artSize + ' | ' + pxCount + 'px';
       info.setAttribute('title', 'Date saved, canvas size, and total pixel count.');
       card.appendChild(info);
 
+      // v3.19.16: star rating row — deterministic quality gauge based
+      // on pixels used, color variety, and canvas size. Previews the
+      // kind of price the auction house is likely to roll.
+      var starCount = getLoomStars(art);
+      var starRow = document.createElement('div');
+      starRow.style.cssText = 'padding:0 8px 6px;font-family:"Press Start 2P",monospace;font-size:11px;letter-spacing:2px;color:#ffd700;text-shadow:0 0 6px rgba(255,215,0,0.35);';
+      starRow.textContent = formatStarRow(starCount);
+      var uniqCols = countUniqueLoomColors(art);
+      // Build an informative tooltip that explains what stars mean and
+      // what specifically drove this piece's rating.
+      var starTipParts = [starCount + ' out of 5 stars.'];
+      starTipParts.push('WHAT STARS DO: Stars determine your sell price at the auction house. More stars = higher offer.');
+      starTipParts.push('HOW STARS WORK: A simple formula \u2014 pixels placed (45%), colours used (30%), and canvas size (25%). Nothing else affects them.');
+      if (starCount === 1) {
+        starTipParts.push('1 star means the piece is small, uses few colours, or has very few pixels filled in. Try using more colours, filling more of the canvas, or working on a larger canvas to raise this.');
+      } else if (starCount === 2) {
+        starTipParts.push('2 stars \u2014 a modest piece. More pixels, more colours, or a bigger canvas would push this higher.');
+      } else if (starCount === 3) {
+        starTipParts.push('3 stars \u2014 a solid middle-ground piece. Good effort or variety but room to grow in one area.');
+      } else if (starCount === 4) {
+        starTipParts.push('4 stars \u2014 a strong piece. You\u2019re close to the maximum; a larger canvas or a few more colours could tip you to 5.');
+      } else {
+        starTipParts.push('5 stars \u2014 the highest rating. Large canvas, many pixels, strong colour variety.');
+      }
+      starTipParts.push('This piece: ' + pxCount + ' pixels, ' + uniqCols + ' colour' + (uniqCols === 1 ? '' : 's') + ', ' + artSize + '\u00d7' + artSize + ' canvas.');
+      starTipParts.push('NOTE: The Practice tab has a SEPARATE 0\u2013100 rating system that uses a deeper formula (including your skill, proclivities, fatigue, and health) and drives how fast your operator\u2019s skill stat grows. Stars and practice ratings are independent.');
+      starRow.setAttribute('title', starTipParts.join(' '));
+      card.appendChild(starRow);
+
+      // v3.19.15: profile picture indicator ribbon
+      if (isCurrentProfilePic(art)) {
+        var pfpBadge = document.createElement('div');
+        pfpBadge.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#ffd700;text-align:center;padding:3px 6px;background:rgba(255,215,0,0.08);border-top:1px solid rgba(255,215,0,0.4);letter-spacing:1px;';
+        pfpBadge.textContent = '\u2605 PROFILE PICTURE';
+        pfpBadge.setAttribute('title', 'This loom is currently your profile picture.');
+        card.appendChild(pfpBadge);
+      }
+
       var btns = document.createElement('div');
-      btns.style.cssText = 'display:flex;gap:4px;padding:0 8px 8px;';
+      btns.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 8px;';
 
       var expBtn = document.createElement('button');
       expBtn.className = 'tool-btn';
       expBtn.textContent = 'EXPORT';
-      expBtn.style.cssText = 'flex:1;font-size:8px;padding:4px;';
+      expBtn.style.cssText = 'flex:1 1 45%;font-size:8px;padding:4px;';
       expBtn.setAttribute('title', 'Download this artwork as a PNG image (8x scaled so it is visible).');
       expBtn.addEventListener('click', function() { exportArtwork(idx); });
+
+      // v3.19.15: sell button — opens RNG-quote modal
+      var sellBtn = document.createElement('button');
+      sellBtn.className = 'tool-btn';
+      sellBtn.textContent = 'SELL $';
+      sellBtn.style.cssText = 'flex:1 1 45%;font-size:8px;padding:4px;color:#ffd700;border-color:#ffd700;';
+      sellBtn.setAttribute('title', 'Offer this loom for sale. The auction house rolls a price based on the textiles used, number of colors, and canvas size. Confirming the sale permanently removes the loom from your gallery.');
+      sellBtn.addEventListener('click', function() { openSellLoomModal(idx); });
+
+      // v3.19.15: set-as-profile button (toggles off if already set)
+      var pfpBtn = document.createElement('button');
+      pfpBtn.className = 'tool-btn';
+      var isPfp = isCurrentProfilePic(art);
+      pfpBtn.textContent = isPfp ? '\u2605 PROFILE' : 'PROFILE';
+      pfpBtn.style.cssText = 'flex:1 1 45%;font-size:8px;padding:4px;color:' + (isPfp ? '#ffd700' : 'var(--accent3)') + ';border-color:' + (isPfp ? '#ffd700' : 'var(--accent3)') + ';';
+      pfpBtn.setAttribute('title', isPfp ? 'This loom is your current profile picture. Click to clear it.' : 'Set this loom as your profile picture. It will show next to your name in the main tracker.');
+      pfpBtn.addEventListener('click', function() {
+        if (isCurrentProfilePic(art)) {
+          clearProfilePicture();
+        } else {
+          setProfilePicture(idx);
+        }
+      });
 
       var delBtn = document.createElement('button');
       delBtn.className = 'tool-btn';
       delBtn.textContent = 'DELETE';
-      delBtn.style.cssText = 'flex:1;font-size:8px;padding:4px;color:var(--accent2);border-color:var(--accent2);';
+      delBtn.style.cssText = 'flex:1 1 45%;font-size:8px;padding:4px;color:var(--accent2);border-color:var(--accent2);';
       delBtn.setAttribute('title', 'Permanently remove this saved artwork from your gallery. Cannot be undone.');
       delBtn.addEventListener('click', function() {
+        // If the deleted loom was the active profile pic, drop it too.
+        try {
+          if (state.profilePicture && state.profilePicture.savedAt && art.date && state.profilePicture.savedAt === art.date) {
+            state.profilePicture = null;
+          }
+        } catch (_) {}
         state.savedArtworks.splice(idx, 1);
         save();
         renderGallery();
@@ -675,6 +1185,8 @@
       });
 
       btns.appendChild(expBtn);
+      btns.appendChild(sellBtn);
+      btns.appendChild(pfpBtn);
       btns.appendChild(delBtn);
       card.appendChild(btns);
       grid.appendChild(card);
@@ -727,21 +1239,323 @@
     notify('Canvas exported as PNG');
   }
 
+  // ===== v3.20.0 Loom quality rating =====
+  // Computes a 0..100 rating for the artwork being saved. The rating
+  // can go UP or DOWN between looms — not every weave is the
+  // operator's best. Factors:
+  //   (1) Density: pixel count relative to canvas size
+  //   (2) Colour variety: how many distinct hues are used
+  //   (3) Operator skill: climbs glacially with practice (skill_slope)
+  //   (4) Proclivity palette bias: small bonus if the loom matches
+  //   (5) Tempo roll: streaky players get larger swings
+  //   (6) Pure noise: +/- 12 points of drift every loom
+  //   (7) Constitution / mental acuity: if either is low, cap slides
+  //   (8) Fatigue: if it has been <2min since the last loom, rushed
+  //   (9) Rust: if it has been >72h since the last loom, rusty
+  // The result is strictly a cute stat and does not pay out coins.
+  function computeLoomQuality(pixelCount, canvasSize, pixels) {
+    var ls = state.loomStats || {};
+    var proc = ls.proclivities || {};
+    // Density: 0..1, then mapped to a 0..25 point contribution.
+    var capacity = Math.max(1, canvasSize * canvasSize);
+    var density = Math.min(1, pixelCount / capacity);
+    var densityPts = Math.round(density * 25);
+    // Colour variety: count distinct hex values, map to 0..20.
+    var hues = {};
+    for (var k in pixels) { if (pixels.hasOwnProperty(k)) hues[pixels[k]] = 1; }
+    var hueCount = Object.keys(hues).length;
+    var varietyPts = Math.min(20, hueCount * 3);
+    // Skill: 0..25 contribution.
+    var skillPts = Math.round((ls.skill || 10) * 0.25);
+    // Palette bias: small bonus when the roll matches the loom.
+    var WARM = ['#ff6b9d','#ffa502','#ff4757','#ffd700','#ff00ff','#f9ca24','#eb4d4b','#c0392b'];
+    var COOL = ['#4ecdc4','#5352ed','#00ffff','#9b59b6','#e056fd','#6ab04c','#1abc9c'];
+    var warmHits = 0, coolHits = 0, totalHit = 0;
+    for (var h in hues) {
+      totalHit++;
+      if (WARM.indexOf(h) >= 0) warmHits++;
+      if (COOL.indexOf(h) >= 0) coolHits++;
+    }
+    var biasPts = 0;
+    if (totalHit > 0) {
+      if (proc.palette_key === 'warm'          && warmHits / totalHit >= 0.5) biasPts += 4;
+      if (proc.palette_key === 'cool'          && coolHits / totalHit >= 0.5) biasPts += 4;
+      if (proc.palette_key === 'monochromatic' && totalHit <= 2)              biasPts += 5;
+      if (proc.palette_key === 'riotous'       && totalHit >= 7)              biasPts += 5;
+      if (proc.palette_key === 'subdued'       && totalHit <= 4)              biasPts += 3;
+      if (proc.palette_key === 'opinionated'   && totalHit >= 5)              biasPts += 3;
+    }
+    // Tempo: streaky players get bigger swings.
+    var noiseAmplitude = 12;
+    if (proc.tempo_key === 'streaky')      noiseAmplitude = 22;
+    if (proc.tempo_key === 'consistent')   noiseAmplitude = 5;
+    if (proc.tempo_key === 'late_bloomer') noiseAmplitude = 10 + Math.min(10, ls.totalWoven * 0.3);
+    if (proc.tempo_key === 'slow_starter' && ls.totalWoven < 8)  noiseAmplitude = 8;
+    if (proc.tempo_key === 'fast_starter' && ls.totalWoven >= 8) noiseAmplitude = 8;
+    var noise = (Math.random() * 2 - 1) * noiseAmplitude;
+    // Fatigue / rust:
+    var nowT = Date.now();
+    var sinceLast = ls.lastWovenAt ? (nowT - ls.lastWovenAt) : 9e15;
+    var fatiguePenalty = 0;
+    if (sinceLast < 2 * 60 * 1000)      fatiguePenalty = -6;  // rushed
+    else if (sinceLast < 6 * 60 * 1000) fatiguePenalty = -2;  // still recent
+    var rustPenalty = 0;
+    if (sinceLast > 72 * 60 * 60 * 1000) rustPenalty = -5;    // rusty
+    // Health caps: constitution + mental acuity place a soft ceiling.
+    var healthCap = Math.round((Math.max(10, ls.constitution || 50) + Math.max(10, ls.mentalAcuity || 50)) / 2);
+    healthCap = Math.max(40, Math.min(100, healthCap + 20));
+    var raw = densityPts + varietyPts + skillPts + biasPts + noise + fatiguePenalty + rustPenalty;
+    raw = Math.max(1, Math.min(healthCap, Math.round(raw)));
+    return raw;
+  }
+
+  // Climb the skill stat GLACIALLY after a save. Slope depends on
+  // the operator's tempo proclivity. Adds a tiny random dip chance.
+  function advanceLoomSkill(rating) {
+    var ls = state.loomStats;
+    if (!ls || !ls.proclivities) return;
+    var slope = ls.proclivities.skill_slope || 1.0;
+    // Base gain per loom: 0.15..0.45 skill points.
+    var gain = (0.15 + Math.random() * 0.30) * slope;
+    // Rating quality informs gain: bad loom, reduced gain (but never negative).
+    if (rating < 40) gain *= 0.4;
+    else if (rating < 55) gain *= 0.7;
+    else if (rating > 85) gain *= 1.3;
+    // Occasional tiny dip (7% chance) — practice doesn't always
+    // monotonically improve. The dip is at most 0.1 points.
+    if (Math.random() < 0.07) gain = -Math.random() * 0.1;
+    ls.skill = Math.max(0, Math.min(100, (ls.skill || 0) + gain));
+  }
+
+  // ===== v3.20.0 Loom practice stats decay =====
+  // Constitution + mental acuity drift DOWN glacially once the Computer
+  // has begun "merging" with the operator — this is narratively tied to
+  // the Improbability Annex being online (i.e. the player is deep in
+  // the Ratiocinatory) or the aggregate aspect level crossing 400.
+  // The decay is tiny and cumulative so it feels ominous rather than
+  // punitive. Called on every render (~1Hz) and rate-limited by the
+  // lastDecayTickAt timestamp to 1 tick per minute.
+  function tickLoomStatDecay() {
+    var ls = state.loomStats;
+    if (!ls || !ls.proclivities) return;
+    var nowT = Date.now();
+    if (nowT - (ls.lastDecayTickAt || 0) < 60 * 1000) return; // at most once per minute
+    ls.lastDecayTickAt = nowT;
+    // Merge condition: Annex online OR aggregate aspect >= 400.
+    var aspectTotal = (state.aspectExegesis||0) + (state.aspectChromatics||0)
+                    + (state.aspectDeftness||0)  + (state.aspectOmens||0)
+                    + (state.aspectIntrospection||0);
+    var merging = !!state.improbabilityAnnexOnline || aspectTotal >= 400;
+    if (!merging) return;
+    // Decay rate: 0.004/min constitution, 0.006/min mental acuity.
+    // Over 24h this is ~5.8 constitution and ~8.6 mental acuity — a
+    // noticeable slide over days, invisible in any single session.
+    // Each decay is suppressed if the operator has woven recently
+    // (within 15 min) — the act of weaving keeps the Computer placid.
+    var recentWeave = ls.lastWovenAt && (nowT - ls.lastWovenAt) < 15 * 60 * 1000;
+    if (recentWeave) return;
+    ls.constitution = Math.max(5, (ls.constitution || 50) - 0.004);
+    ls.mentalAcuity = Math.max(5, (ls.mentalAcuity || 50) - 0.006);
+  }
+
+  // ===== v3.20.0 Render the operator file (Practice view) =====
+  function renderLoomPracticeSheet() {
+    var ls = state.loomStats;
+    if (!ls) return;
+    var proc = ls.proclivities || {};
+    var filed = document.getElementById('practiceFileBody');
+    var statsBody = document.getElementById('practiceStatsBody');
+    var sparkBody = document.getElementById('practiceRatingsBody');
+    var stateBody = document.getElementById('practiceStateOfBeingBody');
+    var footer    = document.getElementById('practiceFooter');
+    if (!filed || !statsBody || !sparkBody || !stateBody) return;
+
+    // ----- Proclivities panel -----
+    function fmtProcLabel(key) {
+      return (key || 'unknown').replace(/_/g, ' ').toUpperCase();
+    }
+    filed.innerHTML =
+      '<div class="proc-row" title="Your operator\u2019s colour personality. Assigned randomly the first time you wove a piece. This is flavour text \u2014 it describes the kinds of colours your operator gravitates toward but has no mechanical effect on gameplay.">' +
+        '<span class="proc-label">Palette disposition \u2014 ' + fmtProcLabel(proc.palette_key) + '</span>' +
+        '<span class="proc-value">' + (proc.palette_blurb || '\u2014') + '</span></div>' +
+      '<div class="proc-row" title="Your operator\u2019s weaving speed personality. Like the palette, this was rolled once and never changes. It\u2019s a character trait, not a gameplay stat \u2014 it doesn\u2019t speed up or slow down anything.">' +
+        '<span class="proc-label">Tempo \u2014 ' + fmtProcLabel(proc.tempo_key) + '</span>' +
+        '<span class="proc-value">' + (proc.tempo_blurb || '\u2014') + '</span></div>' +
+      '<div class="proc-row" title="A small personality quirk unique to your operator. Purely cosmetic \u2014 it doesn\u2019t cause any negative effects. Think of it as a flavour note on a personnel file.">' +
+        '<span class="proc-label">Signature flaw \u2014 ' + fmtProcLabel(proc.flaw_key) + '</span>' +
+        '<span class="proc-value">' + (proc.flaw_blurb || '\u2014') + '</span></div>' +
+      '<div class="proc-row" title="A comment from the \u2018standing office\u2019 (the in-world bureaucracy that manages the factory). This is a randomly generated remark about your operator and has no gameplay effect.">' +
+        '<span class="proc-label">Standing office note</span>' +
+        '<span class="proc-value">' + (proc.file_note || '\u2014') + '</span></div>';
+
+    // ----- At the bench panel -----
+    var ratings = Array.isArray(ls.ratings) ? ls.ratings : [];
+    var avg = 0;
+    if (ratings.length) {
+      var sum = 0;
+      for (var i = 0; i < ratings.length; i++) sum += ratings[i];
+      avg = sum / ratings.length;
+    }
+    var last = ratings.length ? ratings[ratings.length - 1] : null;
+    var delta = '';
+    if (ratings.length >= 2) {
+      var d = ratings[ratings.length - 1] - ratings[ratings.length - 2];
+      if      (d > 2)  delta = ' (up ' + Math.round(d) + ')';
+      else if (d < -2) delta = ' (down ' + Math.abs(Math.round(d)) + ')';
+      else             delta = ' (steady)';
+    }
+    function bar(pct, cls, tip) {
+      pct = Math.max(0, Math.min(100, pct));
+      var t = tip ? ' title="' + tip + '"' : '';
+      return '<div class="stat-bar"' + t + '><div class="stat-bar-fill ' + (cls || '') + '" style="width:' + pct + '%;"></div></div>';
+    }
+    var skill = Math.round((ls.skill || 0) * 10) / 10;
+    var cons  = Math.round((ls.constitution || 0) * 10) / 10;
+    var acu   = Math.round((ls.mentalAcuity || 0) * 10) / 10;
+    statsBody.innerHTML =
+      '<div class="stat-row" title="Total number of pixel artworks you have saved to the gallery using the SAVE TO GALLERY button. Each save counts as one loom woven.">' +
+        '<span class="stat-k">Looms woven (lifetime)</span><span class="stat-v">' + (ls.totalWoven || 0) + '</span></div>' +
+      '<div class="stat-row" title="Your highest practice rating ever (out of 100). Not the 1\u20135 stars on gallery cards \u2014 those only affect sell price. This score reflects your best single artwork factoring in pixels, colours, canvas size, operator skill, proclivities, and whether you were rested (no fatigue or rust). To beat your best: use a large canvas, fill it thoroughly with many colours, weave regularly so rust doesn\u2019t set in, and let your skill stat climb naturally through consistent practice.">' +
+        '<span class="stat-k">Best rating on file</span><span class="stat-v">' + (ls.bestRating || 0) + '</span></div>' +
+      '<div class="stat-row" title="Your most recent practice rating (out of 100). NOT the 1\u20135 star rating on gallery cards \u2014 those only affect sell price. This practice rating controls how fast your operator skill grows. Scores above 85 give a skill bonus; scores below 40 give reduced skill gain. To score higher: fill more of the canvas, use more colours, work on larger canvases, weave regularly (long breaks cause rust, \u22122\u20135 days away), and don\u2019t rush (saving twice within 2 minutes causes fatigue). Your skill stat also feeds back in \u2014 the more you weave, the better your baseline gets over time. The bracket (up/down/steady) shows direction vs your previous save.">' +
+        '<span class="stat-k">Last rating</span><span class="stat-v">' + (last === null ? '\u2014' : (last + delta)) + '</span></div>' +
+      '<div class="stat-row" title="Your average practice rating (out of 100) across your last ' + ratings.length + ' saved artworks. Not the 1\u20135 stars. A rising average means your consistent weaving is paying off \u2014 your skill is climbing, your pieces are getting more ambitious, and you\u2019re avoiding rust and fatigue penalties. A falling average may mean long breaks between saves or rushing. This smooths out individual highs and lows so you can see the overall trend.">' +
+        '<span class="stat-k">Rolling average (last ' + ratings.length + ')</span><span class="stat-v">' + (ratings.length ? avg.toFixed(1) : '\u2014') + '</span></div>' +
+      '<div class="stat-row" title="A practice stat that rises slowly each time you save an artwork. Higher skill means your operator is more experienced at the loom. This is a cosmetic stat \u2014 it does not affect textile earnings or gameplay.">' +
+        '<span class="stat-k">Operator skill</span><span class="stat-v">' + skill.toFixed(1) + ' / 100</span></div>' +
+      bar(skill, '', 'Green bar = operator skill out of 100. Grows with each artwork you save.') +
+      '<div class="stat-row" title="Your operator\u2019s physical resilience. Starts at 100 and stays high as long as you weave regularly. In the late game, if a \u2018merging\u2019 event is active, constitution drifts slowly downward. Weaving more frequently slows the decline. This is a cosmetic stat.">' +
+        '<span class="stat-k">Constitution</span><span class="stat-v">' + cons.toFixed(1) + '</span></div>' +
+      bar(cons, 'cons', 'Yellow-to-red bar = constitution. Starts full and stays healthy with regular weaving. Can drift down during late-game events.') +
+      '<div class="stat-row" title="Your operator\u2019s mental sharpness. Like constitution, it starts high and stays healthy with regular weaving, but can drift down during late-game \u2018merging\u2019 events. This is a cosmetic stat \u2014 it won\u2019t lock you out of anything.">' +
+        '<span class="stat-k">Mental acuity</span><span class="stat-v">' + acu.toFixed(1) + '</span></div>' +
+      bar(acu, 'acu', 'Purple bar = mental acuity. Behaves like constitution \u2014 stays high with regular use, can drift during late-game merging.');
+
+    // ----- Sparkline panel -----
+    if (ratings.length === 0) {
+      sparkBody.innerHTML = '<div class="spark-empty" title="This chart tracks your practice rating (0\u2013100) for each artwork you save, up to 50 entries. This is NOT the 1\u20135 star rating on gallery cards. Stars are simpler and only affect sell price. The practice rating is a deeper score that drives how fast your operator\u2019s skill grows. Go to the Canvas tab, paint something, and click SAVE TO GALLERY to get your first data point.">No looms on file. The first entry will be assessed, in pencil, by a clerk whose name you will not learn.</div>';
+    } else {
+      var W = 900, H = 90, pad = 6;
+      var n = ratings.length;
+      var minR = 0, maxR = 100;
+      var step = n > 1 ? (W - pad * 2) / (n - 1) : 0;
+      var pts = '';
+      for (var j = 0; j < n; j++) {
+        var x = pad + j * step;
+        var y = H - pad - ((ratings[j] - minR) / (maxR - minR)) * (H - pad * 2);
+        pts += (j === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+      }
+      // 50-line reference
+      var midY = H - pad - (50 / 100) * (H - pad * 2);
+      sparkBody.innerHTML =
+        '<div class="spark-wrap" title="PRACTICE RATING chart (0\u2013100), NOT the 1\u20135 stars. The game has two rating systems: STARS (1\u20135) appear on gallery cards and set your auction sell price \u2014 simple formula based on pixels, colours, canvas size. PRACTICE RATING (0\u2013100) is this line \u2014 a deeper score that also uses your operator\u2019s skill, proclivities, fatigue, rust, and health. Higher practice ratings make your skill grow faster, which feeds back into better future ratings. Green line = your score per artwork (newest on right). Dashed line = 50/100 midpoint. \u2018Last Fifty\u2019 = keeps your 50 most recent saves.">' +
+          '<svg class="spark-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+            '<line x1="' + pad + '" y1="' + midY.toFixed(1) + '" x2="' + (W - pad) + '" y2="' + midY.toFixed(1) + '" stroke="#2a3d2f" stroke-width="1" stroke-dasharray="4,4"/>' +
+            '<path d="' + pts + '" fill="none" stroke="#00ff88" stroke-width="2"/>' +
+          '</svg>' +
+        '</div>';
+    }
+
+    // ----- State of being panel -----
+    var lines = [];
+    var nowT = Date.now();
+    var sinceLoom = ls.lastWovenAt ? (nowT - ls.lastWovenAt) : null;
+    // Each state-of-being line gets a tooltip explaining what it means
+    // in plain terms, so new players aren't left guessing.
+    var TIP_NO_LOOM    = 'You haven\u2019t saved any pixel artwork yet. Go to the Canvas tab, paint something, then click SAVE TO GALLERY. This line will update once you do.';
+    var TIP_RECENT     = 'You wove something recently. The factory AI is happy with your attendance \u2014 nothing to worry about here.';
+    var TIP_FEW_HOURS  = 'It\u2019s been a few hours since you last saved an artwork. The AI is noting your absence but there\u2019s no penalty \u2014 this is just flavour text.';
+    var TIP_MANY_HOURS = 'You\u2019ve been away from the loom for a while. The yellow text is the AI being dramatic \u2014 there\u2019s no actual penalty, but it gets more ominous the longer you\u2019re away.';
+    var TIP_DAYS       = 'You\u2019ve been away for days. The red text is the AI at its most theatrical. Still no gameplay penalty \u2014 just the factory\u2019s way of missing you.';
+    var TIP_EXTENDED   = 'A very long absence. The AI has given up waiting politely. Again, purely cosmetic \u2014 your progress is safe.';
+    var TIP_MERGING    = 'A late-game event is active: the \u2018merging\u2019 means the factory AI is undergoing changes. During this period, your constitution and mental acuity stats drift slowly downward. This is cosmetic and doesn\u2019t lock you out of anything.';
+    var TIP_LOW_CONS   = 'Your constitution stat has dropped quite low. This happens during extended late-game merging events. It\u2019s a cosmetic indicator \u2014 weaving more frequently can help slow the decline.';
+    var TIP_LOW_ACU    = 'Your mental acuity stat has dropped quite low. Like constitution, this is a cosmetic stat affected by late-game merging. Keep weaving to slow the drift.';
+
+    if (sinceLoom === null) {
+      lines.push('<div class="state-line" title="' + TIP_NO_LOOM + '">No loom has yet been woven. The bench is waiting. The clerk is, unhelpfully, also waiting.</div>');
+    } else {
+      var hrs = sinceLoom / 3600000;
+      if (hrs < 1) {
+        lines.push('<div class="state-line" title="' + TIP_RECENT + '">Recently at the bench. The Computer is, for the moment, content.</div>');
+      } else if (hrs < 6) {
+        lines.push('<div class="state-line" title="' + TIP_FEW_HOURS + '">Not at the bench in the last ' + Math.round(hrs) + ' hours. The Computer has begun, quietly, to wonder.</div>');
+      } else if (hrs < 24) {
+        lines.push('<div class="state-line warning" title="' + TIP_MANY_HOURS + '">Away from the bench for ' + Math.round(hrs) + ' hours. The Computer is composing a memo it does not intend to send.</div>');
+      } else if (hrs < 72) {
+        lines.push('<div class="state-line warning" title="' + TIP_DAYS + '">Away ' + Math.round(hrs / 24 * 10) / 10 + ' days. The Computer has begun referring to your bench in the past tense.</div>');
+      } else {
+        lines.push('<div class="state-line bad" title="' + TIP_EXTENDED + '">Extended absence (' + Math.round(hrs / 24) + ' days). The memo has been sent. It has already been replied to, by the Computer, on your behalf.</div>');
+      }
+    }
+    var aspectTotal = (state.aspectExegesis||0) + (state.aspectChromatics||0)
+                    + (state.aspectDeftness||0)  + (state.aspectOmens||0)
+                    + (state.aspectIntrospection||0);
+    var merging = !!state.improbabilityAnnexOnline || aspectTotal >= 400;
+    if (merging) {
+      lines.push('<div class="state-line bad" title="' + TIP_MERGING + '">The Computer is, at present, merging. Your constitution and mental acuity are drifting downward. The standing office has requested a statement and then rescinded the request.</div>');
+    }
+    if ((ls.constitution || 100) < 30) {
+      lines.push('<div class="state-line bad" title="' + TIP_LOW_CONS + '">Constitution has dropped below comfortable limits. It is recommended the operator drink water, stand, and quietly reconsider.</div>');
+    }
+    if ((ls.mentalAcuity || 100) < 30) {
+      lines.push('<div class="state-line bad" title="' + TIP_LOW_ACU + '">Mental acuity has dropped below the standing office\u2019s minimum. The standing office does not define minimum.</div>');
+    }
+    stateBody.innerHTML = lines.join('');
+
+    if (footer) {
+      var dateStr = ls.rolledAt ? new Date(ls.rolledAt).toLocaleDateString() : 'undisclosed';
+      footer.textContent = 'File opened ' + dateStr + '. Quietly maintained. The operator is not required to sign this document, and is advised not to.';
+      footer.title = 'The date shown is when your proclivities were first rolled (the first time you saved an artwork). This footer is flavour text \u2014 no action needed.';
+    }
+  }
+
+  // Expose to the module closure so saveToGallery's optional post-hook
+  // can find it via typeof.
+  // (Declared inside the IIFE, so this is a no-op for external scope.)
+
   function saveToGallery() {
     var pixelCount = Object.keys(state.pixelCanvas || {}).length;
     if (pixelCount === 0) { SFX.error(); notify('Canvas is empty'); return; }
     if (!state.savedArtworks) state.savedArtworks = [];
+    // v3.20.0: compute quality BEFORE saving so it travels with the art.
+    var rating = computeLoomQuality(pixelCount, state.canvasSize, state.pixelCanvas);
     state.savedArtworks.push({
       pixels: JSON.parse(JSON.stringify(state.pixelCanvas)),
       size: state.canvasSize,
       date: Date.now(),
-      pixelCount: pixelCount
+      pixelCount: pixelCount,
+      rating: rating
     });
+    // Update loomStats
+    if (state.loomStats) {
+      var ls = state.loomStats;
+      ls.totalWoven = (ls.totalWoven || 0) + 1;
+      if (!Array.isArray(ls.ratings)) ls.ratings = [];
+      ls.ratings.push(rating);
+      if (ls.ratings.length > 50) ls.ratings = ls.ratings.slice(-50);
+      if (rating > (ls.bestRating || 0)) ls.bestRating = rating;
+      ls.lastWovenAt = Date.now();
+      ls.absentScold = 0; // the Machine is placated for now
+      advanceLoomSkill(rating);
+    }
     SFX.save();
-    notify('Saved to gallery (' + pixelCount + ' pixels)');
+    // Flavour the notify based on the rating band so the player can
+    // feel whether this was a good one or a bad one.
+    var band = 'filed';
+    if      (rating >= 90) band = 'exemplary';
+    else if (rating >= 75) band = 'well-composed';
+    else if (rating >= 60) band = 'competent';
+    else if (rating >= 45) band = 'serviceable';
+    else if (rating >= 30) band = 'unremarkable';
+    else                    band = 'best not discussed';
+    notify('Saved to gallery (' + pixelCount + ' pixels) \u2014 ' + band + ' [' + rating + ']');
     save();
     renderStats();
     renderGallery();
+    if (typeof renderLoomPracticeSheet === 'function') {
+      try { renderLoomPracticeSheet(); } catch (e) {}
+    }
   }
 
   // ===== Cross-window nav (uses background.js dedup helper) =====
@@ -756,16 +1570,25 @@
     openWindow('popup.html');
   });
 
+  // v3.20.0 Stage 5 — walk-home nav. Purely a read of state; opening
+  // the house window cannot alter the save.
+  var houseNavBtn = document.getElementById('houseNavBtn');
+  if (houseNavBtn) houseNavBtn.addEventListener('click', function () {
+    SFX.click();
+    openWindow('house.html');
+  });
+
   var factoryNavBtn = document.getElementById('factoryNavBtn');
   if (factoryNavBtn) factoryNavBtn.addEventListener('click', function() {
     SFX.click();
     openWindow('factory.html');
   });
 
-  // ===== View tabs (CANVAS / GALLERY) =====
+  // ===== View tabs (CANVAS / GALLERY / PRACTICE) =====
   var viewTabs = document.querySelectorAll('.view-tab');
   var canvasView = document.getElementById('canvasView');
   var galleryView = document.getElementById('galleryView');
+  var practiceView = document.getElementById('practiceView');
   viewTabs.forEach(function(tab) {
     tab.addEventListener('click', function() {
       viewTabs.forEach(function(t) { t.classList.remove('active'); });
@@ -774,14 +1597,35 @@
       if (v === 'canvas') {
         canvasView.classList.remove('hidden');
         galleryView.classList.add('hidden');
+        if (practiceView) practiceView.classList.add('hidden');
+      } else if (v === 'practice') {
+        canvasView.classList.add('hidden');
+        galleryView.classList.add('hidden');
+        if (practiceView) {
+          practiceView.classList.remove('hidden');
+          renderLoomPracticeSheet();
+        }
       } else {
         canvasView.classList.add('hidden');
+        if (practiceView) practiceView.classList.add('hidden');
         galleryView.classList.remove('hidden');
         renderGallery();
       }
       SFX.click();
     });
   });
+
+  // v3.20.0: periodic loom stat decay tick (glacial drift once merging).
+  // Also re-renders the practice sheet if it's currently visible so the
+  // operator can watch the numbers slide without clicking anything.
+  setInterval(function() {
+    try {
+      tickLoomStatDecay();
+      if (practiceView && !practiceView.classList.contains('hidden')) {
+        renderLoomPracticeSheet();
+      }
+    } catch (_) {}
+  }, 60 * 1000);
 
   // ===== Tool buttons (PAINT / ERASE) =====
   document.querySelectorAll('.tool-btn[data-tool]').forEach(function(btn) {
@@ -812,6 +1656,19 @@
   // ===== Save / Export buttons =====
   var saveBtn = document.getElementById('saveToGallery');
   if (saveBtn) saveBtn.addEventListener('click', saveToGallery);
+
+  // v3.19.15: wire up the sell-loom modal confirm / cancel / backdrop.
+  var sellCancelBtn = document.getElementById('sellLoomCancelBtn');
+  if (sellCancelBtn) sellCancelBtn.addEventListener('click', closeSellLoomModal);
+  var sellConfirmBtn = document.getElementById('sellLoomConfirmBtn');
+  if (sellConfirmBtn) sellConfirmBtn.addEventListener('click', confirmSellLoom);
+  var sellLoomModalEl = document.getElementById('sellLoomModal');
+  if (sellLoomModalEl) {
+    sellLoomModalEl.addEventListener('click', function(e) {
+      // Click on the backdrop (not the inner card) closes the modal.
+      if (e.target === sellLoomModalEl) closeSellLoomModal();
+    });
+  }
   var exportBtn = document.getElementById('exportBtn');
   if (exportBtn) exportBtn.addEventListener('click', exportCurrentCanvas);
 

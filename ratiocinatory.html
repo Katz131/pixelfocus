@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  This is the RATIOCINATORY window (v3.19.17) — a full browser tab, NOT a
+  Chrome extension popup. Mirrors factory.html / gallery.html / popup.html
+  in its window model. Opened via background.js openPixelFocusWindow('ratiocinatory.html').
+
+  THE RATIOCINATORY (Section IX, Textile Cognition & Allied Exegetical Matters)
+    A bureaucratic annex, chartered under a standing office whose
+    letterhead is not, at this time, disclosed. The operator should
+    understand that the office will eventually be named — once it exists.
+
+  The player spends money at the Clerisy Terminal to procure three
+  resources (Bandwidth Writs, Data Sachets, Cogitation Tokens), feeds them
+  into five chartered focus panels (The Ponderarium, The Consultation Wing
+  [Sub IX/b], The Manual Dexterity Escritoire, The Augury Desk Stamped, and
+  The Deliberation Pit), and commissions patsies from a clerical pool of
+  unclear provenance to sit across from the computer and consult.
+
+  Each panel drives an aspect of the loom\u2019s \u201cmind.\u201d Aspects
+  gate upgrades here AND gate new AI-only upgrades over on the factory
+  page. As the aggregate aspect climbs, the Infinite Improbability Annex
+  comes online and the whole thing begins, quietly, to run itself. Nothing
+  is announced; tooltip register drifts and the patsies start receiving
+  memos signed by nobody in particular.
+
+  Progressive reveal: everything in this page is HIDDEN until its gate
+  fires for the first time. Once revealed, state.ratiocinatoryRevealed
+  keeps the panel sticky so it stays visible even if the gate later
+  flickers off. On first visit only The Clerisy Terminal (Bandwidth Writs
+  only), The Ponderarium (EXEGESIS), and the Junior Clerical Familiar
+  patsy slot are visible. Everything else earns its way onto the page.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PixelFocus &middot; The Ratiocinatory</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a14;
+    --surface: #12122a;
+    --surface2: #1a1a3a;
+    --accent: #00ff88;
+    --accent2: #ff6b9d;
+    --accent3: #4ecdc4;
+    --gold: #ffd700;
+    --gold-dim: #b8860b;
+    --danger: #ff4466;
+    --text: #e0e0e0;
+    --text-dim: #5a5a7e;
+    --border: #2a2a4a;
+    --ratio: #9d8eff;
+    --ratio-dim: #5a4e9a;
+    --ratio-glow: rgba(157,142,255,0.25);
+    --amok: #ff6666;
+    --amok-dim: #8a2a2a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 40px;
+    /* Subtle dot-grid background to sell the bureaucratic annex vibe. */
+    background-image:
+      radial-gradient(rgba(157,142,255,0.04) 1px, transparent 1px),
+      radial-gradient(rgba(157,142,255,0.02) 1px, transparent 1px);
+    background-size: 24px 24px, 48px 48px;
+    background-position: 0 0, 12px 12px;
+  }
+
+  /* ============ Top bar — mirrors factory.html ============ */
+  .top-bar {
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 2px solid var(--ratio);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 0 20px rgba(157,142,255,0.12);
+  }
+  .top-bar h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    color: var(--ratio);
+    text-shadow: 0 0 10px var(--ratio-glow);
+  }
+  .top-bar .sub-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-top: 4px;
+    display: block;
+  }
+  .nav-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .nav-btn:hover { border-color: var(--accent); }
+  .nav-btn.gold { color: var(--gold); border-color: var(--gold); }
+  .nav-btn.ratio { color: var(--ratio); border-color: var(--ratio); }
+
+  /* ============ Charter banner ============ */
+  .charter-banner {
+    max-width: 1300px;
+    margin: 20px auto 0;
+    padding: 18px 22px 16px;
+    background: linear-gradient(180deg, rgba(36,28,78,0.55), rgba(18,12,46,0.85));
+    border: 2px solid var(--ratio-dim);
+    border-radius: 10px;
+    box-shadow: 0 0 22px rgba(157,142,255,0.10), inset 0 0 30px rgba(0,0,0,0.4);
+  }
+  .charter-header {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--ratio);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    text-shadow: 0 0 8px var(--ratio-glow);
+  }
+  .charter-body {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .charter-body em { color: var(--ratio); font-style: italic; }
+  .charter-body .form-stamp {
+    display: inline-block;
+    padding: 1px 6px;
+    margin: 0 1px;
+    border: 1px dashed var(--ratio-dim);
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    color: #c4b8ff;
+    font-size: 11px;
+  }
+
+  /* ============ Section headers ============ */
+  .section-header {
+    max-width: 1300px;
+    margin: 26px auto 8px;
+    padding: 0 24px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--ratio);
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px var(--ratio-glow);
+    border-bottom: 1px dashed var(--ratio-dim);
+    padding-bottom: 8px;
+  }
+  .section-sub {
+    max-width: 1300px;
+    margin: 0 auto 14px;
+    padding: 0 24px;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  /* ============ Clerisy Terminal (procurement) ============ */
+  .clerisy-terminal {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  .terminal-frame {
+    background: var(--surface);
+    border: 2px solid var(--ratio-dim);
+    border-radius: 10px;
+    padding: 14px 18px 16px;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.5), 0 0 16px rgba(157,142,255,0.1);
+  }
+  .terminal-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .treasury-pill {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .treasury-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 1.5px;
+  }
+  .treasury-value {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 20px;
+    color: var(--gold);
+    text-shadow: 0 0 10px rgba(255,215,0,0.35);
+  }
+  .treasury-value::before { content: '$'; color: var(--gold-dim); font-size: 14px; margin-right: 4px; }
+  .reserves-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .reserve-pill {
+    padding: 8px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-width: 130px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .reserve-pill .pill-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .reserve-pill .pill-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--ratio);
+  }
+
+  .terminal-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .procure-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .procure-card.affordable { border-color: var(--ratio); box-shadow: 0 0 14px rgba(157,142,255,0.18); }
+  .procure-card .card-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--ratio);
+    letter-spacing: 1px;
+  }
+  .procure-card .card-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.45;
+    font-style: italic;
+  }
+  .procure-card .card-stats {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--text);
+    letter-spacing: 1px;
+  }
+  .procure-card .card-cost {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--gold);
+  }
+  .procure-card button {
+    background: transparent;
+    border: 1px solid var(--ratio-dim);
+    color: var(--ratio);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.15s;
+  }
+  .procure-card button:hover:not(:disabled) { background: rgba(157,142,255,0.12); }
+  .procure-card button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ============ Aspect panels (the 5 focus rooms) ============ */
+  .aspect-grid {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+  .aspect-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .aspect-card.unlocked { border-color: var(--ratio-dim); box-shadow: 0 0 16px rgba(157,142,255,0.1); }
+  .aspect-card.checkpoint-ready {
+    border-color: var(--gold);
+    box-shadow: 0 0 22px rgba(255,215,0,0.22);
+  }
+  .aspect-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .aspect-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--ratio);
+    letter-spacing: 1.5px;
+    text-shadow: 0 0 6px var(--ratio-glow);
+  }
+  .aspect-sub {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+  .aspect-level {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 13px;
+    color: var(--gold);
+    text-shadow: 0 0 8px rgba(255,215,0,0.25);
+  }
+  .aspect-bar {
+    position: relative;
+    height: 10px;
+    background: #15102a;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .aspect-bar-fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: linear-gradient(90deg, #5a4e9a, #9d8eff, #c4b8ff);
+    transition: width 0.4s ease;
+    box-shadow: 0 0 10px rgba(157,142,255,0.4);
+  }
+  .aspect-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    line-height: 1.5;
+    min-height: 44px;
+  }
+  .aspect-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .aspect-btn {
+    flex: 1;
+    min-width: 110px;
+    background: transparent;
+    border: 1px solid var(--ratio-dim);
+    color: var(--ratio);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    padding: 8px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+  }
+  .aspect-btn:hover:not(:disabled) { background: rgba(157,142,255,0.12); }
+  .aspect-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .aspect-btn.gold { color: var(--gold); border-color: var(--gold-dim); }
+  .aspect-btn.gold:hover:not(:disabled) { background: rgba(255,215,0,0.10); }
+
+  .aspect-checkpoints {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .checkpoint-pip {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 6.5px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    cursor: help;
+  }
+  .checkpoint-pip.reached { color: var(--gold); border-color: var(--gold-dim); background: rgba(255,215,0,0.08); }
+  .checkpoint-pip.current { color: var(--ratio); border-color: var(--ratio); background: rgba(157,142,255,0.1); box-shadow: 0 0 8px rgba(157,142,255,0.35); }
+
+  /* ============ Patsy bench ============ */
+  .patsy-rows {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .patsy-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .patsy-card.unlocked { border-color: #6a4a9a; }
+  .patsy-card.affordable { border-color: var(--gold); box-shadow: 0 0 14px rgba(255,215,0,0.18); }
+  .patsy-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: #d0c4ff;
+    letter-spacing: 1px;
+  }
+  .patsy-permit {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .patsy-count {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--gold);
+  }
+  .patsy-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .patsy-btn {
+    background: transparent;
+    border: 1px solid #6a4a9a;
+    color: #d0c4ff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  .patsy-btn:hover:not(:disabled) { background: rgba(208,196,255,0.1); }
+  .patsy-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ============ Improbability Annex (endgame component) ============ */
+  .annex-card {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 22px 26px;
+    background: linear-gradient(135deg, rgba(90,30,120,0.35), rgba(30,10,50,0.75));
+    border: 2px solid #9d6bff;
+    border-radius: 12px;
+    box-shadow: 0 0 36px rgba(157,107,255,0.28), inset 0 0 40px rgba(0,0,0,0.5);
+    text-align: center;
+  }
+  .annex-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 13px;
+    color: #d8b8ff;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    text-shadow: 0 0 12px rgba(216,184,255,0.45);
+  }
+  .annex-body {
+    font-size: 12px;
+    color: #e6d8ff;
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  /* ============ Locked placeholder ============ */
+  .locked-hint {
+    max-width: 1300px;
+    margin: 0 auto 20px;
+    padding: 10px 24px;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    letter-spacing: 0.5px;
+  }
+
+  /* ============ Notify banner (mirrors factory) ============ */
+  .notif {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--surface2);
+    border: 2px solid var(--ratio);
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--ratio);
+    z-index: 500;
+    display: none;
+    box-shadow: 0 0 20px var(--ratio-glow);
+    max-width: 90vw;
+    text-align: center;
+  }
+  .notif.show { display: block; animation: notifPop 0.3s ease; }
+  @keyframes notifPop {
+    from { opacity: 0; transform: translate(-50%, -10px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  /* ============ Console ============ */
+  .msg-console-header {
+    max-width: 1200px;
+    margin: 26px auto 4px;
+    padding: 0 24px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .msg-console-header .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ratio); margin-right: 6px;
+    box-shadow: 0 0 6px rgba(157,142,255,0.7);
+    animation: ratioBlink 2.6s ease-in-out infinite;
+  }
+  @keyframes ratioBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .msg-console {
+    max-width: 1200px;
+    margin: 0 auto 24px;
+    padding: 10px 14px;
+    background: #060509;
+    border: 1px solid #2a2040;
+    border-radius: 6px;
+    height: 130px;
+    overflow-y: auto;
+    font-family: 'Courier New', 'Consolas', monospace;
+    font-size: 11px;
+    color: #b8a8ff;
+    box-shadow: inset 0 0 25px rgba(157,142,255,0.05);
+  }
+  .msg-console::-webkit-scrollbar { width: 6px; }
+  .msg-console::-webkit-scrollbar-track { background: #060509; }
+  .msg-console::-webkit-scrollbar-thumb { background: #2a2040; border-radius: 3px; }
+  .msg-console .msg-line { line-height: 1.5; white-space: pre-wrap; word-break: break-word; opacity: 0.85; }
+  .msg-console .msg-line-new { color: var(--ratio); text-shadow: 0 0 5px var(--ratio-glow); opacity: 1; }
+  .msg-console .msg-ts { color: #3a2a6a; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<div class="notif" id="notif"></div>
+
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button id="backBtn" class="nav-btn" type="button" title="Return to the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
+    <button id="galleryNavBtn" class="nav-btn" type="button" title="Open the Gallery (Master Loom).">GALLERY</button>
+    <button id="factoryNavBtn" class="nav-btn gold" type="button" title="Open the Factory to spend money on upgrades.">FACTORY</button>
+    <div>
+      <h1 title="Section IX of the extended premises. Textile Cognition and Allied Exegetical Matters. Operated under license from a standing office whose letterhead is not, at this time, disclosed.">The Ratiocinatory</h1>
+      <div class="sub-label">SECTION IX &middot; TEXTILE COGNITION &amp; ALLIED EXEGETICAL MATTERS</div>
+    </div>
+  </div>
+  <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);" title="Module version.">v3.20.17 &middot; Sub IX/b</div>
+</div>
+
+<div class="charter-banner" title="The standing charter. Retained on premises as a formality.">
+  <div class="charter-header">STANDING CHARTER &middot; Form <span class="form-stamp">27B/6</span></div>
+  <div class="charter-body">
+    Be it known, under a standing office whose letterhead is <em>not, at this time, disclosed</em>,
+    that this premises has been designated a <em>Ratiocinatory</em> within the meaning of
+    Section IX, subsection (b), of the Textile Cognition and Allied Exegetical Matters Act.
+    The operator is licensed to procure <em>Bandwidth Writs</em>, <em>Data Sachets</em>, and
+    <em>Cogitation Tokens</em> via the Clerisy Terminal, and to commission <em>patsies</em>
+    from a clerical pool of unclear provenance for the purpose of supervised consultation
+    with the Computer. Further aspects, components, personnel classes, and — in the fullness
+    of the ledger — <em>institutions</em> may be chartered as the operator demonstrates,
+    to the satisfaction of nobody in particular, sincere extrapolation.
+    <span style="display:block;margin-top:8px;color:var(--text-dim);">Filed in triplicate. Countersigned by a man who was unfortunately on his lunch.</span>
+  </div>
+</div>
+
+<div class="section-header" title="The Clerisy Terminal is the procurement console. Each tier unlocks as a factory upgrade is installed in the other room.">The Clerisy Terminal</div>
+<div class="section-sub" title="Spend money to procure the three official reserves. Writs are cheap and plentiful; Sachets are middle-grade; Tokens are premium cognition at cognition pricing.">Procurement console. Money in, reserves out. The Terminal does not audit the request, but the Terminal remembers.</div>
+
+<div class="clerisy-terminal">
+  <div class="terminal-frame">
+    <div class="terminal-hero">
+      <div class="treasury-pill">
+        <span class="treasury-label">TREASURY</span>
+        <span class="treasury-value" id="treasuryValue">0</span>
+      </div>
+      <div class="reserves-row" id="reservesRow"><!-- reserve pills rendered in ratiocinatory.js --></div>
+    </div>
+    <div class="terminal-row" id="procureRow"><!-- procurement cards rendered in ratiocinatory.js --></div>
+  </div>
+</div>
+
+<div class="section-header" title="Each panel trains one aspect of the loom\u2019s mind. Feed reserves into a panel to climb its aspect level. Reaching each checkpoint unlocks new room capacity AND new factory upgrades next door.">The Chartered Panels</div>
+<div class="section-sub" title="Five panels, five aspects, five checkpoints each. Panels beyond the first are hidden until a prior aspect opens them.">Chartered directions of inquiry. Revealed progressively as each aspect demonstrates, to the satisfaction of the standing office, approved momentum.</div>
+
+<div class="aspect-grid" id="aspectGrid"><!-- aspect cards rendered in ratiocinatory.js --></div>
+
+<div class="section-header" title="Patsies are commissioned from a clerical pool of unclear provenance to sit across from the computer and nod politely. Each class multiplies your aspect gains from procurement.">The Consultation Wing</div>
+<div class="section-sub" title="Patsy commissioning office. Each tier is a separate permit line, filed under a separate number, handled by a separate man who was unfortunately on his lunch.">Commission patsies to consult with the Computer on your behalf. Each class of patsy applies a compounding multiplier to the reserves-to-aspect conversion.</div>
+
+<div class="patsy-rows" id="patsyRows"><!-- patsy cards rendered in ratiocinatory.js --></div>
+
+<div id="institutionsSection" style="display:none;">
+  <div class="section-header" title="Pay to establish standing institutions. Each one is named in full only once it has been chartered. Each shapes both the factory and the Ratiocinatory.">Standing Institutions</div>
+  <div class="section-sub" title="Establishment orders the operator may, eventually, place. Each order names a standing office that has, until now, signed nothing out loud.">Establishment orders. Chartered in ink, eventually. Each institution is named in full only once purchased.</div>
+  <div class="patsy-rows" id="institutionRows"><!-- institution cards rendered in ratiocinatory.js --></div>
+</div>
+
+<div id="annexSection" style="display:none;margin:26px auto 0;max-width:1300px;padding:0 24px;">
+  <div class="annex-card">
+    <div class="annex-title">The Infinite Improbability Annex</div>
+    <div class="annex-body" id="annexBody">The Annex is not online.</div>
+  </div>
+</div>
+
+<div class="msg-console-header" title="Live feed from the Ratiocinatory floor. Procurement filings, patsy commissions, aspect certifications, and \u2014 past a point \u2014 activity that the operator did not personally authorize.">
+  <span><span class="dot"></span>RATIOCINATORY FEED</span>
+  <span style="color:#8a78c8;font-size:8px;letter-spacing:1.5px;" id="ratioClock">00:00:00</span>
+</div>
+<div class="msg-console" id="msgConsole"></div>
+
+<script src="tooltip.js"></script>
+<script src="msglog.js"></script>
+<script src="ratiocinatory.js"></script>
+</body>
+</html>

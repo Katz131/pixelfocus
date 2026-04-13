@@ -1198,6 +1198,225 @@
         'The planet is mostly cloth. The oceans are considering it.',
         'Heat death has a soft landing. The universe is tucked in. Good night.'
       ]
+    },
+
+    // ================================================================
+    // v3.19.17 — RATIOCINATORY GATE & TWO-WAY UNLOCKS
+    // Four new upgrades tied to The Ratiocinatory (Section IX). The
+    // first upgrade is the gate: buying level 1 flips
+    // state.ratiocinatoryUnlocked and exposes a new nav button on the
+    // home page pointing at ratiocinatory.html. The other three are
+    // two-way gated — each requires a Ratiocinatory aspect threshold
+    // to appear, and in turn unlocks a new procurement tier at the
+    // Clerisy Terminal so the player has to oscillate between the
+    // two rooms to push the loop forward. Thematic gating: legal
+    // entanglements averted, red tape removed, factory manufacturing
+    // capacity extended. Institution names are NEVER mentioned here
+    // — they only appear once the player charters them in the
+    // Ratiocinatory's Standing Institutions section.
+    // ================================================================
+    {
+      id: 'cogitoriumAnnexLevel',
+      title: 'Requisition the Ratiocinatory',
+      tree: 'Intelligence',
+      desc: 'File a Section IX/b requisition — against a standing office whose letterhead is not, at this time, disclosed — for a walled annex to be built adjacent to the factory floor. Legal entanglements, averted. Inside: a Clerisy Terminal, five chartered panels of inquiry, and a small desk at which a patsy may be made to sit. Unlocks the RATIOCINATORY door on the home page. One-time purchase.',
+      effects: [
+        'The annex is certified. Its door appears on the home page.'
+      ],
+      costs: [5000],
+      milestones: [
+        'Form 27B/6 stamped in triplicate. The Ratiocinatory has been appended to the premises. The standing office wishes you "measured success."'
+      ]
+    },
+    {
+      id: 'loomSemanticianLevel',
+      title: 'Loom Semantician',
+      tree: 'Intelligence',
+      desc: 'Endow a chair, on paper, for the study of what the looms are actually \u201csaying.\u201d Requires demonstrable EXEGESIS in the Ratiocinatory — the factory will not, on its own initiative, manufacture a dictionary. Each level multiplies combo-burst payouts AND unlocks the next tier of the Clerisy Terminal: Data Sachets become procurable at L1.',
+      effects: [
+        'Combo bursts x1.15; Data Sachets procurable at the Clerisy Terminal.',
+        'Combo bursts x1.35; Data Sachets 10% cheaper.',
+        'Combo bursts x1.6;  Data Sachets 25% cheaper.',
+        'Combo bursts x2.0;  Data Sachets 40% cheaper.'
+      ],
+      costs: [18000, 75000, 300000, 1500000],
+      milestones: [
+        'The Loom Semantician is installed. They have brought their own dictionary. Several pages are inked out.',
+        'The Semantician publishes a pamphlet. It is technically in English.',
+        'The Semantician claims the looms have dialects. Regional ones.',
+        'The Semantician will no longer sign documents. Their pen is now considered a formality.'
+      ]
+    },
+    {
+      id: 'adjacentReasoningLevel',
+      title: 'Adjacent Reasoning Accord',
+      tree: 'Intelligence',
+      desc: 'Ratify a standing accord — with a standing office whose letterhead is not, at this time, disclosed — permitting the loom to reason about problems that are approximately nearby. Requires demonstrable DEFTNESS: the factory cannot manufacture the shuttle-grade pen without it. Red tape, in this instance, has been removed. Unlocks Cogitation Tokens at the Clerisy Terminal and applies a compounding speed bonus to the Autoloom.',
+      effects: [
+        'Autoloom x1.10; Cogitation Tokens procurable at the Clerisy Terminal.',
+        'Autoloom x1.25; Tokens 10% cheaper.',
+        'Autoloom x1.5;  Tokens 25% cheaper.',
+        'Autoloom x2.0;  Tokens 40% cheaper.'
+      ],
+      costs: [60000, 280000, 1200000, 6000000],
+      milestones: [
+        'The Accord is signed. No one present read the second page. The second page read them.',
+        'The Accord expands. Adjacent is now defined loosely, in a footnote.',
+        'The Accord is renewed. The loom supplies its own signature. It is legible.',
+        'The Accord has no expiry. The loom has filed this as a kindness.'
+      ]
+    },
+    {
+      id: 'ministryObservationLevel',
+      title: 'Observation Tower',
+      tree: 'Intelligence',
+      desc: 'Erect a small, tasteful observation tower — at the request of a standing office whose letterhead is not, at this time, disclosed — so that auditors of equally unclear provenance may watch the loom think. Requires OMENS in the Ratiocinatory and a ratified Accord, because the factory is not, at present, tooled to mill a viewing platform. Each level multiplies the end-of-day streak lump AND the marathon payouts.',
+      effects: [
+        'End-of-day + marathons x1.25',
+        'End-of-day + marathons x1.6',
+        'End-of-day + marathons x2.1',
+        'End-of-day + marathons x2.8',
+        'End-of-day + marathons x3.8'
+      ],
+      costs: [250000, 1000000, 5000000, 22000000, 110000000],
+      milestones: [
+        'The tower is finished. The auditor has brought their own sandwich.',
+        'The auditor no longer leaves the tower. They have requested a kettle.',
+        'The auditor has started filing reports about the view. The view files back.',
+        'The auditor is quoted in the loom\u2019s internal memos. They are flattered.',
+        'The tower is now taller than its foundation. No one has commented.'
+      ]
+    },
+
+    // ================================================================
+    // v3.20.0 Stage 3 — RESEARCH LAB
+    // One-time unlock (like the Ratiocinatory requisition). Buying
+    // level 1 flips state.researchLabUnlocked and exposes a new
+    // nav button on the factory top bar pointing at research.html.
+    // The Research Lab lets the player conduct experiments on members
+    // of the personnel roster. Some subjects do not come back.
+    //
+    // This upgrade is gated behind having at least one employee on
+    // the books — the lab has nothing to study until there's a
+    // roster. Visibility gate is in GATES below.
+    // ================================================================
+    {
+      id: 'researchLabLevel',
+      title: 'Open the Research Lab',
+      tree: 'Operations',
+      desc: 'File the paperwork for a quiet, well-lit annex off the factory floor. A standing office whose letterhead is not, at this time, disclosed will supply the coat rack, the chairs, and one brown hat. The annex will conduct studies on members of the personnel roster. Some subjects do not come back. One-time purchase.',
+      effects: [
+        'The lab is certified. Its door appears on the factory top bar.'
+      ],
+      costs: [12000],
+      milestones: [
+        'The Research Lab has been commissioned. A coat rack, a window, and one brown hat. A bell has been installed but has not yet rung.'
+      ]
+    },
+
+    // ================================================================
+    // v3.20.0 Stage 4 — THE INCINERATOR  (Tier-7 gated)
+    //
+    // The darkest building in the factory. Converts employees from the
+    // personnel roster into "fuel" which compounds into a permanent
+    // passive-income multiplier (state.incineratorFuelBonus) AND pays
+    // out money per fuel unit.
+    //
+    // One-time purchase. Gate requires maxed employees (Level 5), an
+    // open Research Lab (so the player has already learned that the
+    // roster is a resource rather than a team), and meaningful reach
+    // in Bureaucracy (lobbying L3) so the paperwork that conceals the
+    // hatch can be filed. The player will not stumble into this room.
+    // ================================================================
+    {
+      id: 'incineratorLevel',
+      title: 'Commission the Incinerator',
+      tree: 'Operations',
+      desc: 'File a Tier-7 requisition — with a standing office whose letterhead is not, at this time, disclosed — for a small temperature-controlled annex behind the Research Lab. The annex is equipped with one hatch labelled INTAKE and no other features. Employees may be delivered to the hatch. The hatch produces fuel, which produces passive income forever, and they do not come back. One-time purchase.',
+      effects: [
+        'The annex is certified. Its door appears on the factory top bar.'
+      ],
+      costs: [5000000],
+      milestones: [
+        'The Incinerator has been commissioned. The floor is always warm. The standing office has left a short manual on the desk. The manual is blank.'
+      ]
+    },
+
+    // ================================================================
+    // v3.20.0 Stage 5 — MATERIALS INCINERATOR (early-game)
+    //
+    // Narratively this is the SAME room as the Tier-7 personnel
+    // incinerator. The player buys the small version early — a
+    // municipal waste contract for the dust bin and the off-cuts the
+    // loom leaves behind — and the room sits there, quietly warm, for
+    // most of the game. Late game the same room is re-commissioned
+    // under the Tier-7 requisition for a different, darker intake.
+    //
+    // Mechanically this upgrade does two things:
+    //   (1) unlocks a BURN button on the dust bin in the main tracker,
+    //       letting the player convert accumulated dust specks into a
+    //       very small permanent passive-income bonus and a one-shot
+    //       coin payout,
+    //   (2) flips state.materialsIncineratorUnlocked, which app.js
+    //       also reads to stop the dust bin silently trimming itself
+    //       at 600 specks — once you own the incinerator, dust
+    //       accumulates until you choose to burn it.
+    //
+    // One-time purchase. Cheap. Appears once the player has either a
+    // marketing deal or a modest coin reserve — the same shelf as the
+    // first Bureaucracy cards.
+    // ================================================================
+    {
+      id: 'materialsIncineratorLevel',
+      title: 'Materials Incinerator (Off-cuts & Dust)',
+      tree: 'Supply',
+      desc: 'File a small standing order for a temperature-controlled annex behind the factory that accepts off-cuts, loom dust, and the soft sweepings collected from under the frames at the end of a shift. The annex is a room with a door and a chimney. You will not have to look at it often. One-time purchase.',
+      effects: [
+        'The dust bin (main tracker) gains a BURN button — convert accumulated specks into a permanent passive-income bonus and a small coin payout.',
+        'Raw loom dust no longer silently trims itself at the 600-speck limit. Dust accumulates until you choose to burn it.',
+        'Each burn adds +0.1% to passive income per 100 specks burned (capped at +5% lifetime).'
+      ],
+      costs: [500],
+      milestones: [
+        'The Materials Incinerator has been commissioned. The annex smells faintly of warm linen and the off-cuts have found a home. A small standing order has been placed for a second shovel.'
+      ]
+    },
+
+    // ================================================================
+    // v3.20.0 Stage 5 — LAND BRIDGE  (late-game, Expansion)
+    //
+    // A short covered walkway between the Factory and the Master Loom.
+    // On paper: it shortens the commute between the two buildings and
+    // grants a small permanent passive-income boost.
+    //
+    // What the upgrade's prose does NOT tell the player is that, once
+    // commissioned, the bridge replaces the walk through town. There
+    // is, after the bridge, no longer a reason for the standing office
+    // to route the player past the house. The first time they try to
+    // visit the House window after purchasing this upgrade, they find
+    // a notice of redirected transit on the form H/2b, and the house
+    // becomes unreachable.
+    //
+    // The bonus is real. The cost is real. It is a choice, and the
+    // game intentionally does not warn the player it is a choice.
+    //
+    // One-time purchase. Gated behind the Second Location upgrade so
+    // the player has at least two physical sites between which a
+    // bridge would be meaningful.
+    // ================================================================
+    {
+      id: 'landBridgeLevel',
+      title: 'Land Bridge (Factory \u2194 Master Loom)',
+      tree: 'Expansion',
+      desc: 'Commission a short, covered walkway connecting the Factory to the Master Loom. The walkway is on stilts; the stilts are on gravel; the gravel is on a plot the land registry has described, with admirable concision, as "useful." Crossings will be expedited, and the Treasurer notes a small but durable uplift to the passive income stream. Commuting on foot, through the town, will no longer be necessary. One-time purchase.',
+      effects: [
+        'Passive income trickle: +5% (permanent).',
+        'Crossings between the Factory and the Master Loom are now expeditious.'
+      ],
+      costs: [75000],
+      milestones: [
+        'The Land Bridge has been certified. A small brown envelope has been slid under the door of your house by a person you did not see. The envelope is not for you to open.'
+      ]
     }
   ];
 
@@ -1300,6 +1519,68 @@
     worldSpanLevel: function(s) {
       return (s.lifetimeCoins || 0) >= 400000000
           || (s.autoLeadershipLevel || 0) >= 3;
+    },
+
+    // --- v3.19.17 Ratiocinatory gates. Two-way locked with the
+    //     aspects in ratiocinatory.js so the player has to oscillate
+    //     between the two rooms to progress. ---
+    cogitoriumAnnexLevel: function(s) {
+      return (s.lifetimeCoins || 0) >= 3500
+          || (s.marketingLevel || 0) >= 2
+          || (s.employeesLevel || 0) >= 1;
+    },
+    loomSemanticianLevel: function(s) {
+      return !!s.ratiocinatoryUnlocked
+          && (s.aspectExegesis || 0) >= 20;
+    },
+    adjacentReasoningLevel: function(s) {
+      return !!s.ratiocinatoryUnlocked
+          && (s.aspectDeftness || 0) >= 30;
+    },
+    ministryObservationLevel: function(s) {
+      return !!s.ratiocinatoryUnlocked
+          && (s.aspectOmens || 0) >= 40
+          && (s.adjacentReasoningLevel || 0) >= 1;
+    },
+
+    // --- v3.20.0 Stage 3: Research Lab. Visible once the player has
+    //     hired at least one employee, so the card appears right when
+    //     they have a roster to experiment on. ---
+    researchLabLevel: function(s) {
+      return (s.employeesLevel || 0) >= 1
+          || (Array.isArray(s.personnelRoster) && s.personnelRoster.length >= 1);
+    },
+
+    // --- v3.20.0 Stage 4: Incinerator. Tier-7 gated. Requires maxed
+    //     employees, an open Research Lab, and meaningful lobbying
+    //     reach so the paperwork concealing the hatch can be filed.
+    //     The player will NOT see this card until they've ticked all
+    //     three boxes — that's the point. ---
+    incineratorLevel: function(s) {
+      return (s.employeesLevel || 0) >= 5
+          && !!s.researchLabUnlocked
+          && (s.lobbyingLevel || 0) >= 3;
+    },
+
+    // --- v3.20.0 Stage 5: Materials Incinerator. Early-game. Visible
+    //     from the first shelf of Bureaucracy-adjacent upgrades, so the
+    //     player sees the dust bin's future option as a short-term goal
+    //     rather than a surprise. Cheap enough that the card is usually
+    //     affordable the session it appears. ---
+    materialsIncineratorLevel: function(s) {
+      return (s.lifetimeCoins || 0) >= 200
+          || (s.marketingLevel || 0) >= 1
+          || (Array.isArray(s.dustPixels) && s.dustPixels.length >= 30);
+    },
+
+    // --- v3.20.0 Stage 5: Land Bridge. Late-game. Gated behind the
+    //     Second Location upgrade so the player has two physical sites
+    //     for a bridge to span. The card's prose mentions the income
+    //     bonus but not the fact that the bridge closes the route to
+    //     the house — that part has to be discovered. ---
+    landBridgeLevel: function(s) {
+      return (s.secondLocationLevel || 0) >= 1
+          || (s.lifetimeCoins || 0) >= 60000;
     },
 
     // ================================================================
@@ -1653,6 +1934,17 @@
     if (lvl <= 0) return 0;
     return LENS_GRINDER_DISCOUNT[Math.min(lvl, LENS_GRINDER_DISCOUNT.length - 1)];
   }
+  // v3.19.17: Standing Institutions chartered in the Ratiocinatory add
+  // their own multiplicative discounts to every factory upgrade. The
+  // Standing Office ("legal entanglements averted") shaves 6%, and the
+  // Enquiry Bureau ("red tape removed") shaves a further 8%. They stack
+  // multiplicatively with the other discount lines above.
+  function getInstitutionFactoryDiscountFraction() {
+    var mult = 1;
+    if (state && state.institutionStandingOffice) mult *= 0.94;
+    if (state && state.institutionEnquiryBureau)  mult *= 0.92;
+    return 1 - mult;
+  }
   function getTotalDiscountFraction(upgradeId) {
     // Returns the aggregate 0..1 fraction shaved off the raw cost.
     // Legal Department does not discount itself; juridical personhood
@@ -1660,8 +1952,9 @@
     var legal = (upgradeId === 'legalDeptLevel') ? 0 : getLegalDiscount();
     var juridical = (upgradeId === 'juridicalPersonhoodLevel') ? 0 : getJuridicalDiscount();
     var lens = (upgradeId === 'lensGrinderTreatyLevel') ? 0 : getLensGrinderDiscount();
-    // Multiplicative stacking: 1 - (1-a)(1-b)(1-c)
-    var remaining = (1 - legal) * (1 - juridical) * (1 - lens);
+    var inst = getInstitutionFactoryDiscountFraction();
+    // Multiplicative stacking: 1 - (1-a)(1-b)(1-c)(1-d)
+    var remaining = (1 - legal) * (1 - juridical) * (1 - lens) * (1 - inst);
     return 1 - remaining;
   }
   function discountedCost(rawCost, upgradeId) {
@@ -1675,7 +1968,25 @@
     if (emp <= 0) return 0;
     if (!state.streak || state.streak <= 0) return 0;
     var baseRate = [0, 0.02, 0.05, 0.12, 0.26, 0.55][Math.min(emp, 5)];
-    return baseRate * (1 + (state.streak - 1) * 0.10);
+    // v3.20.0 Stage 4: mirror app.js — include incinerator bonus and
+    // dissident penalty so the factory display matches what the player
+    // actually earns per minute. Both default to 1.0 for any save that
+    // hasn't commissioned the incinerator or generated dissidents.
+    var incinBonus = 1 + (state.incineratorFuelBonus || 0);
+    var dissCount = 0;
+    try {
+      if (typeof Personnel !== 'undefined' && Personnel && Personnel.dissidentCount) {
+        dissCount = Personnel.dissidentCount(state);
+      }
+    } catch (_) {}
+    var dissMult = Math.max(0.5, 1 - 0.02 * dissCount);
+    // v3.20.0 Stage 5: mirror app.js — materials incinerator power
+    // bonus (capped at +5%) and land bridge passive trickle bonus
+    // (+5% flat). Both default to 1.0 on saves that haven't bought
+    // the corresponding upgrades.
+    var matBonus = 1 + Math.min(0.05, state.materialsPowerBonus || 0);
+    var bridgeBonus = state.landBridgeBuilt ? 1.05 : 1.0;
+    return baseRate * (1 + (state.streak - 1) * 0.10) * incinBonus * dissMult * matBonus * bridgeBonus;
   }
 
   function getNextMarathon() {
@@ -1715,6 +2026,33 @@
     document.getElementById('nextMarathon').textContent = getNextMarathon();
     document.getElementById('nextComboBurst').textContent = getNextComboBurst();
     document.getElementById('textileCount').textContent = state.blocks || 0;
+    // v3.20.0 Stage 2: surface the PERSONNEL nav button once the player
+    // has hired anyone. Hidden before that to avoid dead links for new
+    // players who have never seen the employees upgrade.
+    try {
+      var _empNavBtn = document.getElementById('employeesNavBtn');
+      if (_empNavBtn) {
+        var _hasEmps = (state.employeesLevel && state.employeesLevel > 0) ||
+                       (Array.isArray(state.personnelRoster) && state.personnelRoster.length > 0);
+        _empNavBtn.style.display = _hasEmps ? '' : 'none';
+      }
+    } catch (_) {}
+    // v3.20.0 Stage 3: surface the RESEARCH nav button once the player
+    // has commissioned the lab. Hidden before that to avoid dead links.
+    try {
+      var _resNavBtn = document.getElementById('researchNavBtn');
+      if (_resNavBtn) {
+        _resNavBtn.style.display = state.researchLabUnlocked ? '' : 'none';
+      }
+    } catch (_) {}
+    // v3.20.0 Stage 4: same story for the INCINERATOR nav button.
+    // Stays hidden until the late-game commissioning.
+    try {
+      var _incNavBtn = document.getElementById('incineratorNavBtn');
+      if (_incNavBtn) {
+        _incNavBtn.style.display = state.incineratorUnlocked ? '' : 'none';
+      }
+    } catch (_) {}
     renderLedger();
   }
 
@@ -2018,6 +2356,99 @@
     if (state.freshUpgrades && state.freshUpgrades[u.id]) delete state.freshUpgrades[u.id];
     SFX.purchase();
 
+    // v3.19.17: buying the Ratiocinatory requisition flips the unlock
+    // flag, seeds the first reveal (Bandwidth Writs + Exegesis +
+    // Junior Patsy), and surfaces the new nav door on the home page.
+    // Standing Institutions remain unnamed and unmentioned here — the
+    // player charters them in person, later, inside the Ratiocinatory.
+    if (u.id === 'cogitoriumAnnexLevel' && (level + 1) === 1) {
+      state.ratiocinatoryUnlocked = true;
+      if (!state.ratiocinatoryRevealed) state.ratiocinatoryRevealed = {};
+      state.ratiocinatoryRevealed['clerisy_writs']   = Date.now();
+      state.ratiocinatoryRevealed['aspect_exegesis'] = Date.now();
+      state.ratiocinatoryRevealed['patsy_junior']    = Date.now();
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('The door to the Ratiocinatory has been unlocked. A Clerisy Terminal blinks, once, and resumes its composure.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.20.0 Stage 3: Buying the Research Lab flips the unlock flag,
+    // exposing a new nav door on the factory top bar pointing at
+    // research.html. One-time purchase — the card has a single level.
+    if (u.id === 'researchLabLevel' && (level + 1) === 1) {
+      state.researchLabUnlocked = true;
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('The Research Lab has been commissioned. Its door appears on the factory top bar. The coat rack has one brown hat on it already.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.20.0 Stage 4: Buying the Incinerator flips its own unlock
+    // flag and surfaces the INCINERATOR nav button on the factory top
+    // bar. The standing office has left a short manual on the desk;
+    // the manual is blank. One-time purchase.
+    if (u.id === 'incineratorLevel' && (level + 1) === 1) {
+      state.incineratorUnlocked = true;
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('The Incinerator has been commissioned. Its door appears on the factory top bar. The floor is already warm.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.20.0 Stage 5: Buying the Materials Incinerator. Flips the
+    // early-game unlock so the main tracker can show a BURN button on
+    // the dust bin, and so app.js stops silently trimming the speck
+    // count at 600. Narratively the same room as the Tier-7 unit: this
+    // is the first shovel in the door, years before the hatch.
+    if (u.id === 'materialsIncineratorLevel' && (level + 1) === 1) {
+      state.materialsIncineratorUnlocked = true;
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('The Materials Incinerator has been commissioned. The annex behind the factory now accepts off-cuts and loom dust. The floor is, already, a little warm.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.20.0 Stage 5: Buying the Land Bridge. Flips the unlock flag
+    // that grants a permanent +5% passive trickle and — without
+    // announcement — closes the foot route to the house. The House
+    // window reads state.landBridgeBuilt and replaces its standard
+    // rap sheet with a short refusal paragraph on the H/2b form.
+    if (u.id === 'landBridgeLevel' && (level + 1) === 1) {
+      state.landBridgeBuilt = true;
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('The Land Bridge has been certified. Commutes between the Factory and the Master Loom are now expeditious. A short form letter has been prepared at a standing office; a copy has been slid under the door of your house.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.20.0 Stage 2: Hiring more employees grows the personnel roster.
+    // Personnel.reconcileRoster only adds new employees up to the target
+    // size for the current employeesLevel, so buying Level 2 adds the
+    // next batch without touching the existing bios. Each hire is
+    // pushed into the MsgLog so the chat reflects the new arrivals.
+    if (u.id === 'employeesLevel' && typeof Personnel !== 'undefined' && Personnel && Personnel.reconcileRoster) {
+      try {
+        var preLen = Array.isArray(state.personnelRoster) ? state.personnelRoster.length : 0;
+        var hired = Personnel.reconcileRoster(state);
+        if (hired > 0 && typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          var roster = Personnel.getRoster(state);
+          // Announce the new arrivals in the console, one line per hire,
+          // with a short "who they are" tag from the pool label.
+          for (var hi = preLen; hi < roster.length && hi < preLen + hired; hi++) {
+            var e = roster[hi];
+            var tag = (Personnel.POOL_LABELS && Personnel.POOL_LABELS[e.pool]) || 'new hire';
+            MsgLog.push('>> New hire: ' + e.name + ' (' + tag + ') \u2014 ' + e.role + '.');
+          }
+        }
+      } catch (_) {}
+    }
+
     // Push a concise level-up notification (shows in the top banner AND
     // the console, because notify() forwards to MsgLog).
     notify(u.title + ' upgraded to LV ' + (level + 1) + '!');
@@ -2057,10 +2488,71 @@
     SFX.click();
     openWindow('popup.html');
   });
+  // v3.20.0 Stage 5: HOUSE nav button. Always mounted on the factory top
+  // bar. Walks the player back to the wakeup antechamber. The house
+  // window is strictly a read of state; clicking this cannot affect the
+  // save in any way.
+  var houseNavBtn = document.getElementById('houseNavBtn');
+  if (houseNavBtn) {
+    houseNavBtn.addEventListener('click', function () {
+      SFX.click();
+      openWindow('house.html');
+    });
+  }
   document.getElementById('galleryNavBtn').addEventListener('click', function() {
     SFX.click();
     openWindow('gallery.html');
   });
+  // v3.20.0 Stage 2: Employee Management Center. The button is always
+  // mounted in the top bar, but we gate visibility on having purchased
+  // the Hire Employees upgrade at least once so it doesn't confuse new
+  // players who have never hired anyone.
+  var empNavBtn = document.getElementById('employeesNavBtn');
+  if (empNavBtn) {
+    if ((state && state.employeesLevel && state.employeesLevel > 0) ||
+        (state && Array.isArray(state.personnelRoster) && state.personnelRoster.length > 0)) {
+      empNavBtn.style.display = '';
+    } else {
+      empNavBtn.style.display = 'none';
+    }
+    empNavBtn.addEventListener('click', function() {
+      SFX.click();
+      openWindow('employees.html');
+    });
+  }
+
+  // v3.20.0 Stage 3: Research Lab nav button. Visible only after the
+  // one-time Research Lab upgrade has been purchased (or the unlock
+  // flag is already present from a prior save).
+  var researchNavBtn = document.getElementById('researchNavBtn');
+  if (researchNavBtn) {
+    if (state && state.researchLabUnlocked) {
+      researchNavBtn.style.display = '';
+    } else {
+      researchNavBtn.style.display = 'none';
+    }
+    researchNavBtn.addEventListener('click', function() {
+      SFX.click();
+      openWindow('research.html');
+    });
+  }
+
+  // v3.20.0 Stage 4: Incinerator nav button. Tier-7 gated, hidden
+  // until the Commission the Incinerator upgrade has flipped
+  // state.incineratorUnlocked. Stays hidden for the vast majority
+  // of players who have not yet reached the late game.
+  var incineratorNavBtn = document.getElementById('incineratorNavBtn');
+  if (incineratorNavBtn) {
+    if (state && state.incineratorUnlocked) {
+      incineratorNavBtn.style.display = '';
+    } else {
+      incineratorNavBtn.style.display = 'none';
+    }
+    incineratorNavBtn.addEventListener('click', function() {
+      SFX.click();
+      openWindow('incinerator.html');
+    });
+  }
 
   // ===== FACTORY MEMO ARCHIVE =====
   // Refactored in v3.19.1 from a single first-run intro into a

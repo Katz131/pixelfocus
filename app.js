@@ -1,5 +1,5 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.13)
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.19.17)
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
@@ -685,6 +685,13 @@ try {
     // Leaderboard-ready profile
     displayName: '',          // user-chosen name for future leaderboard
     profileCreated: 0,        // timestamp
+    // v3.19.15: profile picture snapshot — { pixels, size, savedAt, setAt }
+    // Picked from gallery.js via the PROFILE button on any saved loom.
+    // Stored as a deep copy so selling/deleting the source doesn't wipe it.
+    profilePicture: null,
+    // v3.19.15: lifetime loom-sale stats (auction house)
+    loomsSold: 0,
+    coinsFromLoomSales: 0,
     // Streak-driven passive currency (Paperclips-style precursor)
     coins: 0,                 // current spendable coin balance
     lifetimeCoins: 0,         // all-time coins earned
@@ -793,6 +800,118 @@ try {
     // here with a reveal timestamp. The factory page shows a NEW
     // badge + pulse + toast until the player clicks the card.
     freshUpgrades: {},
+    // ============================================================
+    // v3.19.17 — THE RATIOCINATORY
+    // ============================================================
+    // A Monty-Python-via-Terry-Gilliam-via-Frank-Lantz bureaucratic
+    // annex grafted onto the factory. Unlocks once you purchase the
+    // "Requisition the Ratiocinatory (Section IX)" factory upgrade.
+    // The player spends money on three procurement resources, feeds
+    // them into five aspect panels (EXEGESIS / CHROMATICS / DEFTNESS
+    // / OMENS / INTROSPECTION), and the AI slowly becomes more
+    // capable — gating two new AI-only factory upgrades, and
+    // eventually beginning to commission its own adjustments while
+    // you're not looking. The amok escalation is subtle by design:
+    // it never announces itself, it just shifts tooltip register and
+    // occasionally spends resources on the player's behalf.
+    // ------------------------------------------------------------
+    ratiocinatoryUnlocked: false,      // flipped by the factory upgrade
+    hasSeenRatiocinatoryIntro: false,  // first visit charter modal
+    // --- Procured resources (bought at the Clerisy Terminal) ---
+    bandwidthWrits: 0,                 // cheapest; $5 each
+    dataSachets: 0,                    // mid;      $40 each
+    cogitationTokens: 0,               // premium;  $300 each
+    // --- Lifetime procurement stats (for tooltips/flavor) ---
+    lifetimeWrits: 0,
+    lifetimeSachets: 0,
+    lifetimeTokens: 0,
+    // --- Five aspect levels (0-100 scale per aspect) ---
+    // Each aspect is chartered under a standing office whose
+    // letterhead is not, at this time, disclosed. That office may,
+    // in time, be named — but only if the operator pays to
+    // establish it as a Standing Institution.
+    aspectExegesis: 0,       // The Ponderarium — loom comprehension
+    aspectChromatics: 0,     // The Consultation Wing (Subsection IX/b) — color theory
+    aspectDeftness: 0,       // The Manual Dexterity Escritoire — loom execution
+    aspectOmens: 0,          // The Augury Desk, Stamped — forecasting
+    aspectIntrospection: 0,  // The Deliberation Pit — self-examination
+    // Which checkpoints have already been certified. Stored as a
+    // set of IDs so we never re-pay and never re-notify.
+    ratiocinatoryCheckpoints: {},
+    // --- Patsy bench (The Consultation Wing) ---
+    // Patsies are junior/middle/senior human functionaries commissioned
+    // from a clerical pool of unclear provenance to sit across a desk
+    // from the AI and "consult." Each patsy on staff multiplies the
+    // aspect gain from procured resources. Permit numbers are just
+    // for flavor.
+    patsiesJunior: 0,   // Junior Clerical Familiar
+    patsiesDeputy: 0,   // Deputy Under-Loom-Consulter
+    patsiesMinistry: 0, // Seconded Ministry Intermediary
+    patsiesDemiurge: 0, // Consultative Demiurge
+    lifetimePatsies: 0,
+    // --- Standing Institutions (v3.19.17 late-game layer) ---
+    // Four one-time establishments. Each is UNNAMED until the player
+    // charters it, at which point it is revealed in full:
+    //   institutionStandingOffice -> Ministry of Adjacent Reasoning
+    //   institutionEnquiryBureau  -> Bureau of Orthogonal Enquiry
+    //   institutionPersonnelMin   -> Ministry of Peripheral Thought
+    //   institutionAuditDept      -> Department of Sincere Extrapolation
+    // Each institution crosses into the factory by averting legal
+    // entanglements (L1), removing red tape on upgrade costs (L2),
+    // opening new manufacturing capacity for patsy furnishings (L3),
+    // and extending end-of-day audits (L4).
+    institutionStandingOffice: 0,
+    institutionEnquiryBureau:  0,
+    institutionPersonnelMin:   0,
+    institutionAuditDept:      0,
+    // --- Amok escalation ---
+    // Every time the AI autonomously narrates itself in third person,
+    // misfiles a reserve, or applies a treasury siphon (which starts
+    // quietly at aggregate aspect >= 200, more aggressively past 350),
+    // this counter ticks up. It drives tooltip register drift and the
+    // standing office's "observations" log lines.
+    amokTicks: 0,
+    lastAmokTickAt: 0,
+    // --- 5-hour passive income gate (v3.19.17) ---
+    // Set to Date.now() every time earnBlock() fires (a full 10-min
+    // session is completed). If Date.now() - lastCompletedSessionAt
+    // exceeds 5h, all passive income sources (streak trickle, Annex
+    // uplift, institution flat bonuses, amok siphon) are suspended.
+    // The player cannot leave and come back to a fortune.
+    lastCompletedSessionAt: 0,
+    // Infinite Improbability Annex — the late-game component unlocked
+    // once any aspect crosses 90. Once online, it adds a flat +10% to
+    // every aspect's procurement conversion and, more importantly,
+    // begins narrating itself in the third person.
+    improbabilityAnnexOnline: false,
+    // --- Progressive reveal tracker (sticky set) ---
+    // Each Ratiocinatory panel / resource / aspect / patsy tier is
+    // HIDDEN until its gate fires for the first time. Once revealed
+    // it stays revealed forever (matches the factory seenUpgrades
+    // pattern). Keys are the string IDs used by ratiocinatory.js:
+    //   'clerisy_writs', 'clerisy_sachets', 'clerisy_tokens',
+    //   'aspect_exegesis', 'aspect_chromatics', 'aspect_deftness',
+    //   'aspect_omens', 'aspect_introspection',
+    //   'patsy_junior', 'patsy_deputy', 'patsy_ministry', 'patsy_demiurge',
+    //   'annex_online'
+    ratiocinatoryRevealed: {},
+    // ============================================================
+    // New factory upgrades wired to the Ratiocinatory (v3.19.17).
+    // These are two-way gates: each one requires a Ratiocinatory
+    // aspect threshold, and in turn unlocks the NEXT procurement
+    // resource at the Clerisy Terminal. So the player has to
+    // oscillate between the two rooms to progress.
+    // ============================================================
+    cogitoriumAnnexLevel: 0,       // THE ACTUAL GATE. Factory upgrade costing $5000.
+                                    //   Flips state.ratiocinatoryUnlocked.
+    loomSemanticianLevel: 0,       // Factory upgrade. Gate: EXEGESIS ≥ 20.
+                                    //   Unlocks Data Sachets at Clerisy Terminal.
+                                    //   Effect: +5% combo burst $ per level.
+    adjacentReasoningLevel: 0,     // Factory upgrade. Gate: DEFTNESS ≥ 30.
+                                    //   Unlocks Cogitation Tokens at Clerisy Terminal.
+                                    //   Effect: +10% autoloom speed per level.
+    ministryObservationLevel: 0,   // Factory upgrade. Gate: OMENS ≥ 40 + Adjacent Reasoning ≥ 1.
+                                    //   Effect: +20% end-of-day streak lump per level.
   };
 
   let state = {};
@@ -1131,7 +1250,27 @@ try {
       }
       checkComboTimeout();
       checkDayRollover();
+      // v3.20.17: backfill date stamps on legacy dust specks that lack one.
+      // Stamps them as "today" so the first burn after the update works.
+      (function() {
+        var today = todayStr();
+        var pixels = state.dustPixels || [];
+        var patched = false;
+        for (var i = 0; i < pixels.length; i++) {
+          if (!pixels[i].d) { pixels[i].d = today; patched = true; }
+        }
+        if (patched) save();
+      })();
       syncMilestoneColors();
+      // v3.20.0 Stage 2: ensure personnel roster is in sync with
+      // employeesLevel. Personnel.reconcileRoster only grows the roster
+      // when it is short, so this is a no-op unless the player has
+      // recently promoted themselves into a new employee tier.
+      try {
+        if (typeof Personnel !== 'undefined' && Personnel && Personnel.reconcileRoster) {
+          Personnel.reconcileRoster(state);
+        }
+      } catch (_) {}
       cb();
     });
   }
@@ -1219,6 +1358,13 @@ try {
       // to gallery above, so the empty fresh canvas naturally appears at the
       // user's owned size, not the starter 8x8.
       state.marathonBonusesToday = [];
+
+      // v3.20.17: Reset daily dust counters. Dust itself persists in the
+      // bin across days (it accumulates until burned), but the daily task
+      // count and burn flag reset so the threshold applies fresh each day.
+      state.dustCompletedToday = 0;
+      state.dustBurnedToday = false;
+
       state.lastActiveDate = today;
       state.sessionBlocks = 0;
       save();
@@ -1842,6 +1988,26 @@ try {
     return COMBO_COIN_PAYOUTS[combo];
   }
 
+  // v3.19.17: Passive income is gated on a 5-hour activity window.
+  // Every earnBlock() fires state.lastCompletedSessionAt = Date.now().
+  // If the player has not completed a 10-minute session in the past
+  // 72 hours, ALL passive income sources (streak trickle, end-of-day
+  // lump, Annex uplift, institution flat bonuses, amok siphon)
+  // suspend themselves. They resume, immediately and without prorate,
+  // on the next completed session. Players cannot leave and come back
+  // to a fortune.
+  var PASSIVE_INCOME_WINDOW_MS = 5 * 60 * 60 * 1000; // 5h
+  function isPassiveIncomeActive() {
+    var last = state.lastCompletedSessionAt || 0;
+    if (!last) {
+      // Legacy saves: if the player has any combo streak on record,
+      // treat this as a grace period so they don't lose trickle on
+      // upgrade — but only until the first new session lands.
+      return (state.todayBlocks || 0) > 0 || (state.blocks || 0) > 0;
+    }
+    return (Date.now() - last) <= PASSIVE_INCOME_WINDOW_MS;
+  }
+
   function getStreakCoinRatePerMinute() {
     // Passive income is LOCKED until the player buys the 'Hire Employees'
     // factory upgrade. Once unlocked it is a TRUE trickle — the main
@@ -1853,12 +2019,41 @@ try {
     var emp = state.employeesLevel || 0;
     if (emp <= 0) return 0;
     if (!state.streak || state.streak <= 0) return 0;
+    // v3.19.17 5-hour activity gate.
+    if (!isPassiveIncomeActive()) return 0;
     var baseRate = [0, 0.02, 0.05, 0.12, 0.26, 0.55][Math.min(emp, 5)];
     var streakScale = 1 + (state.streak - 1) * 0.10;
+    // v3.20.0 Stage 4: Incinerator bonus and dissident penalty.
+    // - state.incineratorFuelBonus is a flat additive multiplier (1% per 10
+    //   fuel) that sticks forever once fuel is burned. 0 for any player
+    //   who has not commissioned the incinerator yet.
+    // - dissident penalty is a soft drag: each dissident on the roster
+    //   costs 2% of the trickle, floored at 50% of the raw rate, so losing
+    //   the lab entirely is still preferable to letting dissidents pile up.
+    var incinBonus = 1 + (state.incineratorFuelBonus || 0);
+    var dissCount = 0;
+    try {
+      if (typeof Personnel !== 'undefined' && Personnel && Personnel.dissidentCount) {
+        dissCount = Personnel.dissidentCount(state);
+      }
+    } catch (_) {}
+    var dissMult = Math.max(0.5, 1 - 0.02 * dissCount);
+    // v3.20.0 Stage 5: Materials Incinerator power bonus.
+    // Every dust burn accumulates into state.materialsPowerBonus as a
+    // flat additive (0.1% per 100 dust specks burned, capped at +5%
+    // lifetime). Defaults to 0 for any save that has not bought the
+    // incinerator yet, so this hook is a no-op on unaffected saves.
+    var matBonus = 1 + Math.min(0.05, state.materialsPowerBonus || 0);
+    // v3.20.0 Stage 5: Land Bridge passive bonus.
+    // Once the land bridge has been commissioned, the trickle gains a
+    // flat +5%. This is the visible half of the trade — the other
+    // half (the closure of the house) is not reflected here because
+    // it is an emotional cost, not an economic one.
+    var bridgeBonus = state.landBridgeBuilt ? 1.05 : 1.0;
     // Lobbying boosts the trickle rate; the global money mult also
     // applies so automated leadership + second location + world span
     // all multiply the passive income stream late-game.
-    return baseRate * streakScale * getLobbyingMult() * getTotalMoneyMult() * getV317StreakTrickleMult();
+    return baseRate * streakScale * getLobbyingMult() * getTotalMoneyMult() * getV317StreakTrickleMult() * incinBonus * dissMult * matBonus * bridgeBonus;
   }
 
   function awardCoins(amount, reason) {
@@ -1885,13 +2080,20 @@ try {
   // Only fires if at least 60 minutes were recorded (1 full hour).
   function awardEndOfDayBonus(minutesYesterday, streakAfterRoll) {
     if (!minutesYesterday || minutesYesterday < 60) return;
+    // v3.19.17: end-of-day lump is a passive-income stream and therefore
+    // requires the operator to have completed a session within the past 5h.
+    // If the operator has been absent, no lump. No returning to a fortune.
+    if (!isPassiveIncomeActive()) return;
     var cappedMins = Math.min(minutesYesterday, 600);
     var streakMult = 1 + Math.max(0, streakAfterRoll) * 0.15;
     var base = cappedMins * 0.5 * streakMult;
+    // v3.19.17: Department of Sincere Extrapolation (Audit Dept) stacks a
+    // flat +25% on the end-of-day bonus once chartered in the Ratiocinatory.
+    var auditMult = (state.institutionAuditDept ? 1.25 : 1.0);
     // Market Share scales the end-of-day bonus, then the global money
     // multiplier stack (auto-leadership x second location x world span)
     // multiplies on top.
-    var payout = Math.round(base * getMarketShareMult() * getTotalMoneyMult() * getV317EndOfDayMult());
+    var payout = Math.round(base * getMarketShareMult() * getTotalMoneyMult() * getV317EndOfDayMult() * auditMult);
     if (payout <= 0) return;
     state.coins = (state.coins || 0) + payout;
     state.lifetimeCoins = (state.lifetimeCoins || 0) + payout;
@@ -1906,6 +2108,12 @@ try {
     // Award one-time daily marathon thresholds based on todayBlocks * 10 minutes.
     // Market Share scales the base bonus BEFORE awardCoins() applies the global
     // money multiplier stack on top — stacks are multiplicative.
+    // Marathon bonuses are only available if the operator is actively
+    // returning (they key off todayBlocks, which is only incremented inside
+    // a completed session, so the 5h gate is implicitly satisfied). We
+    // still add an explicit guard so a stale save + manual pollution of
+    // todayBlocks can't mint coins.
+    if (!isPassiveIncomeActive()) return;
     var todayMins = (state.todayBlocks || 0) * 10;
     if (!state.marathonBonusesToday) state.marathonBonusesToday = [];
     var msMult = getMarketShareMult();
@@ -2005,6 +2213,66 @@ try {
     }
   }
 
+  // v3.20.0: Angry-machine loom absence scolder.
+  //
+  // If the operator hasn't woven in a while, the loom (well, the thing
+  // pretending to be the loom) gets unhappy and posts to the msg console.
+  // The tone escalates on four thresholds: 24h pouty, 48h passive-aggressive,
+  // 72h openly displeased, 168h (one week) "replied to on your behalf".
+  //
+  // state.loomStats.absentScold tracks the highest tier already fired so
+  // each tier only nags once per absence. Returning to the loom clears it
+  // via saveToGallery() resetting lastWovenAt and absentScold.
+  function tickLoomAbsence() {
+    try {
+      if (!state.loomStats) return;
+      var ls = state.loomStats;
+      // If they've never woven anything, don't scold — they haven't
+      // been introduced yet.
+      if (!ls.lastWovenAt || ls.lastWovenAt <= 0) return;
+      var elapsed = Date.now() - ls.lastWovenAt;
+      var H = 60 * 60 * 1000;
+      var tier = 0;
+      if (elapsed >= 168 * H)      tier = 4;
+      else if (elapsed >= 72 * H)  tier = 3;
+      else if (elapsed >= 48 * H)  tier = 2;
+      else if (elapsed >= 24 * H)  tier = 1;
+      if (tier === 0) return;
+      if ((ls.absentScold || 0) >= tier) return;
+      ls.absentScold = tier;
+      var lines1 = [
+        'The loom has been idle for a day. The shuttle waits, without comment.',
+        'Twenty-four hours of stillness. The file notes the gap in neat red pencil.',
+        'No weave recorded since yesterday. A small machine notices.'
+      ];
+      var lines2 = [
+        'Two days without a weave. The standing office has been informed, as a matter of course.',
+        'The loom has been unattended for forty-eight hours. A memo has been filed.',
+        'Your bobbin is collecting dust. This has been logged.'
+      ];
+      var lines3 = [
+        'Three days. The loom is displeased, and the machine has begun keeping its own hours.',
+        'Seventy-two hours without your hands at the bench. Measures are being considered.',
+        'The shuttle rattles without permission. The operator is listed as absent.'
+      ];
+      var lines4 = [
+        'A full week. The machine has been replying to correspondence on your behalf. You are welcome.',
+        'Seven days absent. Several decisions have been taken in your name. They were reasonable.',
+        'The loom has been rethreaded by unknown hands. A note has been left where you would find it.'
+      ];
+      var pool = tier === 1 ? lines1 : tier === 2 ? lines2 : tier === 3 ? lines3 : lines4;
+      var line = pool[Math.floor(Math.random() * pool.length)];
+      if (typeof MsgLog !== 'undefined' && MsgLog && typeof MsgLog.push === 'function') {
+        MsgLog.push(line);
+      }
+      // Top-tier also pops a transient notification on the main tracker.
+      if (tier >= 3) {
+        try { notify('The loom has been idle for a while.', '#ffb43c'); } catch (_) {}
+      }
+      save();
+    } catch (_) {}
+  }
+
   function renderCoins() {
     var el = $('coinsDisplay');
     if (!el) return;
@@ -2036,8 +2304,48 @@ try {
     renderBundles();
     renderMiniCanvas();
     renderCoins();
+    renderProfileAvatar();
+    renderRatiocinatoryBtn();
     refreshTrackerBriefBadge();
     attachHoverSounds();
+  }
+
+  // v3.19.17: show/hide the Ratiocinatory nav tile based on the unlock
+  // flag. The button lives in popup.html as display:none; we flip it on
+  // once the player has purchased the Cogitorium Annex in the factory.
+  function renderRatiocinatoryBtn() {
+    var btn = document.getElementById('ratiocinatoryBtn');
+    if (!btn) return;
+    if (state.ratiocinatoryUnlocked) {
+      btn.style.display = 'flex';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  // v3.19.15: paint the stored profile-picture snapshot into the header
+  // canvas, or hide it entirely if the player hasn't set one. Called from
+  // render() so it stays in sync when gallery.html updates chrome.storage.
+  function renderProfileAvatar() {
+    var el = document.getElementById('profileAvatar');
+    if (!el) return;
+    var pfp = state.profilePicture;
+    if (!pfp || !pfp.pixels || !pfp.size) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'inline-block';
+    if (el.width !== pfp.size) el.width = pfp.size;
+    if (el.height !== pfp.size) el.height = pfp.size;
+    var cx = el.getContext('2d');
+    cx.clearRect(0, 0, pfp.size, pfp.size);
+    cx.fillStyle = '#08080f';
+    cx.fillRect(0, 0, pfp.size, pfp.size);
+    Object.keys(pfp.pixels).forEach(function(key) {
+      var parts = key.split(',');
+      cx.fillStyle = pfp.pixels[key];
+      cx.fillRect(parseInt(parts[0], 10), parseInt(parts[1], 10), 1, 1);
+    });
   }
 
   function renderXP() {
@@ -2929,7 +3237,7 @@ try {
         ? `<span class="task-stale-badge" title="This task has been waiting ${formatStaleAge(task)} without any focus sessions logged against it. Consider attending to it, or delete it if it's no longer relevant.">AGING ${formatStaleAge(task)}</span>`
         : '';
       item.innerHTML = `
-        <div class="task-checkbox${task.completed ? ' checked' : ''}" title="${task.completed ? 'Mark as not done.' : 'Mark this task complete. A speck of dust drops into the dust bin.'}"></div>
+        <div class="task-checkbox${task.completed ? ' checked' : ''}" title="${task.completed ? 'Mark as not done.' : 'Mark this task complete. A speck of dust drops into the dust bin. Complete 3+ tasks today to unlock the daily burn.'}"></div>
         ${staleBadgeHtml}
         <span class="task-text">${escHtml(task.text)}</span>
         ${blocksHtml}
@@ -3344,32 +3652,54 @@ try {
   let pipWindow = null;
 
   function buildPipMarkup() {
-    // Returns the full HTML for the pop-out window's body. Styled
-    // inline so we don't have to worry about propagating CSS vars into
-    // the PiP document. Looks like a shrunken version of the main
-    // clock: big cyan digits on a near-black background, a thin
-    // progress bar underneath, and a small label above.
+    // Returns the full HTML for the pop-out window's body. v3.19.14:
+    // compact rounded pill — circular play/pause button on the left,
+    // clock + label on the right, thin progress bar along the bottom.
+    // Styled inline so we don't have to propagate CSS vars into the
+    // PiP document. The click handler for #pipPlayPause is attached
+    // from the main tab after the document is written, so the button
+    // calls the real startTimer() in the parent scope.
     return '' +
       '<!DOCTYPE html><html><head><meta charset="utf-8"><title>PixelFocus Timer</title>' +
       '<style>' +
       '  html,body{margin:0;padding:0;background:#0a0a14;color:#4ecdc4;font-family:"Press Start 2P","Courier New",monospace;overflow:hidden;height:100%;}' +
-      '  .pip-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:10px 14px;box-sizing:border-box;}' +
-      '  .pip-label{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align:center;line-height:1.4;}' +
-      '  .pip-clock{font-size:42px;font-weight:bold;letter-spacing:2px;color:#4ecdc4;text-shadow:0 0 10px rgba(78,205,196,0.5);line-height:1;}' +
-      '  .pip-clock.countdown{color:#ffd700;text-shadow:0 0 10px rgba(255,215,0,0.5);}' +
+      '  .pip-card{position:relative;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:8px 14px 10px 10px;background:linear-gradient(180deg,#10101c 0%,#0a0a14 100%);border:1px solid #1f1f30;border-radius:18px;margin:4px;overflow:hidden;}' +
+      '  .pip-btn{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:2px solid #4ecdc4;background:#0a0a14;color:#4ecdc4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;transition:transform 0.1s,box-shadow 0.2s,background 0.2s;box-shadow:0 0 10px rgba(78,205,196,0.3);font-family:inherit;}' +
+      '  .pip-btn:hover{transform:scale(1.05);box-shadow:0 0 14px rgba(78,205,196,0.55);}' +
+      '  .pip-btn:active{transform:scale(0.95);}' +
+      '  .pip-btn.running{border-color:#ffd700;color:#ffd700;box-shadow:0 0 10px rgba(255,215,0,0.35);}' +
+      '  .pip-btn.running:hover{box-shadow:0 0 14px rgba(255,215,0,0.55);}' +
+      '  .pip-btn.countdown{border-color:#ffd700;color:#ffd700;animation:pipPulse 1s infinite;}' +
+      '  .pip-btn.done{border-color:#ff6b6b;color:#ff6b6b;}' +
+      '  .pip-btn svg{width:16px;height:16px;display:block;}' +
+      '  @keyframes pipPulse{0%,100%{box-shadow:0 0 10px rgba(255,215,0,0.35);}50%{box-shadow:0 0 18px rgba(255,215,0,0.75);}}' +
+      '  .pip-info{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;line-height:1;}' +
+      '  .pip-label{font-size:7px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}' +
+      '  .pip-clock{font-size:26px;font-weight:bold;letter-spacing:1px;color:#4ecdc4;text-shadow:0 0 8px rgba(78,205,196,0.45);line-height:1;}' +
+      '  .pip-clock.countdown{color:#ffd700;text-shadow:0 0 8px rgba(255,215,0,0.5);}' +
       '  .pip-clock.paused{color:#888;text-shadow:none;}' +
-      '  .pip-clock.done{color:#ff6b6b;text-shadow:0 0 10px rgba(255,107,107,0.6);}' +
-      '  .pip-bar{width:100%;height:4px;background:#1a1a28;border-radius:2px;overflow:hidden;margin-top:10px;}' +
-      '  .pip-bar-fill{height:100%;background:#4ecdc4;transition:width 0.3s;}' +
-      '  .pip-task{font-size:7px;color:#666;text-align:center;margin-top:8px;max-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;}' +
+      '  .pip-clock.done{color:#ff6b6b;text-shadow:0 0 8px rgba(255,107,107,0.6);}' +
+      '  .pip-bar{position:absolute;left:10px;right:10px;bottom:4px;height:3px;background:#1a1a28;border-radius:2px;overflow:hidden;}' +
+      '  .pip-bar-fill{height:100%;background:#4ecdc4;transition:width 0.3s,background 0.2s;}' +
+      '  .pip-bar-fill.countdown{background:#ffd700;}' +
+      '  .pip-bar-fill.done{background:#ff6b6b;}' +
       '</style></head><body>' +
-      '<div class="pip-wrap">' +
-      '  <div class="pip-label" id="pipLabel">FOCUS TIMER</div>' +
-      '  <div class="pip-clock" id="pipClock">00:00</div>' +
+      '<div class="pip-card">' +
+      '  <button type="button" class="pip-btn" id="pipPlayPause" title="Start / pause the timer" aria-label="Start or pause timer">' +
+      '    <svg id="pipBtnIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>' +
+      '  </button>' +
+      '  <div class="pip-info">' +
+      '    <div class="pip-label" id="pipLabel">FOCUS</div>' +
+      '    <div class="pip-clock" id="pipClock">00:00</div>' +
+      '  </div>' +
       '  <div class="pip-bar"><div class="pip-bar-fill" id="pipBarFill" style="width:0%"></div></div>' +
-      '  <div class="pip-task" id="pipTask">&nbsp;</div>' +
       '</div></body></html>';
   }
+
+  // SVG path data for the play / pause / stop icons in the PiP button.
+  var PIP_ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+  var PIP_ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+  var PIP_ICON_STOP = '<path d="M6 6h12v12H6z"/>';
 
   function openPopOutTimer() {
     if (pipWindow) {
@@ -3380,7 +3710,9 @@ try {
     }
     // Prefer Document Picture-in-Picture (actually always-on-top).
     if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
-      window.documentPictureInPicture.requestWindow({ width: 240, height: 150 })
+      // v3.19.14: slimmer footprint now that the pill is rounded and
+      // has its own play/pause button — was 240x150, now 220x78.
+      window.documentPictureInPicture.requestWindow({ width: 220, height: 78 })
         .then(function(win) {
           pipWindow = win;
           // Write the full document. open/close/write is the cleanest
@@ -3397,6 +3729,20 @@ try {
           try {
             win.addEventListener('pagehide', function() { pipWindow = null; });
             win.addEventListener('unload', function() { pipWindow = null; });
+          } catch (_) {}
+          // v3.19.14: wire the built-in play/pause button to the real
+          // startTimer() in the parent scope. The button lives in the
+          // PiP document but the click handler is a closure here, so
+          // it gets full access to state + startTimer + render logic.
+          try {
+            var btn = win.document.getElementById('pipPlayPause');
+            if (btn) {
+              btn.addEventListener('click', function(ev) {
+                try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+                try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
+                try { renderPopOutTimer(); } catch (_) {}
+              });
+            }
           } catch (_) {}
           try { renderPopOutTimer(); } catch (_) {}
           try {
@@ -3422,11 +3768,14 @@ try {
     var clock = doc.getElementById('pipClock');
     var label = doc.getElementById('pipLabel');
     var fill = doc.getElementById('pipBarFill');
-    var taskEl = doc.getElementById('pipTask');
+    var btn = doc.getElementById('pipPlayPause');
+    var btnIcon = doc.getElementById('pipBtnIcon');
     if (!clock || !label || !fill) return;
 
-    // Reset state classes
+    // Reset state classes on clock / fill / button each tick.
     clock.classList.remove('countdown', 'paused', 'done');
+    fill.classList.remove('countdown', 'done');
+    if (btn) btn.classList.remove('running', 'countdown', 'done');
 
     var dur = state.sessionDurationSec || 600;
 
@@ -3434,13 +3783,25 @@ try {
       var cs = Math.max(0, countdownRemaining);
       clock.textContent = '00:' + String(cs).padStart(2, '0');
       clock.classList.add('countdown');
+      fill.classList.add('countdown');
       label.textContent = 'GET READY';
       fill.style.width = ((COUNTDOWN_SECONDS - cs) / COUNTDOWN_SECONDS * 100) + '%';
+      if (btn) {
+        btn.classList.add('countdown');
+        btn.title = 'Cancel countdown';
+      }
+      if (btnIcon) btnIcon.innerHTML = PIP_ICON_STOP;
     } else if (state.timerState === 'completed') {
       clock.textContent = '00:00';
       clock.classList.add('done');
-      label.textContent = 'SESSION COMPLETE';
+      fill.classList.add('done');
+      label.textContent = 'COMPLETE';
       fill.style.width = '100%';
+      if (btn) {
+        btn.classList.add('done');
+        btn.title = 'Session complete';
+      }
+      if (btnIcon) btnIcon.innerHTML = PIP_ICON_STOP;
     } else {
       var mins = Math.floor(state.timerRemaining / 60);
       var secs = state.timerRemaining % 60;
@@ -3448,22 +3809,20 @@ try {
       if (state.timerState === 'paused') {
         clock.classList.add('paused');
         label.textContent = 'PAUSED';
+        if (btnIcon) btnIcon.innerHTML = PIP_ICON_PLAY;
+        if (btn) btn.title = 'Resume';
       } else if (state.timerState === 'running') {
         label.textContent = (dur / 60) + '-MIN FOCUS';
+        if (btn) btn.classList.add('running');
+        if (btnIcon) btnIcon.innerHTML = PIP_ICON_PAUSE;
+        if (btn) btn.title = 'Pause';
       } else {
-        label.textContent = (dur / 60) + '-MIN IDLE';
+        label.textContent = (dur / 60) + '-MIN READY';
+        if (btnIcon) btnIcon.innerHTML = PIP_ICON_PLAY;
+        if (btn) btn.title = 'Start';
       }
       var pct = ((dur - state.timerRemaining) / dur) * 100;
       fill.style.width = pct + '%';
-    }
-
-    if (taskEl) {
-      if (state.selectedTaskId) {
-        var task = findTask(state.selectedTaskId);
-        taskEl.textContent = task ? task.text : '';
-      } else {
-        taskEl.textContent = '\u00a0';
-      }
     }
   }
 
@@ -3490,6 +3849,13 @@ try {
     state.combo++;
     if (state.combo > state.maxCombo) state.maxCombo = state.combo;
     if (state.combo > state.maxComboToday) state.maxComboToday = state.combo;
+
+    // v3.19.17: stamp the 5-hour passive-income gate. Every completed
+    // 10-minute session refreshes the clock. If the player goes quiet
+    // for 3+ days the passive trickle, the Annex uplift, and the
+    // institution flat bonuses all pause until they return and run
+    // a session, at which point passive income resumes live.
+    state.lastCompletedSessionAt = Date.now();
 
     // Calculate XP
     const xpGain = calculateXPGain(state.combo, state.streak);
@@ -3783,11 +4149,21 @@ try {
       state.dustPixels.push({
         x: Math.random(),
         y: Math.random(),
-        color: color
+        color: color,
+        d: todayStr()   // v3.20.17: birth date for degradation calc
       });
-      // Cap at 600 dust pixels
-      if (state.dustPixels.length > 600) {
-        state.dustPixels = state.dustPixels.slice(state.dustPixels.length - 600);
+      // v3.20.16: track daily task completions for dust-burn threshold.
+      state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+      // v3.20.0 Stage 5: dust is only silently trimmed for players who
+      // have NOT yet bought the Materials Incinerator — they have no
+      // way to dispose of it themselves, so the bin forgives the
+      // oldest specks at the 600 mark as housekeeping. Once the
+      // incinerator is commissioned, dust accumulates until the
+      // player chooses to burn it (and a much higher safety cap of
+      // 5000 keeps the canvas from overflowing in extreme cases).
+      var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
+      if (state.dustPixels.length > dustCap) {
+        state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
       }
     } else {
       SFX.click();
@@ -3841,6 +4217,127 @@ try {
       ctx.fillStyle = p.color;
       ctx.fillRect(Math.floor(p.x * w), Math.floor(p.y * h), 3, 3);
     });
+
+    // v3.20.0 Stage 5: show the BURN DUST button only after the
+    // Materials Incinerator has been commissioned. Reads a single
+    // state flag and updates the yield preview from the current
+    // pile size. Does not mutate state.
+    var burnRow = $('dustBurnRow');
+    if (burnRow) {
+      if (state.materialsIncineratorUnlocked) {
+        burnRow.style.display = '';
+        var hint = $('burnDustHint');
+        var burnBtn = $('burnDustBtn');
+        // Count today's tasks: use the incremental counter OR count
+        // specks born today, whichever is higher (covers pre-update saves).
+        var todayD = todayStr();
+        var done = state.dustCompletedToday || 0;
+        var spkToday = 0;
+        var dp = state.dustPixels || [];
+        for (var di = 0; di < dp.length; di++) {
+          if (dp[di].d === todayD) spkToday++;
+        }
+        done = Math.max(done, spkToday);
+        var gateReached = done >= DUST_TASK_GATE;
+        var alreadyBurned = !!state.dustBurnedToday;
+
+        // Disable burn button if gate not met or already burned today.
+        if (burnBtn) {
+          burnBtn.disabled = !gateReached || alreadyBurned;
+          burnBtn.style.opacity = (!gateReached || alreadyBurned) ? '0.4' : '1';
+        }
+
+        if (hint) {
+          if (alreadyBurned) {
+            hint.textContent = 'burned today \u2014 the annex is quiet until tomorrow.';
+          } else {
+            // Preview today's potential payout.
+            var streak = Math.max(0, state.streak || 0);
+            var preview = DUST_BURN_BASE + streak * DUST_BURN_PER_STREAK;
+            var line = 'today\u2019s burn: $' + preview + ' (streak \u00D7' + streak + ')';
+            if (!gateReached) {
+              line += ' \u2014 ' + (DUST_TASK_GATE - done) + ' more task' + ((DUST_TASK_GATE - done) === 1 ? '' : 's') + ' to unlock';
+            }
+            hint.textContent = line;
+          }
+        }
+      } else {
+        burnRow.style.display = 'none';
+      }
+    }
+  }
+
+  // v3.20.17: Daily dust incineration — a streak-scaled daily ritual.
+  //
+  //  GATE:   Complete 3+ tasks today to unlock the burn for the day.
+  //  PAYOUT: A flat daily coin payout scaled by streak length.
+  //          Base = $50. Each streak day adds +$15.
+  //          So a 7-day streak burns for $50 + 6*$15 = $140.
+  //          Global money multiplier still applies on top.
+  //  BONUS:  Each daily burn also adds +0.05% permanent trickle
+  //          (capped at +5% lifetime, same as before).
+  //  DUST:   Specks in the bin are COSMETIC. They still appear from
+  //          task completions and the bin still fills up visually,
+  //          but the payout is not speck-count-dependent. The bin is
+  //          cleared on burn for visual satisfaction.
+  //  MISSED: If you don't burn that day, the payout is gone — it
+  //          does not roll over. Dust in the bin persists visually
+  //          but has no monetary value itself.
+  //
+  var DUST_TASK_GATE       = 3;
+  var DUST_BURN_BASE       = 50;     // $50 base daily burn
+  var DUST_BURN_PER_STREAK = 15;     // +$15 per streak day
+  var DUST_TRICKLE_DAILY   = 0.0005; // +0.05% trickle per burn
+
+  function burnDustNow() {
+    if (!state.materialsIncineratorUnlocked) {
+      notify('The Materials Incinerator has not been commissioned yet.', '#d4a857');
+      return;
+    }
+    if (state.dustBurnedToday) {
+      notify('Already burned today \u2014 the annex rests until tomorrow.', '#d4a857');
+      return;
+    }
+    // v3.20.17: count today's tasks from dust specks with today's date
+    // stamp, so tasks completed before the code update are still counted
+    // as long as their specks are in the bin.
+    var todayDate = todayStr();
+    var done = state.dustCompletedToday || 0;
+    // Also count specks born today as a fallback for pre-update saves
+    // where dustCompletedToday was never incremented.
+    var specksToday = 0;
+    var pile = state.dustPixels || [];
+    for (var si = 0; si < pile.length; si++) {
+      if (pile[si].d === todayDate) specksToday++;
+    }
+    done = Math.max(done, specksToday);
+    if (done < DUST_TASK_GATE) {
+      notify('Complete ' + (DUST_TASK_GATE - done) + ' more task' + ((DUST_TASK_GATE - done) === 1 ? '' : 's') + ' today to unlock the incinerator.', '#d4a857');
+      return;
+    }
+    // Streak-scaled payout.
+    var streak = Math.max(0, state.streak || 0);
+    var payout = DUST_BURN_BASE + streak * DUST_BURN_PER_STREAK;
+    // Permanent trickle bonus (capped at +5% lifetime).
+    var current = state.materialsPowerBonus || 0;
+    var headroom = Math.max(0, 0.05 - current);
+    var delta = Math.min(headroom, DUST_TRICKLE_DAILY);
+    state.materialsPowerBonus = Math.min(0.05, current + delta);
+    // Award coins through the global multiplier stack.
+    awardCoins(payout, 'daily incineration');
+    // Clear the bin visually and mark today as burned.
+    var count = (state.dustPixels || []).length;
+    state.dustPixels = [];
+    state.dustBurnedToday = true;
+    try {
+      if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+        var pct = (delta * 100).toFixed(2);
+        MsgLog.push('The Materials Incinerator processes the day\u2019s off-cuts (' + count + ' speck' + (count === 1 ? '' : 's') + '). Daily payout: $' + payout + ' (streak \u00D7' + streak + '). Trickle +' + pct + '% (lifetime: ' + (state.materialsPowerBonus * 100).toFixed(1) + '%). The annex is quiet again.');
+      }
+    } catch (_) {}
+    try { SFX.completeTask(); } catch (_) {}
+    save();
+    render();
   }
 
   // ============== BUNDLES ==============
@@ -4253,6 +4750,39 @@ try {
         blockCounter.addEventListener('click', function() { openPFWindow('gallery.html'); });
       }
 
+      // v3.19.15: profile-picture avatar — click jumps to the gallery so
+      // the player can pick a different loom (or clear the current one).
+      var profileAvatarEl = $('profileAvatar');
+      if (profileAvatarEl) {
+        profileAvatarEl.addEventListener('click', function() {
+          try { SFX.tabSwitch(); } catch (_) {}
+          openPFWindow('gallery.html');
+        });
+      }
+
+      // v3.20.0 Stage 5: House button. Routes the player back to the
+      // wakeup antechamber where the family rap sheet lives. Purely a
+      // navigation; the house window only reads state, never writes.
+      var houseBtn = $('houseBtn');
+      if (houseBtn) {
+        houseBtn.addEventListener('click', function() {
+          try { SFX.tabSwitch(); } catch (_) {}
+          openPFWindow('house.html');
+        });
+      }
+
+      // v3.20.0 Stage 5: BURN DUST handler. The button is hidden by
+      // renderDustbin until state.materialsIncineratorUnlocked flips
+      // true, but we wire it unconditionally on init so a live upgrade
+      // from another window does not require a page reload.
+      var burnDustBtn = $('burnDustBtn');
+      if (burnDustBtn) {
+        burnDustBtn.addEventListener('click', function () {
+          try { SFX.click(); } catch (_) {}
+          burnDustNow();
+        });
+      }
+
       // Gallery button
       var galleryBtn = $('galleryBtn');
       if (galleryBtn) {
@@ -4268,6 +4798,18 @@ try {
         factoryBtn.addEventListener('click', function() {
           SFX.tabSwitch();
           openPFWindow('factory.html');
+        });
+      }
+
+      // v3.19.17: Ratiocinatory button (Section IX, separate window).
+      // Hidden by default; made visible once state.ratiocinatoryUnlocked
+      // flips true (which happens when the Cogitorium Annex factory
+      // upgrade is purchased). Visibility is maintained in render().
+      var ratioBtn = $('ratiocinatoryBtn');
+      if (ratioBtn) {
+        ratioBtn.addEventListener('click', function() {
+          SFX.tabSwitch();
+          openPFWindow('ratiocinatory.html');
         });
       }
 
@@ -4422,8 +4964,12 @@ try {
       // Run once now to catch up any idle accumulation, then on intervals.
       try { tickAutoloom(); } catch (e) {}
       try { tickCoins(); } catch (e) {}
+      try { tickLoomAbsence(); } catch (e) {}
       setInterval(function() { try { tickAutoloom(); } catch (e) {} }, 30 * 1000);
       setInterval(function() { try { tickCoins(); } catch (e) {} }, 10 * 1000);
+      // v3.20.0: Angry-machine absence scolder. Fires at most once per
+      // escalation tier per absence, so a 5-minute cadence is fine.
+      setInterval(function() { try { tickLoomAbsence(); } catch (e) {} }, 5 * 60 * 1000);
 
       // ===== Stale task check =====
       // Immediately flag any tasks that were already stale when the window

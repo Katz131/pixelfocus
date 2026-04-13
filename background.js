@@ -35,6 +35,10 @@ function openPixelFocusWindow(htmlPath) {
   });
 }
 
+// v3.20.3 — The toolbar icon opens the to-do list (popup.html) again.
+// The House window still exists and is reachable via its nav buttons from
+// the factory, loom, and ratiocinatory, but it is no longer the wakeup
+// screen. This is a pure routing change; saved state is not touched.
 chrome.action.onClicked.addListener(function() {
   openPixelFocusWindow('popup.html');
 });
