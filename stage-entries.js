@@ -16,7 +16,7 @@
  *   {
  *     id:            'tracker-s0',                 // stable unique id, also used as seen/unlocked key
  *     label:         'Standing Brief',             // short label shown in the nav strip ("Entry 1 / 5 — Standing Brief")
- *     author:        'PixelFocus Industries \u2014 Management',
+ *     author:        'Todo of the Loom Industries \u2014 Management',
  *     stampLead:     'PIXELFOCUS INDUSTRIES \u00b7 EST. TODAY',  // tiny uppercase lede above the heading
  *     heading:       'Welcome to the Master Loom', // big colored heading
  *     bodyHTML:      '<p>...</p><p>...</p>',       // the paragraphs, pre-rendered as HTML (trusted, we author it)
@@ -48,7 +48,7 @@
       {
         id: 'tracker-s0',
         label: 'Standing Brief',
-        author: 'PixelFocus Industries \u2014 Management',
+        author: 'Todo of the Loom Industries \u2014 Management',
         stampLead: 'PIXELFOCUS INDUSTRIES \u00b7 EST. TODAY',
         heading: 'Welcome to the Master Loom',
         bodyHTML:
@@ -72,7 +72,7 @@
       {
         id: 'tracker-s1',
         label: 'Addendum I \u2014 Rhythms',
-        author: 'PixelFocus Industries \u2014 Management',
+        author: 'Todo of the Loom Industries \u2014 Management',
         stampLead: 'PIXELFOCUS INDUSTRIES \u00b7 ADDENDUM I',
         heading: 'On the Rhythms of the Loom',
         bodyHTML:
@@ -94,7 +94,7 @@
       {
         id: 'tracker-s2',
         label: 'Addendum II \u2014 Patterns',
-        author: 'PixelFocus Industries \u2014 Management',
+        author: 'Todo of the Loom Industries \u2014 Management',
         stampLead: 'PIXELFOCUS INDUSTRIES \u00b7 ADDENDUM II',
         heading: 'Patterns Emerge',
         bodyHTML:
@@ -116,7 +116,7 @@
       {
         id: 'tracker-s3',
         label: 'Directive III \u2014 Recalibration',
-        author: 'PixelFocus Industries \u2014 Operations',
+        author: 'Todo of the Loom Industries \u2014 Operations',
         stampLead: 'PIXELFOCUS INDUSTRIES \u00b7 DIRECTIVE III',
         heading: 'Recalibration',
         bodyHTML:

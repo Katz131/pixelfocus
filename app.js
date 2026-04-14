@@ -625,6 +625,13 @@ try {
     return upgrades;
   }
 
+  // Sentinel project id for the "ALL" tab — a pseudo-project that displays
+  // every task from every real project in one combined list. Never stored
+  // in state.projects; recognised at render time. Adding a task while ALL
+  // is active routes the new task to state.lastRealProject (or the first
+  // real project, as a fallback).
+  const ALL_PROJECT_ID = '__all__';
+
   // ============== STATE ==============
   const DEFAULT_STATE = {
     projects: [{ id: 'default', name: 'General' }],
@@ -2525,6 +2532,58 @@ try {
 
     wrap.innerHTML = '';
 
+    // ---- Always-visible ALL tab (leftmost, never overflows) ----
+    // A pseudo-project. Shows the combined count of open tasks across every
+    // real project. Clicking it sets state.activeProject to the sentinel and
+    // renderTasks flattens the task list. This tab is inserted first and is
+    // exempt from the overflow hide pass so the player can always jump back
+    // to the combined view without opening the dropdown.
+    (function buildAllTab() {
+      var totalOpen = 0;
+      var totalStale = 0;
+      projects.forEach(function(p) {
+        var arr = state.tasks[p.id] || [];
+        totalOpen += arr.filter(function(t) { return !t.completed; }).length;
+        totalStale += arr.filter(function(t) { return isTaskStale(t); }).length;
+      });
+      var isAllActive = activeId === ALL_PROJECT_ID;
+
+      var allEl = document.createElement('div');
+      allEl.className = 'tab' + (isAllActive ? ' active' : '');
+      allEl.setAttribute('data-project-id', ALL_PROJECT_ID);
+      allEl.title = (isAllActive ? '[active] ' : '') + 'ALL \u2014 every open task from every project in one list. ' + totalOpen + ' open task' + (totalOpen === 1 ? '' : 's') + ' across ' + projects.length + ' project' + (projects.length === 1 ? '' : 's') + (totalStale > 0 ? ' (' + totalStale + ' aging)' : '') + '.';
+
+      var allName = document.createElement('span');
+      allName.className = 'tab-name';
+      allName.textContent = 'ALL';
+      allEl.appendChild(allName);
+
+      var allCount = document.createElement('span');
+      allCount.className = 'task-count';
+      allCount.textContent = totalOpen;
+      allCount.title = totalOpen + ' total open task' + (totalOpen === 1 ? '' : 's') + ' across every project.';
+      allEl.appendChild(allCount);
+
+      if (totalStale > 0) {
+        var allStale = document.createElement('span');
+        allStale.className = 'tab-stale-mark';
+        allStale.textContent = '!';
+        allStale.title = totalStale + ' aging task' + (totalStale === 1 ? '' : 's') + ' across all projects.';
+        allEl.appendChild(allStale);
+      }
+
+      if (!isAllActive) {
+        allEl.style.cursor = 'pointer';
+        allEl.addEventListener('click', function() {
+          SFX.tabSwitch();
+          state.activeProject = ALL_PROJECT_ID;
+          save(); render();
+        });
+      }
+
+      wrap.appendChild(allEl);
+    })();
+
     // ---- Build one tab element per project (all initially inserted inline) ----
     // NOTE: `projects` here is the SHUFFLED display order from
     // projectsInDisplayOrder(), not state.projects. The shuffle was decided
@@ -2578,6 +2637,7 @@ try {
         el.addEventListener('click', function() {
           SFX.tabSwitch();
           state.activeProject = p.id;
+          state.lastRealProject = p.id;
           save(); render();
         });
       }
@@ -2604,8 +2664,14 @@ try {
       // Snapshot each tab's natural width so we can plan the fit.
       var widths = tabEls.map(function(t) { return t.el.offsetWidth; });
 
+      // The ALL pseudo-tab sits at the very start of wrap and is always
+      // visible (never overflowed), so its width is already consumed before
+      // any project tabs are counted. Reserve it up front.
+      var allTabEl = wrap.querySelector('.tab[data-project-id="' + ALL_PROJECT_ID + '"]');
+      var reserved = allTabEl ? allTabEl.offsetWidth : 0;
+
       // Walk left to right, adding widths. Anything beyond wrapWidth overflows.
-      var used = 0;
+      var used = reserved;
       var hiddenIdx = [];
       for (var i = 0; i < tabEls.length; i++) {
         if (used + widths[i] <= wrapWidth) {
@@ -2682,6 +2748,7 @@ try {
           e.stopPropagation();
           SFX.tabSwitch();
           state.activeProject = p.id;
+          state.lastRealProject = p.id;
           closeTabsDropdown();
           save(); render();
         });
@@ -2849,15 +2916,58 @@ try {
 
     if (sub) {
       sub.textContent = list.length + ' task' + (list.length === 1 ? ' has' : 's have') +
-        ' been untouched for 2+ days with no focus time logged. Delete ' +
-        (list.length === 1 ? 'it' : 'them all') + '?';
+        ' been untouched for 2+ days with no focus time logged. Uncheck any you want to keep, then DELETE SELECTED.';
     }
+
+    // Per-row selection state. Keyed by task.id; every task starts selected
+    // (checked) so the default behaviour matches the old "delete all" flow —
+    // one click of DELETE SELECTED removes everything, same as before.
+    var selected = {};
+    list.forEach(function(entry) { selected[entry.task.id] = true; });
+
+    // Forward declarations so handlers can reference each other.
+    var freshDelete, freshKeep, updateDeleteBtn, headerCheckbox;
 
     // Build the list of ancient tasks
     listEl.innerHTML = '';
+
+    // Header row: select / deselect all toggle.
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 4px 8px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;';
+    headerCheckbox = document.createElement('input');
+    headerCheckbox.type = 'checkbox';
+    headerCheckbox.checked = true;
+    headerCheckbox.style.cssText = 'cursor:pointer;accent-color:#ffb43c;flex-shrink:0;';
+    headerCheckbox.title = 'Toggle all. Check to select every task; uncheck to clear every task.';
+    var headerLabel = document.createElement('div');
+    headerLabel.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:var(--text-dim);';
+    headerLabel.textContent = 'SELECT ALL';
+    header.appendChild(headerCheckbox);
+    header.appendChild(headerLabel);
+    listEl.appendChild(header);
+
+    // Rebind label click to toggle too — easier target.
+    headerLabel.style.cursor = 'pointer';
+    headerLabel.addEventListener('click', function() {
+      headerCheckbox.checked = !headerCheckbox.checked;
+      headerCheckbox.dispatchEvent(new Event('change'));
+    });
+
+    // Track every row checkbox so the header can set them all at once.
+    var rowCheckboxes = [];
+
     list.forEach(function(entry) {
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);';
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);cursor:pointer;';
+      row.title = 'Click anywhere on this row to toggle whether it will be deleted.';
+
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.style.cssText = 'margin-top:3px;cursor:pointer;accent-color:#ffb43c;flex-shrink:0;';
+      cb.title = 'Checked = this task will be deleted. Uncheck to keep it.';
+      rowCheckboxes.push(cb);
+
       var left = document.createElement('div');
       left.style.cssText = 'flex:1;min-width:0;';
       var text = document.createElement('div');
@@ -2870,20 +2980,73 @@ try {
       meta.title = 'Project: ' + entry.projectName + '. Added ' + formatStaleAge(entry.task) + ' ago with no focus time logged.';
       left.appendChild(text);
       left.appendChild(meta);
+
       var age = document.createElement('span');
       age.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;padding:2px 5px;border-radius:3px;background:rgba(255,180,60,0.18);border:1px solid #c68a1e;color:#ffb43c;flex-shrink:0;white-space:nowrap;align-self:flex-start;margin-top:2px;';
       age.textContent = formatStaleAge(entry.task);
       age.title = 'Abandoned for ' + formatStaleAge(entry.task) + '.';
+
+      row.appendChild(cb);
       row.appendChild(left);
       row.appendChild(age);
+
+      // Clicking anywhere on the row (outside the checkbox itself) toggles
+      // the checkbox. Keeps the touch target generous.
+      row.addEventListener('click', function(e) {
+        if (e.target === cb) return;
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+      });
+
+      cb.addEventListener('change', function() {
+        selected[entry.task.id] = !!cb.checked;
+        // Sync header checkbox to reflect overall state.
+        var total = rowCheckboxes.length;
+        var on = rowCheckboxes.filter(function(x) { return x.checked; }).length;
+        headerCheckbox.checked = (on === total);
+        headerCheckbox.indeterminate = (on > 0 && on < total);
+        if (typeof updateDeleteBtn === 'function') updateDeleteBtn();
+      });
+
       listEl.appendChild(row);
     });
 
+    headerCheckbox.addEventListener('change', function() {
+      var on = !!headerCheckbox.checked;
+      headerCheckbox.indeterminate = false;
+      rowCheckboxes.forEach(function(cb) {
+        if (cb.checked !== on) {
+          cb.checked = on;
+          cb.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
     // Wire buttons — replaceWith clones to clear any old listeners
-    var freshKeep = keepBtn.cloneNode(true);
+    freshKeep = keepBtn.cloneNode(true);
     keepBtn.parentNode.replaceChild(freshKeep, keepBtn);
-    var freshDelete = deleteBtn.cloneNode(true);
+    freshDelete = deleteBtn.cloneNode(true);
     deleteBtn.parentNode.replaceChild(freshDelete, deleteBtn);
+
+    // Button label reflects the current selection count so the user
+    // knows exactly how many will be deleted.
+    updateDeleteBtn = function() {
+      var count = rowCheckboxes.filter(function(cb) { return cb.checked; }).length;
+      if (count === 0) {
+        freshDelete.textContent = 'DELETE NONE';
+        freshDelete.disabled = true;
+        freshDelete.style.opacity = '0.45';
+        freshDelete.style.cursor = 'not-allowed';
+        freshDelete.title = 'Nothing selected. Tick at least one task, or press KEEP THEM.';
+      } else {
+        freshDelete.textContent = 'DELETE ' + count;
+        freshDelete.disabled = false;
+        freshDelete.style.opacity = '';
+        freshDelete.style.cursor = '';
+        freshDelete.title = 'Permanently delete the ' + count + ' ticked task' + (count === 1 ? '' : 's') + '. This cannot be undone.';
+      }
+    };
+    updateDeleteBtn();
 
     freshKeep.addEventListener('click', function() {
       closeAncientPurgeModal();
@@ -2897,14 +3060,28 @@ try {
     });
 
     freshDelete.addEventListener('click', function() {
-      var deleted = purgeAncientTasks(ancientPurgeCurrentList || []);
+      if (freshDelete.disabled) return;
+      var toDelete = (ancientPurgeCurrentList || []).filter(function(entry) {
+        return selected[entry.task.id];
+      });
+      var kept = (ancientPurgeCurrentList || []).length - toDelete.length;
+      var deleted = purgeAncientTasks(toDelete);
       closeAncientPurgeModal();
-      state.ancientPurgeDismissedAt = 0; // reset since there are none left
+      // If the user chose to keep some, treat it like a partial dismissal so
+      // they aren't re-prompted immediately about the survivors.
+      if (kept > 0) {
+        state.ancientPurgeDismissedAt = Date.now();
+      } else {
+        state.ancientPurgeDismissedAt = 0;
+      }
       save();
       notify(deleted + ' abandoned task' + (deleted === 1 ? '' : 's') + ' purged.', '#ffb43c');
       try {
         if (typeof MsgLog !== 'undefined') {
-          MsgLog.push('Purged ' + deleted + ' abandoned task' + (deleted === 1 ? '' : 's') + '. The shelf is clean.');
+          var msg = 'Purged ' + deleted + ' abandoned task' + (deleted === 1 ? '' : 's') + '.';
+          if (kept > 0) msg += ' Kept ' + kept + ' on the shelf.';
+          else msg += ' The shelf is clean.';
+          MsgLog.push(msg);
         }
       } catch (_) {}
       try { render(); } catch (_) {}
@@ -3231,11 +3408,33 @@ try {
   let draggedTaskId = null;
 
   function renderTasks() {
-    const tasks = state.tasks[state.activeProject] || [];
+    // ALL mode — flatten every project's tasks into a single list. Each task
+    // is paired with its real project so downstream operations (delete,
+    // toggle, focus) still resolve correctly via findTask / findTaskProject.
+    var isAll = state.activeProject === ALL_PROJECT_ID;
+    var tasks;
+    var taskProjectById = {}; // task.id -> projectName, for the row badge
+    if (isAll) {
+      tasks = [];
+      (state.projects || []).forEach(function(p) {
+        (state.tasks[p.id] || []).forEach(function(t) {
+          tasks.push(t);
+          taskProjectById[t.id] = p.name;
+        });
+      });
+    } else {
+      tasks = state.tasks[state.activeProject] || [];
+    }
     taskList.innerHTML = '';
-    if (tasks.length === 0) { taskList.innerHTML = '<div class="empty-state" title="Type a task in the input above and press + or Enter to add it.">No tasks yet. Add one above!</div>'; return; }
+    if (tasks.length === 0) {
+      taskList.innerHTML = '<div class="empty-state" title="' + (isAll ? 'No tasks exist in any project yet. Add one above and it will be routed to your last-used project.' : 'Type a task in the input above and press + or Enter to add it.') + '">' + (isAll ? 'No tasks in any project yet.' : 'No tasks yet. Add one above!') + '</div>';
+      return;
+    }
     const sorted = [...tasks].sort((a, b) => a.completed !== b.completed ? (a.completed ? 1 : -1) : 0);
     sorted.forEach(task => {
+      var _projBadge = (isAll && taskProjectById[task.id])
+        ? '<span class="task-proj-badge" title="This task lives in the \u201c' + escHtml(taskProjectById[task.id]) + '\u201d project. Switch to that tab to drag-reorder it there.">' + escHtml(taskProjectById[task.id]) + '</span>'
+        : '';
       const stale = isTaskStale(task);
       const item = document.createElement('div');
       item.className = 'task-item' + (task.completed ? ' completed' : '') + (task.id === state.selectedTaskId ? ' selected' : '') + (stale ? ' stale' : '');
@@ -3258,6 +3457,7 @@ try {
         : '';
       item.innerHTML = `
         <div class="task-checkbox${task.completed ? ' checked' : ''}" title="${task.completed ? 'Mark as not done.' : 'Mark this task complete. A speck of dust drops into the dust bin. Complete 3+ tasks today to unlock the daily burn.'}"></div>
+        ${_projBadge}
         ${staleBadgeHtml}
         ${recurBadge}
         <span class="task-text">${escHtml(task.text)}</span>
@@ -3294,7 +3494,9 @@ try {
       // Only active (uncompleted) tasks are draggable. Completed tasks
       // stay pinned to the bottom. The drop target flashes a top or
       // bottom border depending on where in the row the cursor is.
-      if (!task.completed) {
+      // Skip entirely in ALL mode — reorder is scoped to a single project,
+      // and mixing cross-project rows here would be meaningless.
+      if (!task.completed && !isAll) {
         item.draggable = true;
         item.dataset.taskId = task.id;
         item.addEventListener('dragstart', (e) => {
@@ -3691,7 +3893,7 @@ try {
     // from the main tab after the document is written, so the button
     // calls the real startTimer() in the parent scope.
     return '' +
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>PixelFocus Timer</title>' +
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Todo of the Loom Timer</title>' +
       '<style>' +
       '  html,body{margin:0;padding:0;background:#0a0a14;color:#4ecdc4;font-family:"Press Start 2P","Courier New",monospace;overflow:hidden;height:100%;}' +
       '  .pip-card{position:relative;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:8px 14px 10px 10px;background:linear-gradient(180deg,#10101c 0%,#0a0a14 100%);border:1px solid #1f1f30;border-radius:18px;margin:4px;overflow:hidden;}' +
@@ -4005,7 +4207,7 @@ try {
     chrome.notifications.create({
       type: 'basic',
       iconUrl: 'icons/icon128.png',
-      title: 'PixelFocus - Block Earned!',
+      title: 'Todo of the Loom - Textile Earned!',
       message: `+${xpGain} XP (${state.combo}x combo) | Total blocks today: ${state.todayBlocks}`
     });
 
@@ -4293,12 +4495,27 @@ try {
       blocksEarned: 0,
       createdAt: Date.now()
     };
-    if (!state.tasks[state.activeProject]) state.tasks[state.activeProject] = [];
-    state.tasks[state.activeProject].push(task);
+    // Route to a real project. If the ALL tab is currently active, fall
+    // back to the last real project the user viewed, then to the first
+    // project in the list. Tasks can never live under the ALL sentinel.
+    var targetPid = state.activeProject;
+    if (targetPid === ALL_PROJECT_ID) {
+      targetPid = state.lastRealProject
+        || ((state.projects && state.projects[0]) ? state.projects[0].id : 'default');
+    }
+    if (!state.tasks[targetPid]) state.tasks[targetPid] = [];
+    state.tasks[targetPid].push(task);
     trackRecentTask(text);
     taskInput.value = '';
     save();
     render();
+    // Surface where it went, so the player isn't confused when the new
+    // task shows up with a project badge in the ALL view.
+    if (state.activeProject === ALL_PROJECT_ID) {
+      var proj = (state.projects || []).find(function(p) { return p.id === targetPid; });
+      var pname = proj ? proj.name : targetPid;
+      try { notify('Added to \u201C' + pname + '\u201D.', '#00ff88'); } catch (_) {}
+    }
   }
 
   function trackRecentTask(text) {
@@ -4615,9 +4832,16 @@ try {
   function loadBundle(id) {
     var b = (state.bundles || []).find(function(x) { return x.id === id; });
     if (!b) return;
-    if (!state.tasks[state.activeProject]) state.tasks[state.activeProject] = [];
+    // Route to a real project. The ALL tab is a view only; bundle tasks
+    // must land in a concrete project so they show up after a switch.
+    var targetPid = state.activeProject;
+    if (targetPid === ALL_PROJECT_ID) {
+      targetPid = state.lastRealProject
+        || ((state.projects && state.projects[0]) ? state.projects[0].id : 'default');
+    }
+    if (!state.tasks[targetPid]) state.tasks[targetPid] = [];
     (b.tasks || []).forEach(function(text, idx) {
-      state.tasks[state.activeProject].push({
+      state.tasks[targetPid].push({
         id: (Date.now() + idx).toString(),
         text: text,
         completed: false,

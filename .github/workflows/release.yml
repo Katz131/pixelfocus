@@ -55,13 +55,15 @@ jobs:
           # Copy only the files that ship in the extension — not the
           # build scripts, README, LICENSE, docs/, or .github/.
           for f in manifest.json background.js popup.html app.js \
-                   gallery.html gallery.js factory.html factory.js \
+                   gallery.html gallery.js gallery-dispatch.js \
+                   factory.html factory.js factory-dispatch.js \
                    stage-entries.js msglog.js sounds.js tips.js \
                    tooltip.js fonts.css personnel.js research.js \
                    incinerator.js incinerator.html incinerator-window.js \
                    employees.html employees.js research.html research-window.js \
                    house.js house.html house-window.js house-dispatch.js \
-                   popup-dispatch.js ratiocinatory.html ratiocinatory.js; do
+                   popup-dispatch.js ratiocinatory.html ratiocinatory.js \
+                   ratiocinatory-dispatch.js patsy-names.js; do
             if [ -f "$f" ]; then
               cp "$f" "$STAGING/$f"
               echo "  + $f"
@@ -89,13 +91,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: PixelFocus ${{ steps.version.outputs.tag }}
+          name: Todo of the Loom ${{ steps.version.outputs.tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: ${{ steps.zip.outputs.zip_path }}
           body: |
-            ## PixelFocus ${{ steps.version.outputs.tag }}
+            ## Todo of the Loom ${{ steps.version.outputs.tag }}
 
             Download `${{ steps.zip.outputs.zip_name }}` below, unzip, then load it
             as an unpacked extension at `chrome://extensions` (Developer Mode on).

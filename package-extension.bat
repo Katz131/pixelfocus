@@ -46,9 +46,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "New-Item -ItemType Directory -Path $stagingIcons -Force | Out-Null;" ^
   "$files = @(" ^
     "'manifest.json','background.js','popup.html','app.js'," ^
-    "'gallery.html','gallery.js','factory.html','factory.js'," ^
+    "'gallery.html','gallery.js','gallery-dispatch.js'," ^
+    "'factory.html','factory.js','factory-dispatch.js'," ^
     "'house.html','house.js','house-window.js','house-dispatch.js'," ^
-    "'popup-dispatch.js','ratiocinatory.html','ratiocinatory.js'," ^
+    "'popup-dispatch.js','ratiocinatory.html','ratiocinatory.js','ratiocinatory-dispatch.js'," ^
+    "'patsy-names.js'," ^
     "'incinerator.html','incinerator.js','incinerator-window.js'," ^
     "'employees.html','employees.js','research.html','research-window.js'," ^
     "'personnel.js','research.js'," ^

@@ -22,7 +22,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PixelFocus</title>
+<title>Todo of the Loom</title>
 <link rel="stylesheet" href="fonts.css">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -157,6 +157,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 /* ---- stale task alert (>4h without attention) ---- */
 .task-item.stale { background:rgba(255,180,60,0.06); }
 .task-stale-badge { display:inline-flex; align-items:center; gap:3px; font-family:'Press Start 2P',monospace; font-size:7px; padding:2px 5px; margin-right:4px; border-radius:3px; background:rgba(255,180,60,0.18); border:1px solid #c68a1e; color:#ffb43c; letter-spacing:0.5px; animation:stalePulse 2.4s ease-in-out infinite; flex-shrink:0; }
+.task-proj-badge { display:inline-flex; align-items:center; font-family:'Press Start 2P',monospace; font-size:7px; padding:2px 5px; margin-right:4px; border-radius:3px; background:rgba(120,180,255,0.12); border:1px solid #4a6fa5; color:#8ab4ff; letter-spacing:0.5px; flex-shrink:0; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:uppercase; }
 .task-stale-badge::before { content:'!'; display:inline-block; width:10px; height:10px; line-height:10px; text-align:center; border-radius:50%; background:#ffb43c; color:#1a1a2e; font-weight:bold; font-size:8px; }
 @keyframes stalePulse { 0%,100%{opacity:0.85; box-shadow:0 0 0 0 rgba(255,180,60,0.4);} 50%{opacity:1; box-shadow:0 0 0 3px rgba(255,180,60,0);} }
 /* ---- tabs row with overflow dropdown (no scroll bar) ---- */
@@ -199,7 +200,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
        the player picks a loom via the Gallery PROFILE button. -->
   <div style="display:flex;align-items:center;gap:8px;">
     <canvas id="profileAvatar" width="16" height="16" style="display:none;width:32px;height:32px;image-rendering:pixelated;border:2px solid var(--accent);border-radius:50%;background:#08080f;cursor:pointer;box-shadow:0 0 8px rgba(0,255,136,0.3);" title="Your profile picture. Click to open the gallery and pick a different loom."></canvas>
-  <h1 title="PixelFocus &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">PixelFocus <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.20.21</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the PixelFocus standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
+  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.20.24</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
   </div>
   <div class="block-counter" id="blockCounter" title="Textiles produced today. One textile per completed 10-minute focus session. Resets at midnight.">
     <div class="block-icon"></div>
@@ -446,7 +447,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div id="ancientPurgeList" style="flex:1;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;margin-bottom:10px;max-height:260px;" title="Every task listed here will be permanently deleted if you click DELETE ALL. Click KEEP THEM to leave them alone."></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-small" id="ancientKeepBtn" title="Leave these tasks alone. You won't be asked again for another 12 hours.">KEEP THEM</button>
-      <button class="btn btn-small btn-danger" id="ancientDeleteBtn" title="Permanently delete every task in this list. This cannot be undone.">DELETE ALL</button>
+      <button class="btn btn-small btn-danger" id="ancientDeleteBtn" title="Permanently delete the ticked tasks. This cannot be undone.">DELETE SELECTED</button>
     </div>
   </div>
 </div>
@@ -458,6 +459,6 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <script src="stage-entries.js"></script>
 <script src="personnel.js"></script>
 <script src="app.js"></script>
-<script src="popup-dispatch.js"></script>
+<!-- AI texts moved to house page only (house-dispatch.js) -->
 </body>
 </html>

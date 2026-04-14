@@ -65,7 +65,27 @@
     'Sweeping the kitchen floor.',
     'Taking a shower.',
     'Eating toast at the counter.',
-    'Looking through the mail.'
+    'Looking through the mail.',
+    'Standing at the window with a cup of tea.',
+    'Moving a plant to a sunnier spot.',
+    'Sweeping something invisible off the rug.',
+    'Rearranging the bookshelf alphabetically.',
+    'Writing a to-do list on the back of a receipt.',
+    'Fixing a drawer that has never quite closed.',
+    'Wiping down the kitchen counters, twice.',
+    'Pairing socks on the edge of the bed.',
+    'Listening to the radio at a low volume.',
+    'Looking for the good scissors.',
+    'Writing a long note and then not leaving it.',
+    'Ironing one shirt with great care.',
+    'Opening and closing the fridge without taking anything.',
+    'Standing in the doorway for a moment too long.',
+    'Checking the weather and then checking it again.',
+    'Cleaning their glasses on the hem of a shirt.',
+    'Feeding the sourdough starter.',
+    'Pulling a loose thread off a cushion.',
+    'Writing a grocery list, then losing it.',
+    'Pouring a second cup of coffee they won\u2019t finish.'
   ];
 
   var CHILDREN_NOTES = [
@@ -88,7 +108,54 @@
     'Doing a jigsaw puzzle.',
     'Coloring in a coloring book.',
     'Eating dinner.',
-    'Washing their hands.'
+    'Washing their hands.',
+    'Building a fort out of couch cushions.',
+    'Sorting a shoebox of marbles by colour.',
+    'Pretending the hallway is a balance beam.',
+    'Narrating a long story to the refrigerator.',
+    'Carefully drawing a map of the house.',
+    'Doing a handstand against the wall.',
+    'Running a toy car along the baseboard.',
+    'Explaining a rule they just invented.',
+    'Practising tying a shoelace on a stuffed bear.',
+    'Trying on a grown-up coat from the closet.',
+    'Quietly counting the steps on the stairs.',
+    'Staring at the ceiling fan without blinking.',
+    'Humming the same three notes over and over.',
+    'Stacking books into an uneven tower.',
+    'Cutting out paper snowflakes.',
+    'Asking why the sky is the colour it is.',
+    'Sharpening every pencil in the drawer.',
+    'Watching dust drift in a beam of light.',
+    'Writing a letter to nobody in particular.',
+    'Rearranging the stuffed animals by height.',
+    'Making a small museum on the windowsill.',
+    'Balancing a spoon on the edge of a cup.',
+    'Telling the pet a long, serious secret.',
+    'Whispering plans into the heating vent.',
+    'Folding a paper airplane with great ceremony.',
+    'Drawing a family portrait with unusual heads.',
+    'Counting the leaves on the houseplant.',
+    'Setting up an imaginary shop on the rug.',
+    'Reading the cereal box out loud.',
+    'Hiding under the table with a flashlight.',
+    'Teaching a doll the alphabet.',
+    'Arguing gently with the washing machine.',
+    'Practising a cartwheel in the hallway.',
+    'Writing their name in the condensation.',
+    'Watching a cartoon with the sound too loud.',
+    'Drawing on a steamed-up window.',
+    'Inventing a language for the goldfish.',
+    'Turning the sofa into a pirate ship.',
+    'Taping a drawing to the front of the fridge.',
+    'Looking for a missing sock with great gravity.',
+    'Trying to whistle, unsuccessfully.',
+    'Practising saying a hard word on repeat.',
+    'Pouring juice slightly past the rim of the glass.',
+    'Waiting for the microwave like it\u2019s a miracle.',
+    'Holding a seashell to one ear.',
+    'Writing a very serious note and hiding it.',
+    'Counting how many steps to the bathroom.'
   ];
 
   var PETS_NOTES = [
@@ -111,19 +178,207 @@
     'Stretching on the floor.',
     'Walking through the kitchen.',
     'Sleeping in a patch of sunlight.',
-    'Sitting in a cardboard box.'
+    'Sitting in a cardboard box.',
+    'Staring at the wall with great patience.',
+    'Knocking a pen off the desk.',
+    'Waiting expectantly by an empty bowl.',
+    'Chasing dust across the floor.',
+    'Curled inside an open drawer.',
+    'Watching the ceiling with suspicion.',
+    'Hiding behind the curtain.',
+    'Walking in slow figure-eights.',
+    'Sitting on the newspaper being read.',
+    'Pawing at a closed door.',
+    'Watching the kettle come to a boil.',
+    'Guarding a sock no one wanted.',
+    'Rolling once, considering, rolling back.',
+    'Perched on top of the bookshelf.',
+    'Sitting on the keyboard.',
+    'Breathing slowly at nothing visible.',
+    'Stalking an invisible intruder.',
+    'Staring into the hallway for a long time.',
+    'Chewing quietly on the corner of a rug.',
+    'Pressed flat against the cool tile.',
+    'Watching the doorway and blinking slowly.',
+    'Following a beam of light with one paw.',
+    'Asleep on top of the laundry pile.',
+    'Sitting on the windowsill like a loaf.',
+    'Investigating the empty shopping bag.',
+    'Making a nest out of a clean hoodie.',
+    'Watching the dishwasher as if it owed money.',
+    'Asleep in the one patch of carpet you sit on.',
+    'Staring at the door handle.',
+    'Watching a spider with professional interest.',
+    'Politely ignoring the new toy.',
+    'Sighing audibly at nothing.',
+    'Sitting in a chair that isn\u2019t theirs.',
+    'Tapping the water bowl with one paw.',
+    'Asleep on a book you were reading.',
+    'Waiting by the door for no clear reason.',
+    'Standing halfway up the stairs, thinking.',
+    'Watching the curtain breathe.',
+    'Sniffing the air with great concentration.',
+    'Staring at their own reflection.',
+    'Asleep with one eye mostly open.',
+    'Following you from room to room at a distance.',
+    'Watching a bird through the window in total silence.',
+    'Curled in the empty pet bed, finally.',
+    'Sitting on the mat as if stationed there.'
   ];
 
-  // Session-stable rotation seed. Set once at module load and read on
-  // every render. Reopening the window yields a new seed; re-rendering
-  // an already-open window (because chrome.storage fired) keeps the
-  // same one, so the notes don't flicker while the player watches them.
-  var NOTE_SEED = Math.floor(Math.random() * 20);
+  // Rotating seed. Starts at a random position at module load so reopening
+  // the window gives a different first view; then a rotation timer bumps
+  // it on a slow cadence so the player who lingers on the house screen
+  // sees the feed update — the family is doing different things every
+  // little while. Offsets per row (and per sibling) keep simultaneous
+  // picks from ever colliding.
+  // ------------------------------------------------------------------------
+  // Per-member seeds. Each household member (spouse, each child, each pet)
+  // has its OWN seed and its OWN rotation timer, so family members do
+  // not all change activities in lockstep. The keys look like
+  // 'spouse:0', 'child:0', 'child:1', 'pet:0' etc.
+  // ------------------------------------------------------------------------
+  var memberSeeds  = {};
+  var memberTimers = {};
 
-  function pickNote(pool, offset) {
+  function getSeed(key) {
+    if (typeof memberSeeds[key] !== 'number') {
+      // Large random offset per key so initial picks diverge across siblings.
+      memberSeeds[key] = Math.floor(Math.random() * 100000);
+    }
+    return memberSeeds[key];
+  }
+
+  function bumpSeed(key) {
+    memberSeeds[key] = (getSeed(key) + 1) | 0;
+  }
+
+  function pickNoteFor(pool, key) {
     if (!pool || pool.length === 0) return '';
-    var idx = ((NOTE_SEED + (offset || 0)) % pool.length + pool.length) % pool.length;
+    var s = getSeed(key);
+    var idx = ((s % pool.length) + pool.length) % pool.length;
     return pool[idx];
+  }
+
+  // Render a feed of notes, one per member, joined with line breaks so
+  // a household with two children reads as two separate observations.
+  // `count` is the number of members; `labelFn` turns 0-based index into
+  // a short tag like "CHILD 1" (omitted entirely when there's only one).
+  //
+  // Each sibling is keyed by `keyPrefix + ':' + i` so each rotates on its
+  // OWN seed — siblings never change activity at the same instant.
+  function buildMemberFeed(pool, count, keyPrefix, labelFn) {
+    if (!pool || pool.length === 0 || count <= 0) return '';
+    var lines = [];
+    for (var i = 0; i < count; i++) {
+      var note = pickNoteFor(pool, keyPrefix + ':' + i);
+      if (count > 1 && typeof labelFn === 'function') {
+        lines.push(labelFn(i) + ': ' + note);
+      } else {
+        lines.push(note);
+      }
+    }
+    return lines.join('<br>');
+  }
+
+  // ------------------------------------------------------------------------
+  // Per-member rotation.
+  //
+  // Every active household member (spouse, each child, each pet) gets its
+  // OWN setInterval ticking at a RANDOM period, with a RANDOM initial
+  // delay. So three children do not all change activities at the same
+  // instant — they drift relative to each other and the viewer watches
+  // each person's feed change independently.
+  //
+  // Periods are roughly 14–26 seconds. Initial delays are 0–14 seconds.
+  // ------------------------------------------------------------------------
+  var PERIOD_MIN_MS  = 14000;
+  var PERIOD_SPAN_MS = 12000;  // plus PERIOD_MIN, so 14–26s
+  var INIT_DELAY_MS  = 14000;
+
+  function activeMemberKeys(sheet) {
+    var keys = ['spouse:0'];
+    var kc = (sheet && sheet.children && sheet.children.count) || 0;
+    for (var i = 0; i < kc; i++) keys.push('child:' + i);
+    var pc = (sheet && sheet.pets && sheet.pets.count) || 0;
+    for (var i = 0; i < pc; i++) keys.push('pet:' + i);
+    return keys;
+  }
+
+  // Re-render the single DOM element that contains this member's feed.
+  // Siblings within the same group share an element (kidNote, petNote),
+  // so we rebuild the whole group from current per-member seeds; only
+  // the bumped member's line actually changes, because the others still
+  // resolve to the same seed index.
+  function rerenderMemberGroup(key) {
+    var sheet = (window.House && window.House.getRapSheet)
+      ? window.House.getRapSheet(state || {})
+      : null;
+    if (!sheet) return;
+
+    if (key.indexOf('spouse') === 0) {
+      var sEl = $('spouseNote');
+      if (sEl) sEl.textContent = pickNoteFor(SPOUSE_NOTES, 'spouse:0');
+    } else if (key.indexOf('child') === 0) {
+      var kEl = $('kidNote');
+      var kc = (sheet && sheet.children && sheet.children.count) || 0;
+      if (kEl) {
+        kEl.innerHTML = buildMemberFeed(
+          CHILDREN_NOTES, kc, 'child',
+          function (i) { return 'CHILD ' + (i + 1); }
+        );
+      }
+    } else if (key.indexOf('pet') === 0) {
+      var pEl = $('petNote');
+      var pc = (sheet && sheet.pets && sheet.pets.count) || 0;
+      if (pEl) {
+        pEl.innerHTML = buildMemberFeed(
+          PETS_NOTES, pc, 'pet',
+          function (i) { return 'PET ' + (i + 1); }
+        );
+      }
+    }
+  }
+
+  function stopTimerFor(key) {
+    if (memberTimers[key]) {
+      clearTimeout(memberTimers[key].initial);
+      clearInterval(memberTimers[key].interval);
+      delete memberTimers[key];
+    }
+  }
+
+  function startTimerFor(key) {
+    if (memberTimers[key]) return;  // already running
+    var rec = {};
+    var period = PERIOD_MIN_MS + Math.floor(Math.random() * PERIOD_SPAN_MS);
+    var delay  = Math.floor(Math.random() * INIT_DELAY_MS);
+    rec.initial = setTimeout(function () {
+      bumpSeed(key);
+      rerenderMemberGroup(key);
+      rec.interval = setInterval(function () {
+        bumpSeed(key);
+        rerenderMemberGroup(key);
+      }, period);
+    }, delay);
+    memberTimers[key] = rec;
+  }
+
+  // Reconcile running timers with current population. Stops timers for
+  // members that are no longer in the house; starts timers for new ones.
+  function ensureMemberTimers(sheet) {
+    var desired = {};
+    activeMemberKeys(sheet).forEach(function (k) { desired[k] = true; });
+
+    // Stop timers for members that no longer exist.
+    Object.keys(memberTimers).forEach(function (k) {
+      if (!desired[k]) stopTimerFor(k);
+    });
+
+    // Start timers for members that don't have one yet.
+    Object.keys(desired).forEach(function (k) {
+      if (!memberTimers[k]) startTimerFor(k);
+    });
   }
 
   var MOOD_LINES = {
@@ -133,8 +388,8 @@
       + 'in the back pocket of your trousers.',
     early:
       'Things are, by any reasonable measure, going well. The kettle has '
-      + 'not been on for anything in particular. The cat, if there is a cat, '
-      + 'is washing itself.',
+      + 'not been on for anything in particular. The pet, if there is a pet, '
+      + 'is off attending to personal business.',
     mid:
       'The household has settled into a rhythm. The money is coming in. The '
       + 'hallway has new flowers in it. You put on your coat at the same '
@@ -199,16 +454,35 @@
     var pc = $('petCount');
     if (pc) pc.textContent = String(sheet.pets.count);
 
-    // Rotating italic notes — session-stable. Each row gets a different
-    // offset so two siblings never pick the same index by accident.
+    // Rotating italic notes — per-member feed. Each child and each pet
+    // gets its own observation, so a household with two children reads
+    // as two distinct lines. A slow timer (NOTE_ROTATE_MS) bumps the
+    // seed so the feed visibly changes while the player watches.
     var spouseNoteEl = $('spouseNote');
-    if (spouseNoteEl) spouseNoteEl.textContent = pickNote(SPOUSE_NOTES, 0);
+    if (spouseNoteEl) spouseNoteEl.textContent = pickNoteFor(SPOUSE_NOTES, 'spouse:0');
 
+    var kidCount = (sheet && sheet.children && sheet.children.count) || 0;
     var kidNoteEl = $('kidNote');
-    if (kidNoteEl) kidNoteEl.textContent = pickNote(CHILDREN_NOTES, 7);
+    if (kidNoteEl) {
+      kidNoteEl.innerHTML = buildMemberFeed(
+        CHILDREN_NOTES, kidCount, 'child',
+        function (i) { return 'CHILD ' + (i + 1); }
+      );
+    }
 
+    var petCount = (sheet && sheet.pets && sheet.pets.count) || 0;
     var petNoteEl = $('petNote');
-    if (petNoteEl) petNoteEl.textContent = pickNote(PETS_NOTES, 13);
+    if (petNoteEl) {
+      petNoteEl.innerHTML = buildMemberFeed(
+        PETS_NOTES, petCount, 'pet',
+        function (i) { return 'PET ' + (i + 1); }
+      );
+    }
+
+    // After the rap sheet is painted, make sure each active member has its
+    // own rotation timer. Pass the current population so members that no
+    // longer exist stop ticking and new members start.
+    ensureMemberTimers(sheet);
 
     var cv = $('conditionValue');
     if (cv) cv.textContent = sheet.condition;
@@ -405,6 +679,11 @@
       state = {};
       render();
     }
+
+    // Each household member has its own staggered rotation timer,
+    // started from render() via ensureMemberTimers(). No global seed
+    // bump here — we explicitly want family members to change activity
+    // at DIFFERENT times, not all on the same tick.
   }
 
   if (document.readyState === 'loading') {
