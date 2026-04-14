@@ -51,6 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "'house.html','house.js','house-window.js','house-dispatch.js'," ^
     "'popup-dispatch.js','ratiocinatory.html','ratiocinatory.js','ratiocinatory-dispatch.js'," ^
     "'patsy-names.js'," ^
+    "'profile.html','profile-window.js'," ^
     "'incinerator.html','incinerator.js','incinerator-window.js'," ^
     "'employees.html','employees.js','research.html','research-window.js'," ^
     "'personnel.js','research.js'," ^

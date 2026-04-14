@@ -63,7 +63,8 @@ jobs:
                    employees.html employees.js research.html research-window.js \
                    house.js house.html house-window.js house-dispatch.js \
                    popup-dispatch.js ratiocinatory.html ratiocinatory.js \
-                   ratiocinatory-dispatch.js patsy-names.js; do
+                   ratiocinatory-dispatch.js patsy-names.js \
+                   profile.html profile-window.js; do
             if [ -f "$f" ]; then
               cp "$f" "$STAGING/$f"
               echo "  + $f"

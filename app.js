@@ -696,7 +696,12 @@ try {
     recentTasks: [],          // last 20 unique task texts
     // Leaderboard-ready profile
     displayName: '',          // user-chosen name for future leaderboard
+    tagline: '',              // short bio/tagline shown on the profile page
     profileCreated: 0,        // timestamp
+    // v3.20.26 profile stats
+    longestStreak: 0,         // best day-streak ever reached
+    lifetimeFocusMinutes: 0,  // total minutes of completed focus sessions
+    tasksCompletedLifetime: 0,// total task-checkoff count (all time)
     // v3.19.15: profile picture snapshot — { pixels, size, savedAt, setAt }
     // Picked from gallery.js via the PROFILE button on any saved loom.
     // Stored as a deep copy so selling/deleting the source doesn't wipe it.
@@ -1115,6 +1120,13 @@ try {
           if (typeof p.recurInterval !== 'number') p.recurInterval = 0;
           if (typeof p.lastCompletedDate !== 'string') p.lastCompletedDate = '';
         });
+        // v3.20.26: profile stat backfills.
+        if (typeof state.tagline !== 'string') state.tagline = '';
+        if (typeof state.longestStreak !== 'number') state.longestStreak = 0;
+        if (typeof state.lifetimeFocusMinutes !== 'number') state.lifetimeFocusMinutes = 0;
+        if (typeof state.tasksCompletedLifetime !== 'number') state.tasksCompletedLifetime = 0;
+        // Seed longestStreak from current streak if it's obviously lower.
+        if (state.streak > state.longestStreak) state.longestStreak = state.streak;
         // ===== Stage-entry archive backfill (v3.19) =====
         // Older saves don't have the archive arrays. Backfill them to empty.
         // If the player has already dismissed the first-run intro (hasSeenIntro
@@ -1329,6 +1341,7 @@ try {
       const diffDays = Math.floor((now - last) / 86400000);
       if (diffDays === 1 && state.todayBlocks > 0) {
         state.streak++;
+        if (state.streak > (state.longestStreak || 0)) state.longestStreak = state.streak;
       } else if (diffDays > 1) {
         state.streak = 0;
       }
@@ -2361,24 +2374,29 @@ try {
   // canvas, or hide it entirely if the player hasn't set one. Called from
   // render() so it stays in sync when gallery.html updates chrome.storage.
   function renderProfileAvatar() {
-    var el = document.getElementById('profileAvatar');
-    if (!el) return;
     var pfp = state.profilePicture;
-    if (!pfp || !pfp.pixels || !pfp.size) {
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = 'inline-block';
-    if (el.width !== pfp.size) el.width = pfp.size;
-    if (el.height !== pfp.size) el.height = pfp.size;
-    var cx = el.getContext('2d');
-    cx.clearRect(0, 0, pfp.size, pfp.size);
-    cx.fillStyle = '#08080f';
-    cx.fillRect(0, 0, pfp.size, pfp.size);
-    Object.keys(pfp.pixels).forEach(function(key) {
-      var parts = key.split(',');
-      cx.fillStyle = pfp.pixels[key];
-      cx.fillRect(parseInt(parts[0], 10), parseInt(parts[1], 10), 1, 1);
+    var targets = [
+      document.getElementById('profileAvatar'),
+      document.getElementById('levelProfileIcon')
+    ];
+    targets.forEach(function(el) {
+      if (!el) return;
+      if (!pfp || !pfp.pixels || !pfp.size) {
+        el.style.display = 'none';
+        return;
+      }
+      el.style.display = 'inline-block';
+      if (el.width !== pfp.size) el.width = pfp.size;
+      if (el.height !== pfp.size) el.height = pfp.size;
+      var cx = el.getContext('2d');
+      cx.clearRect(0, 0, pfp.size, pfp.size);
+      cx.fillStyle = '#08080f';
+      cx.fillRect(0, 0, pfp.size, pfp.size);
+      Object.keys(pfp.pixels).forEach(function(key) {
+        var parts = key.split(',');
+        cx.fillStyle = pfp.pixels[key];
+        cx.fillRect(parseInt(parts[0], 10), parseInt(parts[1], 10), 1, 1);
+      });
     });
   }
 
@@ -4311,6 +4329,12 @@ try {
 
   // Award N earnBlock() calls (chains combos naturally) plus any commitment bonus.
   function awardSessionReward(reward) {
+    // Track lifetime focus minutes for the profile page. Uses the session
+    // length that was in effect when this session started.
+    try {
+      var mins = Math.round((state.sessionDurationSec || 600) / 60);
+      state.lifetimeFocusMinutes = (state.lifetimeFocusMinutes || 0) + mins;
+    } catch (_) {}
     for (var i = 0; i < reward.blocks; i++) {
       try { earnBlock(); } catch (e) { console.error(e); }
     }
@@ -5081,6 +5105,8 @@ try {
     task.completed = !task.completed;
     if (task.completed) {
       SFX.completeTask();
+      // v3.20.26: bump lifetime task-completion count for the profile page.
+      state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
       // v3.20.21: if this is a recurring task, show the "still want it?" toast
       if (task.recurring || isRecurringText(task.text)) {
         setTimeout(function() { showRecurringToast(task.text); }, 600);
@@ -5718,13 +5744,35 @@ try {
         blockCounter.addEventListener('click', function() { openPFWindow('gallery.html'); });
       }
 
-      // v3.19.15: profile-picture avatar — click jumps to the gallery so
-      // the player can pick a different loom (or clear the current one).
+      // v3.20.26: profile-picture avatar — click opens the Profile page.
+      // (Previously routed to gallery.html; the gallery's PROFILE buttons
+      // remain the way to pick a different loom as your picture.)
       var profileAvatarEl = $('profileAvatar');
       if (profileAvatarEl) {
+        profileAvatarEl.title = 'Your profile picture. Click to open your Profile page \u2014 stats, streak, title, and card of standing.';
         profileAvatarEl.addEventListener('click', function() {
           try { SFX.tabSwitch(); } catch (_) {}
-          openPFWindow('gallery.html');
+          openPFWindow('profile.html');
+        });
+      }
+
+      // v3.20.26: small profile-icon + PROFILE button next to the level
+      // display open the Profile page. The level badge itself keeps its
+      // existing click-through to the title ladder modal.
+      var levelProfileIcon = document.getElementById('levelProfileIcon');
+      if (levelProfileIcon) {
+        levelProfileIcon.addEventListener('click', function(e) {
+          e.stopPropagation();
+          try { SFX.tabSwitch(); } catch (_) {}
+          openPFWindow('profile.html');
+        });
+      }
+      var levelProfileBtn = document.getElementById('levelProfileBtn');
+      if (levelProfileBtn) {
+        levelProfileBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          try { SFX.tabSwitch(); } catch (_) {}
+          openPFWindow('profile.html');
         });
       }
 

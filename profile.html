@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  Profile — v3.20.26
+
+  A full browser tab (not a popup) presenting the player's public-facing
+  "card of standing". Shows:
+    - Avatar (sampled from state.profilePicture — a saved loom the player
+      designated as their profile picture)
+    - Display name + tagline (inline-editable)
+    - Level + title + XP progress
+    - Daily streak + longest streak (Duolingo-style)
+    - Lifetime work stats (textiles, coins, focus minutes, tasks done)
+    - In-game progress (factory tier, buildings unlocked, personnel, looms)
+
+  This page is read-only for numeric stats — all editing happens via the
+  two inline fields (name / tagline). Rendering and event wiring live in
+  profile-window.js. The layout is deliberately website-friendly (a single
+  centered card plus a three-column stats strip) so future web export can
+  re-use the same markup.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo of the Loom - Profile</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #08080f;
+    --surface: #12122a;
+    --surface2: #1a1a3a;
+    --accent: #00ff88;
+    --accent2: #ff6b9d;
+    --accent3: #4ecdc4;
+    --gold: #ffd700;
+    --gold-dim: #b8860b;
+    --flame: #ff8c3a;
+    --flame-hot: #ffb64c;
+    --text: #e0e0e0;
+    --text-dim: #5a5a7e;
+    --border: #2a2a4a;
+  }
+
+  body {
+    background: radial-gradient(ellipse at 50% 10%, #15152e 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 40px;
+  }
+
+  .top-bar {
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 2px solid var(--accent);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.12);
+  }
+  .top-bar h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(0, 255, 136, 0.35);
+  }
+  .top-bar-nav { display: flex; gap: 8px; }
+  .nav-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .nav-btn:hover { border-color: var(--accent); }
+  .nav-btn.gold { color: var(--gold); border-color: var(--gold); }
+  .nav-btn.gold:hover { background: rgba(255, 215, 0, 0.08); }
+
+  .hero {
+    text-align: center;
+    padding: 26px 20px 10px;
+  }
+  .hero-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .hero-flavor {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-style: italic;
+    max-width: 720px;
+    margin: 6px auto 0;
+    line-height: 1.5;
+  }
+
+  .layout {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 18px 24px 40px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ===== Main profile card ===== */
+  .profile-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 24px;
+    align-items: center;
+  }
+  @media (max-width: 720px) {
+    .profile-card { grid-template-columns: 1fr; text-align: center; }
+  }
+
+  .avatar-slot {
+    width: 132px;
+    height: 132px;
+    border-radius: 12px;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 18px rgba(0, 255, 136, 0.28);
+    background: #08080f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  .avatar-slot canvas {
+    image-rendering: pixelated;
+    width: 100%;
+    height: 100%;
+  }
+  .avatar-empty {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 0 10px;
+    line-height: 1.6;
+  }
+  .avatar-hint {
+    position: absolute;
+    bottom: -22px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  .identity { display: flex; flex-direction: column; gap: 8px; }
+  .identity-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 20px;
+    color: var(--text);
+    letter-spacing: 0.5px;
+    background: transparent;
+    border: 1px dashed transparent;
+    border-radius: 4px;
+    padding: 4px 6px;
+    min-width: 180px;
+    min-height: 28px;
+    outline: none;
+  }
+  .identity-name[contenteditable="true"]:hover,
+  .identity-name[contenteditable="true"]:focus {
+    border-color: var(--border);
+    background: rgba(0, 255, 136, 0.04);
+  }
+  .identity-tagline {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-style: italic;
+    background: transparent;
+    border: 1px dashed transparent;
+    border-radius: 4px;
+    padding: 4px 6px;
+    min-height: 24px;
+    outline: none;
+  }
+  .identity-tagline[contenteditable="true"]:hover,
+  .identity-tagline[contenteditable="true"]:focus {
+    border-color: var(--border);
+    background: rgba(78, 205, 196, 0.05);
+  }
+  .edit-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-style: italic;
+    opacity: 0.6;
+  }
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .level-chip {
+    background: var(--surface2);
+    border: 1px solid var(--accent3);
+    color: var(--accent3);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+  }
+  .title-chip {
+    background: var(--surface2);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+  }
+  .xp-bar {
+    margin-top: 8px;
+    height: 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+    position: relative;
+    max-width: 420px;
+  }
+  .xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    transition: width 300ms ease;
+  }
+  .xp-text {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    font-family: 'Press Start 2P', monospace;
+    letter-spacing: 0.5px;
+  }
+
+  /* ===== Streak card ===== */
+  .streak-card {
+    background: var(--surface);
+    border: 1px solid var(--flame);
+    border-radius: 12px;
+    padding: 22px 24px;
+    display: flex;
+    gap: 26px;
+    align-items: center;
+    box-shadow: 0 0 18px rgba(255, 140, 58, 0.12);
+  }
+  @media (max-width: 720px) {
+    .streak-card { flex-direction: column; text-align: center; }
+  }
+  .streak-flame {
+    font-size: 72px;
+    line-height: 1;
+    text-shadow: 0 0 18px rgba(255, 140, 58, 0.5);
+  }
+  .streak-flame.cold { filter: grayscale(0.85); opacity: 0.55; }
+  .streak-main { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .streak-number {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 28px;
+    color: var(--flame-hot);
+  }
+  .streak-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .streak-flavor {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+    max-width: 520px;
+    line-height: 1.5;
+  }
+  .streak-meta {
+    display: flex;
+    gap: 14px;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .streak-meta .pill {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px 10px;
+  }
+
+  /* ===== Stats grid ===== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 900px) {
+    .stats-grid { grid-template-columns: 1fr; }
+  }
+  .stat-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .stat-panel h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--accent3);
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+  }
+  .stat-panel.work h2  { color: var(--gold); }
+  .stat-panel.game h2  { color: var(--accent2); }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .stat-value {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .stat-value.gold   { color: var(--gold); }
+  .stat-value.accent { color: var(--accent); }
+  .stat-value.pink   { color: var(--accent2); }
+  .stat-value.teal   { color: var(--accent3); }
+
+  .footer-line {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1 title="Your public card &mdash; the face the factory shows to the world.">PROFILE</h1>
+  <div class="top-bar-nav">
+    <button class="nav-btn" id="toFactoryBtn" type="button" title="Open the Textile Factory.">FACTORY</button>
+    <button class="nav-btn" id="toGalleryBtn" type="button" title="Open the Master Loom gallery &mdash; where you pick the loom that becomes this profile picture.">MASTER LOOM</button>
+    <button class="nav-btn" id="toHouseBtn" type="button" title="Walk home. Open the House.">HOUSE</button>
+    <button class="nav-btn gold" id="backToTrackerBtn" type="button" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="hero-label" title="Chapter heading for the profile page.">CARD OF STANDING &middot; PUBLIC FACE</div>
+  <div class="hero-flavor" title="Flavor prose for the profile. Purely atmospheric.">
+    A single page the factory's clerks keep in the drawer marked
+    &ldquo;persons of record.&rdquo; Click the name or tagline to edit. The
+    numbers below come from the floor, the loom, and the kitchen clock.
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- MAIN PROFILE CARD -->
+  <div class="profile-card" title="Your public card &mdash; avatar, display name, tagline, and current title.">
+    <div class="avatar-slot" id="avatarSlot" title="Your profile avatar. Pick any saved loom in the Master Loom gallery and press PROFILE on it to set it as this picture.">
+      <canvas id="profileCanvas" width="16" height="16" style="display:none;"></canvas>
+      <div class="avatar-empty" id="avatarEmpty">NO AVATAR<br>SET ONE IN<br>THE GALLERY</div>
+    </div>
+    <div class="identity">
+      <div id="displayName"
+           class="identity-name"
+           contenteditable="true"
+           spellcheck="false"
+           data-placeholder="Your name"
+           title="Click to edit your display name. Shown on leaderboards and the profile page."></div>
+      <div id="tagline"
+           class="identity-tagline"
+           contenteditable="true"
+           spellcheck="false"
+           data-placeholder="Your tagline &mdash; one line about you"
+           title="Click to edit your tagline. A single line of bio for the profile page."></div>
+      <div class="edit-hint" title="Name + tagline auto-save when you click away or press Enter.">Click either line to edit. Enter or blur to save.</div>
+      <div class="title-row">
+        <span class="level-chip" id="levelChip" title="Your current level, computed from total XP earned across all focus sessions.">LV 1</span>
+        <span class="title-chip" id="titleChip" title="Your earned title. Titles unlock with level and appear on the public profile.">Apprentice Weaver</span>
+      </div>
+      <div class="xp-bar" title="Progress toward the next level. Fills as you complete focus sessions.">
+        <div class="xp-fill" id="xpFill" style="width:0%;"></div>
+      </div>
+      <div class="xp-text" id="xpText" title="Current XP within this level / XP required to hit the next.">0 / 50 XP</div>
+    </div>
+  </div>
+
+  <!-- DAILY STREAK CARD -->
+  <div class="streak-card" title="Your daily work streak. Earn at least one textile each day to keep it alive. Duolingo-style: miss a full day and it resets.">
+    <div class="streak-flame" id="streakFlame" title="Flame icon &mdash; burns bright when your streak is active, fades when it dies.">&#128293;</div>
+    <div class="streak-main">
+      <div class="streak-number" id="streakNumber" title="Your current consecutive-day streak.">0</div>
+      <div class="streak-label">DAY STREAK</div>
+      <div class="streak-flavor" id="streakFlavor" title="A short sentence that changes with your streak length.">
+        No streak yet. Complete one focus session today to light the fire.
+      </div>
+      <div class="streak-meta">
+        <div class="pill" id="longestStreakPill" title="The longest consecutive-day streak you've ever run. Persists even if the current streak resets.">Best: 0 days</div>
+        <div class="pill" id="streakBonusPill" title="XP multiplier currently granted by your streak. +5% per day, capped at +50% at 10 days.">XP bonus: x1.00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS GRID: three panels -->
+  <div class="stats-grid">
+    <div class="stat-panel work" title="The factory's ledger on your production &mdash; all-time totals.">
+      <h2>WORK LEDGER</h2>
+      <div class="stat-row" title="Every textile woven at the loom since you started playing.">
+        <span class="stat-label">Lifetime textiles</span>
+        <span class="stat-value gold" id="stLifetimeBlocks">0</span>
+      </div>
+      <div class="stat-row" title="Total minutes of completed focus sessions.">
+        <span class="stat-label">Focus minutes</span>
+        <span class="stat-value accent" id="stFocusMins">0</span>
+      </div>
+      <div class="stat-row" title="Every to-do list item you've ever checked off.">
+        <span class="stat-label">Tasks completed</span>
+        <span class="stat-value teal" id="stTasksDone">0</span>
+      </div>
+      <div class="stat-row" title="All-time coin earnings &mdash; combos, marathons, streak lumps, and passive trickle.">
+        <span class="stat-label">Lifetime coins</span>
+        <span class="stat-value gold" id="stLifetimeCoins">$0</span>
+      </div>
+      <div class="stat-row" title="Your current spendable coin balance.">
+        <span class="stat-label">Wallet</span>
+        <span class="stat-value gold" id="stWallet">$0</span>
+      </div>
+    </div>
+
+    <div class="stat-panel" title="Session performance numbers &mdash; combos, today's haul, and focus intensity.">
+      <h2>TODAY &amp; COMBOS</h2>
+      <div class="stat-row" title="Textiles woven today. Resets at midnight.">
+        <span class="stat-label">Today's textiles</span>
+        <span class="stat-value accent" id="stTodayBlocks">0</span>
+      </div>
+      <div class="stat-row" title="XP earned today. Resets at midnight.">
+        <span class="stat-label">Today's XP</span>
+        <span class="stat-value accent" id="stTodayXP">0</span>
+      </div>
+      <div class="stat-row" title="Your current consecutive-session combo.">
+        <span class="stat-label">Current combo</span>
+        <span class="stat-value pink" id="stCurrentCombo">0</span>
+      </div>
+      <div class="stat-row" title="Best combo streak reached today.">
+        <span class="stat-label">Best combo today</span>
+        <span class="stat-value pink" id="stComboToday">0</span>
+      </div>
+      <div class="stat-row" title="All-time best combo. The factory remembers.">
+        <span class="stat-label">All-time best combo</span>
+        <span class="stat-value gold" id="stMaxCombo">0</span>
+      </div>
+    </div>
+
+    <div class="stat-panel game" title="Where you stand in the game's unfolding arc &mdash; buildings opened, people hired, art sold.">
+      <h2>GAME PROGRESS</h2>
+      <div class="stat-row" title="Your current factory stage &mdash; a rough seniority marker.">
+        <span class="stat-label">Factory stage</span>
+        <span class="stat-value pink" id="stStage">Stage 0</span>
+      </div>
+      <div class="stat-row" title="How many annex buildings you've unlocked in the factory.">
+        <span class="stat-label">Buildings</span>
+        <span class="stat-value teal" id="stBuildings">0 / 5</span>
+      </div>
+      <div class="stat-row" title="Employees currently on your personnel roster.">
+        <span class="stat-label">Personnel</span>
+        <span class="stat-value teal" id="stPersonnel">0</span>
+      </div>
+      <div class="stat-row" title="Looms saved to your Master Loom gallery.">
+        <span class="stat-label">Looms saved</span>
+        <span class="stat-value accent" id="stLoomsSaved">0</span>
+      </div>
+      <div class="stat-row" title="Looms you've sold on the auction house for coins.">
+        <span class="stat-label">Looms sold</span>
+        <span class="stat-value gold" id="stLoomsSold">0</span>
+      </div>
+      <div class="stat-row" title="A small memorial row. Counts personnel lost through failed research experiments and conversions in the Incinerator annex. The factory regrets the inconvenience.">
+        <span class="stat-label">Lives lost</span>
+        <span class="stat-value" id="stLivesLost" style="color:#ff6666;" title="Total departures from the roster &mdash; research mishaps plus incinerator conversions. Persists across sessions.">0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-line" id="footerLine" title="When your profile card was first filed with the factory.">Filed with the clerks of standing on &mdash;.</div>
+</div>
+
+<script src="profile-window.js"></script>
+</body>
+</html>

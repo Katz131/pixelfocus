@@ -69,6 +69,8 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       var diffDays = Math.floor((now - last) / 86400000);
       if (diffDays === 1 && state.todayBlocks > 0) {
         state.streak = (state.streak || 0) + 1;
+        // v3.20.26: mirror app.js — keep the lifetime best for the profile.
+        if (state.streak > (state.longestStreak || 0)) state.longestStreak = state.streak;
       } else if (diffDays > 1) {
         state.streak = 0;
       }

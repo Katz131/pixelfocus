@@ -219,6 +219,9 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <span class="level-title" id="levelTitle">Novice</span>
       <span class="tip" data-tip="Click to see the full title ladder infographic.">?</span>
     </div>
+    <!-- v3.20.26: tiny profile icon that opens the Profile tab. Sits next to the level badge so progress and profile feel connected. -->
+    <canvas id="levelProfileIcon" width="16" height="16" style="display:none;width:22px;height:22px;image-rendering:pixelated;border:1px solid var(--accent);border-radius:50%;background:#08080f;cursor:pointer;margin-left:6px;vertical-align:middle;box-shadow:0 0 6px rgba(0,255,136,0.25);" title="Your profile picture. Click to open your full Profile page &mdash; streak, stats, title, and card of standing."></canvas>
+    <button type="button" id="levelProfileBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;" title="Open your Profile &mdash; full stats, streak, title ladder position, and the factory's card of standing on you.">PROFILE</button>
     <div class="combo-display" id="comboDisplay" title="Combo counter. Each consecutive focus session bumps your combo and applies a multiplier to XP and money. Failing a session resets the combo.">
       <span class="combo-count" id="comboCount">0</span>
       <div style="display:flex;flex-direction:column;align-items:flex-start;">
