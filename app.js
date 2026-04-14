@@ -637,6 +637,11 @@ try {
     projects: [{ id: 'default', name: 'General' }],
     activeProject: 'default',
     tasks: {},
+    // v3.20.25: HIGH PRIORITY tasks. Separate from the per-project task list.
+    // Each entry: { id, text, createdAt, completed, completedAt }. When the
+    // popup opens, if there are any uncompleted entries here, a blocking modal
+    // appears listing them. Persists across days until completed or removed.
+    priorityTasks: [],
     selectedTaskId: null,
     blocks: 0,
     totalLifetimeBlocks: 0,
@@ -1101,6 +1106,15 @@ try {
         if (typeof state.lifetimeCoins !== 'number') state.lifetimeCoins = 0;
         if (typeof state.lastCoinTick !== 'number') state.lastCoinTick = 0;
         if (!Array.isArray(state.marathonBonusesToday)) state.marathonBonusesToday = [];
+        // v3.20.25: priority task list backfill for existing saves.
+        if (!Array.isArray(state.priorityTasks)) state.priorityTasks = [];
+        // v3.20.26: add recurrence fields to any priority tasks missing them.
+        state.priorityTasks.forEach(function(p) {
+          if (typeof p.recurrence === 'undefined') p.recurrence = null;
+          if (!Array.isArray(p.recurWeekdays)) p.recurWeekdays = [];
+          if (typeof p.recurInterval !== 'number') p.recurInterval = 0;
+          if (typeof p.lastCompletedDate !== 'string') p.lastCompletedDate = '';
+        });
         // ===== Stage-entry archive backfill (v3.19) =====
         // Older saves don't have the archive arrays. Backfill them to empty.
         // If the player has already dismissed the first-run intro (hasSeenIntro
@@ -4483,6 +4497,517 @@ try {
     }, 20000);
   }
 
+  // ============== HIGH PRIORITY TASKS (v3.20.25) ==============
+  // A separate bucket from state.tasks. If there are any uncompleted entries,
+  // a blocking modal appears every time the popup opens until the user marks
+  // them done or removes them. Persists across days. Per-item buttons: DONE
+  // (marks completed + removes from priority list), REMOVE (deletes outright).
+  // NOT YET (bottom of modal) dismisses for this session only.
+  // ------ Priority recurrence helpers ------
+  // Each priority task can optionally recur. Data shape:
+  //   recurrence:      null | 'daily' | 'weekly' | 'interval'
+  //   recurWeekdays:   array of ints 0-6 (Sun=0 .. Sat=6), used when weekly
+  //   recurInterval:   positive int N, used when 'interval' (every N days)
+  //   lastCompletedDate: 'YYYY-MM-DD' local date of last DONE click (empty = never)
+  function _priorityTodayKey() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1);
+    if (m.length < 2) m = '0' + m;
+    var day = String(d.getDate());
+    if (day.length < 2) day = '0' + day;
+    return y + '-' + m + '-' + day;
+  }
+  function _priorityDayDelta(fromKey, toKey) {
+    function parse(k) {
+      var parts = (k || '').split('-');
+      if (parts.length !== 3) return 0;
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)).getTime();
+    }
+    var a = parse(fromKey), b = parse(toKey);
+    if (!a || !b) return 0;
+    return Math.round((b - a) / 86400000);
+  }
+  function isPriorityDueToday(p) {
+    if (!p) return false;
+    // Legacy / non-recurring task: active unless explicitly completed.
+    if (!p.recurrence || p.recurrence === 'none') {
+      return !p.completed;
+    }
+    var today = _priorityTodayKey();
+    // If it was already marked DONE today, hide it until next calendar day.
+    if (p.lastCompletedDate === today) return false;
+    if (p.recurrence === 'daily') return true;
+    if (p.recurrence === 'weekly') {
+      var weekdays = Array.isArray(p.recurWeekdays) ? p.recurWeekdays : [];
+      if (weekdays.length === 0) return true;
+      return weekdays.indexOf(new Date().getDay()) !== -1;
+    }
+    if (p.recurrence === 'interval') {
+      var n = parseInt(p.recurInterval, 10);
+      if (!n || n < 1) n = 1;
+      if (!p.lastCompletedDate) return true;
+      return _priorityDayDelta(p.lastCompletedDate, today) >= n;
+    }
+    return !p.completed;
+  }
+  function priorityRecurrenceLabel(p) {
+    if (!p || !p.recurrence) return '';
+    if (p.recurrence === 'daily') return 'DAILY';
+    if (p.recurrence === 'weekly') {
+      var names = ['S','M','T','W','T','F','S'];
+      var wd = Array.isArray(p.recurWeekdays) ? p.recurWeekdays : [];
+      if (wd.length === 0 || wd.length === 7) return 'WEEKLY';
+      return wd.slice().sort().map(function(i) { return names[i]; }).join('');
+    }
+    if (p.recurrence === 'interval') {
+      var n = parseInt(p.recurInterval, 10) || 1;
+      return 'EVERY ' + n + 'D';
+    }
+    return '';
+  }
+
+  function addPriority() {
+    var inputEl = document.getElementById('priorityInput');
+    if (!inputEl) return;
+    var text = (inputEl.value || '').trim();
+    if (!text) return;
+    if (!Array.isArray(state.priorityTasks)) state.priorityTasks = [];
+    state.priorityTasks.push({
+      id: 'p' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      text: text,
+      createdAt: Date.now(),
+      completed: false,
+      completedAt: 0,
+      recurrence: null,
+      recurWeekdays: [],
+      recurInterval: 0,
+      lastCompletedDate: ''
+    });
+    inputEl.value = '';
+    save();
+    renderPriorities();
+    try { SFX.addTask && SFX.addTask(); } catch (_) {}
+  }
+
+  function completePriority(id) {
+    if (!Array.isArray(state.priorityTasks)) return;
+    // For recurring tasks we keep the task and just mark it done-for-today,
+    // so it reappears on the next qualifying calendar day. For one-off
+    // tasks we remove them outright — their whole point is to disappear.
+    var today = _priorityTodayKey();
+    var nextList = [];
+    for (var i = 0; i < state.priorityTasks.length; i++) {
+      var p = state.priorityTasks[i];
+      if (p.id !== id) { nextList.push(p); continue; }
+      if (p.recurrence && p.recurrence !== 'none') {
+        p.lastCompletedDate = today;
+        p.completedAt = Date.now();
+        nextList.push(p);
+      }
+      // else: drop it (one-off task)
+    }
+    state.priorityTasks = nextList;
+    save();
+    renderPriorities();
+    renderPriorityModalList();
+    try { SFX.completeTask && SFX.completeTask(); } catch (_) {}
+    // If the modal is open and the list is now empty, close it.
+    if (getActivePriorityTasks().length === 0) hidePriorityModal();
+  }
+
+  function removePriority(id) {
+    if (!Array.isArray(state.priorityTasks)) return;
+    state.priorityTasks = state.priorityTasks.filter(function(p) { return p.id !== id; });
+    save();
+    renderPriorities();
+    renderPriorityModalList();
+    if (getActivePriorityTasks().length === 0) hidePriorityModal();
+  }
+
+  function setPriorityRecurrence(id, recurrence, opts) {
+    if (!Array.isArray(state.priorityTasks)) return;
+    for (var i = 0; i < state.priorityTasks.length; i++) {
+      var p = state.priorityTasks[i];
+      if (p.id !== id) continue;
+      if (!recurrence || recurrence === 'none') {
+        p.recurrence = null;
+        p.recurWeekdays = [];
+        p.recurInterval = 0;
+      } else {
+        p.recurrence = recurrence;
+        if (recurrence === 'weekly') {
+          p.recurWeekdays = (opts && Array.isArray(opts.weekdays)) ? opts.weekdays.slice().sort() : [];
+        } else {
+          p.recurWeekdays = [];
+        }
+        if (recurrence === 'interval') {
+          var n = parseInt(opts && opts.interval, 10);
+          if (!n || n < 1) n = 1;
+          p.recurInterval = n;
+        } else {
+          p.recurInterval = 0;
+        }
+      }
+      break;
+    }
+    save();
+    renderPriorities();
+    renderPriorityModalList();
+  }
+
+  function reorderPriorityByIds(fromId, toId, dropBefore) {
+    if (!Array.isArray(state.priorityTasks)) return;
+    if (!fromId || !toId || fromId === toId) return;
+    var fromIdx = -1, toIdx = -1;
+    for (var i = 0; i < state.priorityTasks.length; i++) {
+      if (state.priorityTasks[i].id === fromId) fromIdx = i;
+      if (state.priorityTasks[i].id === toId) toIdx = i;
+    }
+    if (fromIdx < 0 || toIdx < 0) return;
+    var moved = state.priorityTasks.splice(fromIdx, 1)[0];
+    if (fromIdx < toIdx) toIdx--;
+    var insertAt = dropBefore ? toIdx : toIdx + 1;
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > state.priorityTasks.length) insertAt = state.priorityTasks.length;
+    state.priorityTasks.splice(insertAt, 0, moved);
+    save();
+    renderPriorities();
+    renderPriorityModalList();
+  }
+
+  function getActivePriorityTasks() {
+    if (!Array.isArray(state.priorityTasks)) return [];
+    return state.priorityTasks.filter(function(p) { return isPriorityDueToday(p); });
+  }
+
+  // Shared: open a small inline recurrence editor anchored under `anchorRow`
+  // for the given task. Compact version — three radio-like buttons plus
+  // conditional sub-controls for weekly/interval. Cleans itself up after
+  // a selection is saved.
+  function _buildRecurrenceEditor(p, onClose) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'margin:4px 4px 8px;padding:8px;background:#1a0606;border:1px solid #8b1a1a;border-radius:4px;font-size:11px;color:#ffd5d5;';
+    wrap.setAttribute('data-recur-editor', '1');
+
+    var header = document.createElement('div');
+    header.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:9px;color:#ffaaaa;margin-bottom:6px;letter-spacing:0.5px;';
+    header.textContent = 'RECURRENCE';
+    wrap.appendChild(header);
+
+    var current = p.recurrence || 'none';
+    var modeRow = document.createElement('div');
+    modeRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;';
+    var modes = [
+      { v: 'none',     label: 'ONE-OFF',  tip: 'No recurrence. Marking DONE removes the task forever.' },
+      { v: 'daily',    label: 'DAILY',    tip: 'Reappears every calendar day after you mark it DONE.' },
+      { v: 'weekly',   label: 'WEEKLY',   tip: 'Reappears on the weekdays you pick below.' },
+      { v: 'interval', label: 'EVERY N',  tip: 'Reappears N calendar days after the last DONE click.' }
+    ];
+    var sub = document.createElement('div');
+    sub.style.cssText = 'margin-bottom:6px;';
+
+    function refreshSub(selMode) {
+      sub.innerHTML = '';
+      if (selMode === 'weekly') {
+        var dayNames = ['S','M','T','W','T','F','S'];
+        var dayTitles = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        var selected = Array.isArray(p.recurWeekdays) ? p.recurWeekdays.slice() : [];
+        var dRow = document.createElement('div');
+        dRow.style.cssText = 'display:flex;gap:3px;';
+        dayNames.forEach(function(n, idx) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = n;
+          b.title = dayTitles[idx];
+          var isOn = selected.indexOf(idx) !== -1;
+          b.style.cssText = 'flex:1;padding:4px 0;border-radius:3px;font-family:"Press Start 2P",monospace;font-size:9px;cursor:pointer;' +
+            (isOn
+              ? 'background:#8b1a1a;color:#fff;border:1px solid #ff5a5a;'
+              : 'background:transparent;color:#886666;border:1px solid #5a2020;');
+          b.addEventListener('click', function() {
+            var pos = selected.indexOf(idx);
+            if (pos === -1) selected.push(idx); else selected.splice(pos, 1);
+            p.recurWeekdays = selected.slice();
+            refreshSub('weekly');
+          });
+          dRow.appendChild(b);
+        });
+        sub.appendChild(dRow);
+      } else if (selMode === 'interval') {
+        var iRow = document.createElement('div');
+        iRow.style.cssText = 'display:flex;gap:6px;align-items:center;';
+        var lbl = document.createElement('span');
+        lbl.textContent = 'Every';
+        iRow.appendChild(lbl);
+        var num = document.createElement('input');
+        num.type = 'number';
+        num.min = '1';
+        num.value = String(parseInt(p.recurInterval, 10) || 1);
+        num.style.cssText = 'width:48px;background:#0a0606;border:1px solid #8b1a1a;color:#ffd5d5;border-radius:3px;padding:3px 5px;font-size:11px;';
+        num.title = 'Number of calendar days between runs.';
+        num.addEventListener('input', function() {
+          var n = parseInt(num.value, 10);
+          if (!n || n < 1) n = 1;
+          p.recurInterval = n;
+        });
+        iRow.appendChild(num);
+        var days = document.createElement('span');
+        days.textContent = 'day(s)';
+        iRow.appendChild(days);
+        sub.appendChild(iRow);
+      }
+    }
+
+    modes.forEach(function(m) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = m.label;
+      b.title = m.tip;
+      var isSel = (current === m.v);
+      b.style.cssText = 'padding:4px 8px;border-radius:3px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;' +
+        (isSel
+          ? 'background:#8b1a1a;color:#fff;border:1px solid #ff5a5a;'
+          : 'background:transparent;color:#ffaaaa;border:1px solid #5a2020;');
+      b.addEventListener('click', function() {
+        current = m.v;
+        // Re-render mode row visuals
+        Array.prototype.forEach.call(modeRow.children, function(el, idx) {
+          var on = (modes[idx].v === current);
+          el.style.cssText = 'padding:4px 8px;border-radius:3px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;' +
+            (on
+              ? 'background:#8b1a1a;color:#fff;border:1px solid #ff5a5a;'
+              : 'background:transparent;color:#ffaaaa;border:1px solid #5a2020;');
+        });
+        refreshSub(current);
+      });
+      modeRow.appendChild(b);
+    });
+    wrap.appendChild(modeRow);
+    wrap.appendChild(sub);
+    refreshSub(current);
+
+    var actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'CANCEL';
+    cancelBtn.title = 'Close without changing recurrence.';
+    cancelBtn.style.cssText = 'background:transparent;color:#886666;border:1px solid #5a2020;border-radius:3px;padding:4px 8px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;';
+    cancelBtn.addEventListener('click', function() { if (onClose) onClose(false); });
+    actions.appendChild(cancelBtn);
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'SAVE';
+    saveBtn.title = 'Save recurrence settings for this task.';
+    saveBtn.style.cssText = 'background:#2a5a2a;color:#d4ffd4;border:1px solid #4a8a4a;border-radius:3px;padding:4px 10px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;';
+    saveBtn.addEventListener('click', function() {
+      setPriorityRecurrence(p.id, current, { weekdays: p.recurWeekdays, interval: p.recurInterval });
+      if (onClose) onClose(true);
+    });
+    actions.appendChild(saveBtn);
+    wrap.appendChild(actions);
+
+    return wrap;
+  }
+
+  // Shared: attach drag-and-drop reorder handlers to a rendered row.
+  // dragging is keyed on the task id so it works identically in the inline
+  // list and the modal list. Reordering always applies to the full
+  // state.priorityTasks array (not just active ones).
+  function _wireRowDrag(row, taskId, onReordered) {
+    row.setAttribute('draggable', 'true');
+    row.dataset.pfPriorityId = taskId;
+    row.addEventListener('dragstart', function(e) {
+      try {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', taskId);
+      } catch (_) {}
+      row.style.opacity = '0.45';
+    });
+    row.addEventListener('dragend', function() {
+      row.style.opacity = '1';
+      row.style.borderTop = '';
+      row.style.borderBottom = '1px solid rgba(139,26,26,0.4)';
+    });
+    row.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      var rect = row.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < (rect.height / 2);
+      row.style.borderTop = before ? '2px solid #ff5a5a' : '';
+      row.style.borderBottom = before ? '1px solid rgba(139,26,26,0.4)' : '2px solid #ff5a5a';
+    });
+    row.addEventListener('dragleave', function() {
+      row.style.borderTop = '';
+      row.style.borderBottom = '1px solid rgba(139,26,26,0.4)';
+    });
+    row.addEventListener('drop', function(e) {
+      e.preventDefault();
+      var fromId = '';
+      try { fromId = e.dataTransfer.getData('text/plain') || ''; } catch (_) {}
+      var rect = row.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < (rect.height / 2);
+      row.style.borderTop = '';
+      row.style.borderBottom = '1px solid rgba(139,26,26,0.4)';
+      if (fromId && fromId !== taskId) {
+        reorderPriorityByIds(fromId, taskId, before);
+        if (onReordered) onReordered();
+      }
+    });
+  }
+
+  function renderPriorities() {
+    var listEl = document.getElementById('priorityList');
+    var countEl = document.getElementById('priorityCount');
+    if (!listEl) return;
+    var active = getActivePriorityTasks();
+    if (countEl) countEl.textContent = String(active.length);
+    listEl.innerHTML = '';
+    if (active.length === 0) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'padding:8px;text-align:center;color:#886666;font-size:11px;font-style:italic;';
+      empty.textContent = 'No priority tasks due. Add one above or check back tomorrow for recurring items.';
+      listEl.appendChild(empty);
+      return;
+    }
+    active.forEach(function(p) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid rgba(139,26,26,0.4);';
+
+      var handle = document.createElement('span');
+      handle.textContent = '\u2630';
+      handle.title = 'Drag to reorder priority tasks.';
+      handle.style.cssText = 'color:#886666;cursor:grab;font-size:12px;padding:0 2px;user-select:none;';
+      row.appendChild(handle);
+
+      var txt = document.createElement('div');
+      txt.style.cssText = 'flex:1;color:#ffd5d5;font-size:12px;word-break:break-word;';
+      txt.textContent = p.text;
+      row.appendChild(txt);
+
+      if (p.recurrence && p.recurrence !== 'none') {
+        var badge = document.createElement('span');
+        badge.textContent = '\u21BB ' + priorityRecurrenceLabel(p);
+        badge.title = 'This task recurs. It reappears after you mark it DONE, per the schedule set on the gear button.';
+        badge.style.cssText = 'color:#ffb43c;border:1px solid #8b5a1a;border-radius:10px;padding:1px 6px;font-family:"Press Start 2P",monospace;font-size:8px;letter-spacing:0.5px;';
+        row.appendChild(badge);
+      }
+
+      var gearBtn = document.createElement('button');
+      gearBtn.type = 'button';
+      gearBtn.textContent = '\u2699';
+      gearBtn.title = 'Set recurrence (daily, weekly, or every N days).';
+      gearBtn.style.cssText = 'background:transparent;color:#ffaaaa;border:1px solid #5a2020;border-radius:4px;padding:3px 7px;font-size:12px;cursor:pointer;';
+      gearBtn.addEventListener('click', function() {
+        // Toggle inline editor under this row.
+        var existing = row.nextSibling;
+        if (existing && existing.getAttribute && existing.getAttribute('data-recur-editor') === '1') {
+          existing.parentNode.removeChild(existing);
+          return;
+        }
+        // Remove any other open editors first.
+        Array.prototype.forEach.call(listEl.querySelectorAll('[data-recur-editor="1"]'), function(n) { n.parentNode.removeChild(n); });
+        var ed = _buildRecurrenceEditor(p, function(saved) {
+          if (ed.parentNode) ed.parentNode.removeChild(ed);
+          if (saved) renderPriorities();
+        });
+        if (row.nextSibling) listEl.insertBefore(ed, row.nextSibling);
+        else listEl.appendChild(ed);
+      });
+      row.appendChild(gearBtn);
+
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button';
+      doneBtn.textContent = '\u2713';
+      doneBtn.title = (p.recurrence && p.recurrence !== 'none')
+        ? 'Mark this recurring task done for today. It will reappear on the next scheduled day.'
+        : 'Mark this priority task done. It will be removed from the list.';
+      doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      doneBtn.addEventListener('click', function() { completePriority(p.id); });
+      row.appendChild(doneBtn);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = '\u2715';
+      removeBtn.title = 'Remove from the priority list entirely (including any recurrence).';
+      removeBtn.style.cssText = 'background:transparent;color:#886666;border:1px solid #8b1a1a;border-radius:4px;padding:3px 7px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      removeBtn.addEventListener('click', function() { removePriority(p.id); });
+      row.appendChild(removeBtn);
+
+      _wireRowDrag(row, p.id);
+      listEl.appendChild(row);
+    });
+  }
+
+  function renderPriorityModalList() {
+    var listEl = document.getElementById('priorityModalList');
+    if (!listEl) return;
+    var active = getActivePriorityTasks();
+    listEl.innerHTML = '';
+    active.forEach(function(p) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid rgba(139,26,26,0.5);';
+
+      var handle = document.createElement('span');
+      handle.textContent = '\u2630';
+      handle.title = 'Drag to reorder.';
+      handle.style.cssText = 'color:#886666;cursor:grab;font-size:14px;padding:0 2px;user-select:none;';
+      row.appendChild(handle);
+
+      var txt = document.createElement('div');
+      txt.style.cssText = 'flex:1;color:#ffecec;font-size:13px;line-height:1.4;word-break:break-word;';
+      txt.textContent = p.text;
+      row.appendChild(txt);
+
+      if (p.recurrence && p.recurrence !== 'none') {
+        var badge = document.createElement('span');
+        badge.textContent = '\u21BB ' + priorityRecurrenceLabel(p);
+        badge.title = 'Recurring task. It reappears on its schedule after DONE is clicked.';
+        badge.style.cssText = 'color:#ffb43c;border:1px solid #8b5a1a;border-radius:10px;padding:2px 8px;font-family:"Press Start 2P",monospace;font-size:8px;letter-spacing:0.5px;';
+        row.appendChild(badge);
+      }
+
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button';
+      doneBtn.textContent = 'DONE';
+      doneBtn.title = (p.recurrence && p.recurrence !== 'none')
+        ? 'Mark done for today. This recurring task will come back on its next scheduled day.'
+        : 'Mark this priority task done. Removes it from the list.';
+      doneBtn.style.cssText = 'background:#2a5a2a;color:#d4ffd4;border:1px solid #4a8a4a;border-radius:4px;padding:6px 10px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;';
+      doneBtn.addEventListener('click', function() { completePriority(p.id); });
+      row.appendChild(doneBtn);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'REMOVE';
+      removeBtn.title = 'Remove from priority list entirely (including any recurrence).';
+      removeBtn.style.cssText = 'background:transparent;color:#ffaaaa;border:1px solid #8b1a1a;border-radius:4px;padding:6px 10px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;';
+      removeBtn.addEventListener('click', function() { removePriority(p.id); });
+      row.appendChild(removeBtn);
+
+      _wireRowDrag(row, p.id);
+      listEl.appendChild(row);
+    });
+  }
+
+  function showPriorityModal() {
+    var modal = document.getElementById('priorityModal');
+    if (!modal) return;
+    renderPriorityModalList();
+    modal.style.display = 'flex';
+  }
+
+  function hidePriorityModal() {
+    var modal = document.getElementById('priorityModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+  }
+
+  function maybeShowPriorityModal() {
+    if (getActivePriorityTasks().length > 0) showPriorityModal();
+  }
+
   // ============== TASK MANAGEMENT ==============
   function addTask() {
     const text = taskInput.value.trim();
@@ -5032,6 +5557,22 @@ try {
           }
         }
       });
+
+      // v3.20.25: HIGH PRIORITY wiring — input, add button, modal dismiss.
+      var priInput = document.getElementById('priorityInput');
+      var addPriBtn = document.getElementById('addPriorityBtn');
+      var priModalDismiss = document.getElementById('priorityModalDismissBtn');
+      if (priInput) {
+        priInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') { e.preventDefault(); addPriority(); }
+        });
+      }
+      if (addPriBtn) addPriBtn.addEventListener('click', addPriority);
+      if (priModalDismiss) priModalDismiss.addEventListener('click', hidePriorityModal);
+      renderPriorities();
+      // Defer the modal by a tick so the rest of the popup paints first — a
+      // black modal appearing before the page exists is jarring.
+      setTimeout(maybeShowPriorityModal, 150);
 
       // Timer buttons
       if (startBtn) startBtn.addEventListener('click', startTimer);

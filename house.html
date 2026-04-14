@@ -503,7 +503,7 @@
     <h1 title="The House &mdash; a small, deliberately spare antechamber to the factory.">HOUSE</h1>
   </div>
   <div style="display:flex;align-items:center;">
-    <button id="toPopupBtn" class="nav-btn warm" type="button" title="Leave the house and begin the day&rsquo;s textile work. This is the same main tracker you already know.">BEGIN TEXTILE WORK</button>
+    <button id="toPopupBtn" class="nav-btn warm" type="button" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
     <button id="toLoomBtn" class="nav-btn" type="button" title="Walk directly to the Master Loom.">MASTER LOOM</button>
     <button id="toFactoryBtn" class="nav-btn" type="button" title="Walk directly to the Textile Factory.">FACTORY</button>
   </div>
@@ -514,42 +514,42 @@
   <!-- STANDARD VIEW: family rap sheet. Rendered by house-window.js. -->
   <div id="houseStandardView">
     <div class="hero">
-      <div class="eyebrow" id="houseChapterEyebrow">THE HOUSE &middot; MORNING</div>
-      <h2>A small house at the edge of a factory town.</h2>
-      <p>
+      <div class="eyebrow" id="houseChapterEyebrow" title="Chapter heading. Shifts with the house's overall arc &mdash; starts as MORNING and darkens as the factory's reach grows.">THE HOUSE &middot; MORNING</div>
+      <h2 title="The house's flavor caption. Purely atmospheric &mdash; it sets the scene before work begins.">A small house at the edge of a factory town.</h2>
+      <p title="Opening prose. Narrative framing for the morning. Has no mechanical effect; exists to set tone before you walk to the loom.">
         The kettle is on. Somewhere in the next room a child is turning
         the pages of a book about a different, smaller house. The factory
         is a short walk away. You will be expected at the loom in an
         appreciable number of minutes, a fact the house absorbs without
         comment.
       </p>
-      <p id="houseMoodLine" style="color:var(--accent2);">
+      <p id="houseMoodLine" style="color:var(--accent2);" title="Dynamic mood line. Changes based on household wellbeing and factory progress &mdash; gets warmer when things are well, chillier as the factory consumes more of the neighborhood.">
         Things, at the moment, are <em>as they should be</em>. Not better,
         not worse. The light in the hallway has not yet been dimmed.
       </p>
     </div>
 
-    <div class="sheet" id="houseRapSheet">
-      <div class="sheet-title">RAP SHEET &middot; HOUSEHOLD</div>
-      <div class="sheet-row">
-        <div class="label">SPOUSE</div>
-        <div class="count" id="spouseCount">&mdash;</div>
-        <div class="note" id="spouseNote">Present. Reading the weekend supplement.</div>
+    <div class="sheet" id="houseRapSheet" title="Rap Sheet &mdash; the factory's administrative shorthand for your household dossier. It watches who is in the house and how they are holding up.">
+      <div class="sheet-title" title="A &lsquo;rap sheet&rsquo; in the factory's vocabulary is a personnel file. Here it has been quietly turned on the household itself.">RAP SHEET &middot; HOUSEHOLD</div>
+      <div class="sheet-row" title="Spouse row. Tracks whether the partner is currently at home.">
+        <div class="label" title="Category label for the spouse line.">SPOUSE</div>
+        <div class="count" id="spouseCount" title="Spouse count &mdash; typically 0 or 1. The rap sheet does not acknowledge complicated arrangements.">&mdash;</div>
+        <div class="note" id="spouseNote" title="A short prose note about what the spouse is doing right now. Updates with the household's mood.">Present. Reading the weekend supplement.</div>
       </div>
-      <div class="sheet-row">
-        <div class="label">CHILDREN</div>
-        <div class="count" id="kidCount">&mdash;</div>
-        <div class="note" id="kidNote">One colouring at the table. (Two on good days.)</div>
+      <div class="sheet-row" title="Children row. Tracks the small humans currently accounted for in the house.">
+        <div class="label" title="Category label for the children line.">CHILDREN</div>
+        <div class="count" id="kidCount" title="Headcount of children on the premises. Varies across days; the rap sheet takes a generous view of &lsquo;present&rsquo;.">&mdash;</div>
+        <div class="note" id="kidNote" title="A short prose note about what the children are up to. Narrative only &mdash; kids do not yet contribute directly to gameplay.">One colouring at the table. (Two on good days.)</div>
       </div>
-      <div class="sheet-row">
-        <div class="label">PETS</div>
-        <div class="count" id="petCount">&mdash;</div>
-        <div class="note" id="petNote">Variable. None have names the forms will accept.</div>
+      <div class="sheet-row" title="Pets row. Tracks animals loosely associated with the household.">
+        <div class="label" title="Category label for the pets line.">PETS</div>
+        <div class="count" id="petCount" title="Number of pets currently in residence. Some wander in and out; the count is a best-effort snapshot.">&mdash;</div>
+        <div class="note" id="petNote" title="A short prose note about the pets. Purely flavor; pets do not yet feed into any mechanics.">Variable. None have names the forms will accept.</div>
       </div>
 
-      <div class="condition">
-        <div class="condition-label">CONDITION</div>
-        <div class="condition-value" id="conditionValue">Settling in.</div>
+      <div class="condition" title="Overall Condition summary &mdash; a single-line verdict on the household's state, derived from the Household WB scalar further down.">
+        <div class="condition-label" title="&lsquo;CONDITION&rsquo; is the administrative header for the household's one-line status summary.">CONDITION</div>
+        <div class="condition-value" id="conditionValue" title="Human-readable verdict on the household. Changes with the Household WB scalar: &lsquo;Settling in&rsquo; at low tenure, &lsquo;Comfortable&rsquo; when things are warm, &lsquo;Fraying&rsquo; as things deteriorate.">Settling in.</div>
       </div>
 
       <!-- VITAL SIGNS PANEL
@@ -559,23 +559,23 @@
            aggregate wellbeing scalar, which is the thing that actually
            rises while the factory is doing well and falls once the factory
            begins consuming people. -->
-      <div class="vitals" id="vitalsPanel">
-        <div class="vitals-header">
-          <div class="vitals-title"><span class="vitals-led"></span>VITAL SIGNS &middot; INTERIOR FEED</div>
-          <div class="vitals-feed" id="vitalsFeedTag">CH 2B / CAM 04</div>
+      <div class="vitals" id="vitalsPanel" title="Vital Signs panel &mdash; a monitoring strip showing heart-rate-style readouts for the people in the house. Modeled after a small security-office console.">
+        <div class="vitals-header" title="Header bar of the vitals panel. Shows which feed is currently displayed.">
+          <div class="vitals-title" title="Label for the live interior feed &mdash; the camera loop inside the house."><span class="vitals-led" title="Status LED. A slow pulse means the feed is live. Purely decorative for now."></span>VITAL SIGNS &middot; INTERIOR FEED</div>
+          <div class="vitals-feed" id="vitalsFeedTag" title="Channel / camera tag. &lsquo;CH 2B / CAM 04&rsquo; is the security system's internal routing code for the camera watching your living room. Decorative world-building; does not affect gameplay.">CH 2B / CAM 04</div>
         </div>
-        <div id="vitalRows"></div>
+        <div id="vitalRows" title="Per-member vital sign rows. Each household member gets a heart-rate-style strip with a short descriptor. Rendered from house.getRapSheet(state).members."></div>
 
         <!-- TELECOMMUNICATIONS: phone + internet status with a short
              line of prose. Populated by house-window.js from
              sheet.telecoms. -->
-        <div class="comms-divider">EXTERIOR COMMUNICATIONS</div>
-        <div id="commsRows"></div>
+        <div class="comms-divider" title="Divider between interior vitals and the household's outside-world links. &lsquo;Exterior Communications&rsquo; is the panel's label for the phone and internet lines into the house.">EXTERIOR COMMUNICATIONS</div>
+        <div id="commsRows" title="Telecoms rows &mdash; phone line and internet connection with a short status blurb each. Populated from sheet.telecoms. Flavor-only for now; the factory does not yet sever your lines."></div>
 
-        <div class="vitals-footer">
-          <div class="wb-label">HOUSEHOLD WB</div>
-          <div class="wb-track"><div id="wbFill" class="wb-fill"></div></div>
-          <div class="wb-value" id="wbValue">&mdash;</div>
+        <div class="vitals-footer" title="Summary footer for the whole panel &mdash; the aggregate Household Wellbeing scalar that feeds every reading above.">
+          <div class="wb-label" title="Household Wellbeing &mdash; a 0-to-100 scalar that drives the mood line, the CONDITION verdict, and the shape of every vital-sign trace above it. Rises when the factory is doing well for you; falls once the factory starts consuming the neighborhood.">HOUSEHOLD WB</div>
+          <div class="wb-track" title="Progress track for Household WB. The fill bar widens or shrinks with the scalar."><div id="wbFill" class="wb-fill" title="Filled portion of the WB bar. Color shifts from warm amber (healthy) to cold grey (collapsing) as the scalar drops."></div></div>
+          <div class="wb-value" id="wbValue" title="Numeric readout of the Household WB scalar, 0-100.">&mdash;</div>
         </div>
       </div>
     </div>
@@ -588,11 +588,11 @@
   <!-- DENIAL VIEW: shown only after the land bridge is commissioned.
        Populated dynamically by house-window.js so the exact prose can
        live in house.js and be edited from one place. -->
-  <div id="houseDenialView" style="display:none;">
-    <div class="denial">
-      <div class="denial-stamp">NOTICE OF REDIRECTED TRANSIT &middot; FORM H/2b</div>
-      <p id="denialBody">&mdash;</p>
-      <div class="footer">
+  <div id="houseDenialView" style="display:none;" title="Denial View &mdash; shown only after the Land Bridge is commissioned in the factory. Once the bridge is built, the house is no longer directly reachable; this screen replaces the rap sheet.">
+    <div class="denial" title="A bureaucratic notice informing you that the house has been administratively closed off. The factory has absorbed the route home.">
+      <div class="denial-stamp" title="An official-looking stamp. &lsquo;Form H/2b&rsquo; is the fictional paperwork that reroutes foot traffic away from residential addresses. Purely narrative.">NOTICE OF REDIRECTED TRANSIT &middot; FORM H/2b</div>
+      <p id="denialBody" title="The denial letter's body. Populated dynamically from house.js so the prose can be edited in one place.">&mdash;</p>
+      <div class="footer" title="Footer line identifying (or refusing to identify) the standing office that filed the form. Tonal flourish &mdash; the &lsquo;standing office&rsquo; is a running motif of anonymous bureaucracy.">
         Filed with a standing office whose letterhead is not, at this time,
         disclosed. No reply is expected.
       </div>

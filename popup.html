@@ -200,7 +200,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
        the player picks a loom via the Gallery PROFILE button. -->
   <div style="display:flex;align-items:center;gap:8px;">
     <canvas id="profileAvatar" width="16" height="16" style="display:none;width:32px;height:32px;image-rendering:pixelated;border:2px solid var(--accent);border-radius:50%;background:#08080f;cursor:pointer;box-shadow:0 0 8px rgba(0,255,136,0.3);" title="Your profile picture. Click to open the gallery and pick a different loom."></canvas>
-  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.20.24</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
+  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features.">v3.20.26</span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button></h1>
   </div>
   <div class="block-counter" id="blockCounter" title="Textiles produced today. One textile per completed 10-minute focus session. Resets at midnight.">
     <div class="block-icon"></div>
@@ -272,6 +272,22 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div id="addTabBtn" class="tab-menu-btn" title="Create a new project tab.">+</div>
     <div class="tab-rotate-bar" id="tabRotateBar"><div class="tab-rotate-bar-fill" id="tabRotateBarFill"></div></div>
   </div>
+</div>
+
+<!-- v3.20.26: HIGH PRIORITY section. Tasks added here open a blocking modal
+     every time the popup opens, until they are marked done or removed.
+     Persists across days. If empty, no modal. -->
+<div id="prioritySection" style="margin:0 10px 8px;background:linear-gradient(180deg,#3a0f0f,#1a0606);border:1px solid #8b1a1a;border-radius:6px;padding:8px;box-shadow:0 0 10px rgba(255,80,80,0.15) inset;" title="High-priority tasks. Anything added here triggers a blocking pop-up every time you open the todo list, and keeps doing so across days until you mark it done or remove it.">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ff5a5a;letter-spacing:1px;text-shadow:0 0 6px rgba(255,80,80,0.6);">&#9888; HIGH PRIORITY</span>
+    <span class="tip" data-tip="Tasks added here open a blocking pop-up every time you open the todo list. Persists across days until you mark done or remove. Leave empty for no pop-up.">?</span>
+    <span id="priorityCount" style="margin-left:auto;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd5d5;background:#8b1a1a;padding:2px 6px;border-radius:8px;">0</span>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">
+    <input type="text" id="priorityInput" placeholder="Add urgent task..." style="flex:1;background:#1a0606;border:1px solid #8b1a1a;border-radius:4px;padding:6px 10px;color:#ffd5d5;font-size:12px;outline:none;" title="Type an urgent task and press Enter (or +) to add. It will trigger a blocking pop-up every time you open the todo list, across days, until you deal with it." />
+    <button type="button" id="addPriorityBtn" style="background:#8b1a1a;color:#fff;border:1px solid #ff5a5a;border-radius:4px;padding:0 12px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;" title="Add this priority task.">+</button>
+  </div>
+  <div id="priorityList" style="max-height:120px;overflow-y:auto;"></div>
 </div>
 
 <div style="margin:0 10px 8px;background:var(--surface);border-radius:0 0 8px 8px;border:1px solid var(--border);border-top:none;">
@@ -448,6 +464,24 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-small" id="ancientKeepBtn" title="Leave these tasks alone. You won't be asked again for another 12 hours.">KEEP THEM</button>
       <button class="btn btn-small btn-danger" id="ancientDeleteBtn" title="Permanently delete the ticked tasks. This cannot be undone.">DELETE SELECTED</button>
+    </div>
+  </div>
+</div>
+
+<!-- v3.20.26: HIGH PRIORITY blocking modal. Only shown on init() if there
+     are uncompleted priority tasks. Each task has DONE / REMOVE buttons;
+     NOT YET (bottom) dismisses the modal for this session only (task stays,
+     modal pops again next time the popup opens). -->
+<div id="priorityModal" style="display:none;position:fixed;inset:0;background:rgba(8,4,4,0.92);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:linear-gradient(180deg,#2a0808,#1a0404);border:2px solid #ff5a5a;border-radius:10px;max-width:460px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(255,80,80,0.4),0 12px 40px rgba(0,0,0,0.7);">
+    <div style="padding:18px 18px 10px;border-bottom:1px solid #8b1a1a;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:13px;color:#ff5a5a;letter-spacing:2px;text-align:center;text-shadow:0 0 8px rgba(255,80,80,0.7);margin-bottom:6px;">&#9888; HIGH PRIORITY &#9888;</div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:#ffd5d5;text-align:center;font-style:italic;">Deal with these before moving on.</div>
+    </div>
+    <div id="priorityModalList" style="padding:12px 18px;overflow-y:auto;flex:1;"></div>
+    <div style="padding:10px 18px 18px;border-top:1px solid #8b1a1a;text-align:center;">
+      <button type="button" id="priorityModalDismissBtn" style="background:transparent;color:#ffaaaa;border:1px solid #8b1a1a;border-radius:4px;padding:8px 20px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;" title="Close the pop-up without marking anything done. These tasks stay on the priority list and the pop-up will appear again next time you open the todo list.">NOT YET</button>
+      <div style="font-family:'Courier New',monospace;font-size:10px;color:#886666;margin-top:8px;font-style:italic;">Not-yet tasks keep popping up every time you open this.</div>
     </div>
   </div>
 </div>
