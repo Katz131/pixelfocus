@@ -384,6 +384,7 @@
     <button class="nav-btn" id="toFactoryBtn" type="button" title="Open the Textile Factory.">FACTORY</button>
     <button class="nav-btn" id="toGalleryBtn" type="button" title="Open the Master Loom gallery &mdash; where you pick the loom that becomes this profile picture.">MASTER LOOM</button>
     <button class="nav-btn" id="toHouseBtn" type="button" title="Walk home. Open the House.">HOUSE</button>
+    <button class="nav-btn" id="shareProfileBtn" type="button" title="Export your profile as a standalone web page you can share online." style="color:#ff6b9d;border-color:#ff6b9d;">SHARE</button>
     <button class="nav-btn gold" id="backToTrackerBtn" type="button" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
   </div>
 </div>
@@ -526,9 +527,20 @@
   </div>
 
   <div class="footer-line" id="footerLine" title="When your profile card was first filed with the factory.">Filed with the clerks of standing on &mdash;.</div>
+
+  <!-- Public profile link -->
+  <div id="profileLinkBar" style="text-align:center;margin-top:16px;padding:14px 20px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:none;">
+    <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">YOUR PUBLIC PROFILE</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+      <input id="profileLinkInput" type="text" readonly style="background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:10px;padding:8px 12px;border-radius:6px;width:420px;max-width:80vw;outline:none;" title="Your public profile URL. Share it anywhere.">
+      <button id="copyLinkBtn" type="button" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;border-radius:6px;cursor:pointer;" title="Copy the URL to your clipboard.">COPY</button>
+    </div>
+    <div id="profileSyncStatus" style="font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;"></div>
+  </div>
 </div>
 
 <script src="tooltip.js"></script>
+<script src="firebase-sync.js"></script>
 <script src="profile-window.js"></script>
 </body>
 </html>

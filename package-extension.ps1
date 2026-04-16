@@ -4,7 +4,7 @@
 #     powershell -ExecutionPolicy Bypass -File "C:\Users\theso\Pixel todo lists\package-extension.ps1"
 # Builds a clean zip of the extension INSIDE the extension folder,
 # right next to this script:
-#     C:\Users\theso\Pixel todo lists\pixelfocus-v3.19.3.zip
+#     C:\Users\theso\Pixel todo lists\pixelfocus-v3.21.4.zip
 # (It lives next to the script so you can always find it in the
 # same folder you're already working in, regardless of whether
 # your Desktop is OneDrive-redirected.)
@@ -13,7 +13,7 @@
 $ErrorActionPreference = 'Stop'
 
 $src     = 'C:\Users\theso\Pixel todo lists'
-$version = '3.19.3'
+$version = '3.21.4'
 $staging = Join-Path $env:TEMP ("pixelfocus-build-" + [Guid]::NewGuid().ToString('N'))
 $outZip  = Join-Path $src ("pixelfocus-v$version.zip")
 
@@ -42,7 +42,10 @@ $files = @(
     'sounds.js',
     'tips.js',
     'tooltip.js',
-    'fonts.css'
+    'fonts.css',
+    'profile.html',
+    'profile-window.js',
+    'firebase-sync.js'
 )
 
 foreach ($f in $files) {

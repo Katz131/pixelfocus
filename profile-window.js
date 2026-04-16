@@ -295,6 +295,10 @@
       footer.textContent = 'Filed with the clerks of standing on ' + filed + '.';
       footer.title = 'Date your profile card was first stamped by the factory. Purely narrative.';
     }
+
+    // Sync to Firestore + show link
+    updateProfileLinkBar(state);
+    syncProfile(state);
   }
 
   function setText(id, txt) {
@@ -345,6 +349,220 @@
     });
   }
 
+  // ---- Share / Export ----
+  // Generates a self-contained HTML file of the profile that works in any
+  // browser with no extension required. The player downloads it and can
+  // upload it to any free host (Netlify Drop, GitHub Pages, etc.).
+  function exportProfile() {
+    if (!currentState) return;
+
+    // Grab avatar as data-URL if present
+    var avatarDataURL = '';
+    var pfp = currentState.profilePicture;
+    if (pfp && pfp.pixels && pfp.size) {
+      var tmp = document.createElement('canvas');
+      tmp.width = pfp.size;
+      tmp.height = pfp.size;
+      var cx = tmp.getContext('2d');
+      cx.fillStyle = '#08080f';
+      cx.fillRect(0, 0, pfp.size, pfp.size);
+      Object.keys(pfp.pixels).forEach(function(k) {
+        var parts = k.split(',');
+        cx.fillStyle = pfp.pixels[k];
+        cx.fillRect(parseInt(parts[0], 10), parseInt(parts[1], 10), 1, 1);
+      });
+      avatarDataURL = tmp.toDataURL('image/png');
+    }
+
+    // Snapshot all the rendered stat values
+    function val(id) {
+      var el = document.getElementById(id);
+      return el ? el.textContent : '';
+    }
+    var snap = {
+      name: currentState.displayName || 'Anonymous Weaver',
+      tagline: currentState.tagline || '',
+      level: val('levelChip'),
+      title: val('titleChip'),
+      xpText: val('xpText'),
+      xpPct: 0,
+      streak: val('streakNumber'),
+      streakFlavor: val('streakFlavor'),
+      longestStreak: val('longestStreakPill'),
+      streakBonus: val('streakBonusPill'),
+      streakCold: (parseInt(val('streakNumber'), 10) || 0) <= 0,
+      stLifetimeBlocks: val('stLifetimeBlocks'),
+      stFocusMins: val('stFocusMins'),
+      stTasksDone: val('stTasksDone'),
+      stLifetimeCoins: val('stLifetimeCoins'),
+      stWallet: val('stWallet'),
+      stTodayBlocks: val('stTodayBlocks'),
+      stTodayXP: val('stTodayXP'),
+      stCurrentCombo: val('stCurrentCombo'),
+      stComboToday: val('stComboToday'),
+      stMaxCombo: val('stMaxCombo'),
+      stStage: val('stStage'),
+      stBuildings: val('stBuildings'),
+      stPersonnel: val('stPersonnel'),
+      stLoomsSaved: val('stLoomsSaved'),
+      stLoomsSold: val('stLoomsSold'),
+      stLivesLost: val('stLivesLost'),
+      footer: val('footerLine')
+    };
+    var fill = document.getElementById('xpFill');
+    if (fill) snap.xpPct = fill.style.width || '0%';
+
+    // Build the standalone HTML
+    var avatarBlock = avatarDataURL
+      ? '<img src="' + avatarDataURL + '" style="image-rendering:pixelated;width:100%;height:100%;" alt="Profile avatar">'
+      : '<div class="avatar-empty">NO AVATAR</div>';
+
+    var html = '<!DOCTYPE html>\n'
+      + '<html lang="en"><head>\n'
+      + '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
+      + '<title>' + snap.name + ' — Todo of the Loom</title>\n'
+      + '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+      + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      + '<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">\n'
+      + '<style>\n'
+      + '  *{margin:0;padding:0;box-sizing:border-box}\n'
+      + '  :root{--bg:#08080f;--surface:#12122a;--surface2:#1a1a3a;--accent:#00ff88;--accent2:#ff6b9d;--accent3:#4ecdc4;--gold:#ffd700;--gold-dim:#b8860b;--flame:#ff8c3a;--flame-hot:#ffb64c;--text:#e0e0e0;--text-dim:#5a5a7e;--border:#2a2a4a}\n'
+      + '  body{background:radial-gradient(ellipse at 50% 10%,#15152e 0%,var(--bg) 55%);color:var(--text);font-family:"Segoe UI",sans-serif;min-height:100vh;display:flex;flex-direction:column;padding-bottom:40px}\n'
+      + '  .top-bar{width:100%;background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 24px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,255,136,0.12)}\n'
+      + '  .top-bar h1{font-family:"Press Start 2P",monospace;font-size:16px;color:var(--accent);text-shadow:0 0 10px rgba(0,255,136,0.35)}\n'
+      + '  .hero{text-align:center;padding:26px 20px 10px}\n'
+      + '  .hero-label{font-family:"Press Start 2P",monospace;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:8px}\n'
+      + '  .layout{max-width:1080px;margin:0 auto;padding:18px 24px 40px;width:100%;display:flex;flex-direction:column;gap:18px}\n'
+      + '  .profile-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 32px;display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center}\n'
+      + '  @media(max-width:720px){.profile-card{grid-template-columns:1fr;text-align:center}}\n'
+      + '  .avatar-slot{width:132px;height:132px;border-radius:12px;border:2px solid var(--accent);box-shadow:0 0 18px rgba(0,255,136,0.28);background:#08080f;display:flex;align-items:center;justify-content:center;overflow:hidden}\n'
+      + '  .avatar-slot img{image-rendering:pixelated;width:100%;height:100%}\n'
+      + '  .avatar-empty{font-family:"Press Start 2P",monospace;font-size:9px;color:var(--text-dim);text-align:center;padding:0 10px;line-height:1.6}\n'
+      + '  .identity{display:flex;flex-direction:column;gap:8px}\n'
+      + '  .identity-name{font-family:"Press Start 2P",monospace;font-size:20px;color:var(--text);letter-spacing:0.5px}\n'
+      + '  .identity-tagline{font-size:13px;color:var(--text-dim);font-style:italic}\n'
+      + '  .title-row{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}\n'
+      + '  .level-chip{background:var(--surface2);border:1px solid var(--accent3);color:var(--accent3);font-family:"Press Start 2P",monospace;font-size:10px;padding:5px 9px;border-radius:6px;letter-spacing:0.5px}\n'
+      + '  .title-chip{background:var(--surface2);border:1px solid var(--gold);color:var(--gold);font-family:"Press Start 2P",monospace;font-size:10px;padding:5px 9px;border-radius:6px;letter-spacing:0.5px}\n'
+      + '  .xp-bar{margin-top:8px;height:14px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;overflow:hidden;position:relative;max-width:420px}\n'
+      + '  .xp-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent3))}\n'
+      + '  .xp-text{font-size:10px;color:var(--text-dim);margin-top:4px;font-family:"Press Start 2P",monospace;letter-spacing:0.5px}\n'
+      + '  .streak-card{background:var(--surface);border:1px solid var(--flame);border-radius:12px;padding:22px 24px;display:flex;gap:26px;align-items:center;box-shadow:0 0 18px rgba(255,140,58,0.12)}\n'
+      + '  @media(max-width:720px){.streak-card{flex-direction:column;text-align:center}}\n'
+      + '  .streak-flame{font-size:72px;line-height:1;text-shadow:0 0 18px rgba(255,140,58,0.5)}\n'
+      + '  .streak-flame.cold{filter:grayscale(0.85);opacity:0.55}\n'
+      + '  .streak-main{display:flex;flex-direction:column;gap:4px;flex:1}\n'
+      + '  .streak-number{font-family:"Press Start 2P",monospace;font-size:28px;color:var(--flame-hot)}\n'
+      + '  .streak-label{font-family:"Press Start 2P",monospace;font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase}\n'
+      + '  .streak-flavor{font-size:12px;color:var(--text-dim);font-style:italic;max-width:520px;line-height:1.5}\n'
+      + '  .streak-meta{display:flex;gap:14px;margin-top:4px;font-size:11px;color:var(--text-dim);flex-wrap:wrap}\n'
+      + '  .streak-meta .pill{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px 10px}\n'
+      + '  .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}\n'
+      + '  @media(max-width:900px){.stats-grid{grid-template-columns:1fr}}\n'
+      + '  .stat-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px}\n'
+      + '  .stat-panel h2{font-family:"Press Start 2P",monospace;font-size:10px;color:var(--accent3);margin-bottom:12px;letter-spacing:0.5px}\n'
+      + '  .stat-panel.work h2{color:var(--gold)}\n'
+      + '  .stat-panel.game h2{color:var(--accent2)}\n'
+      + '  .stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px dashed var(--border)}\n'
+      + '  .stat-row:last-child{border-bottom:none}\n'
+      + '  .stat-label{font-size:11px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase}\n'
+      + '  .stat-value{font-family:"Press Start 2P",monospace;font-size:11px;color:var(--text);letter-spacing:0.5px}\n'
+      + '  .stat-value.gold{color:var(--gold)}\n'
+      + '  .stat-value.accent{color:var(--accent)}\n'
+      + '  .stat-value.pink{color:var(--accent2)}\n'
+      + '  .stat-value.teal{color:var(--accent3)}\n'
+      + '  .footer-line{text-align:center;font-size:11px;color:var(--text-dim);font-style:italic;margin-top:4px}\n'
+      + '  .snapshot-note{text-align:center;font-size:10px;color:var(--text-dim);margin-top:12px;font-style:italic}\n'
+      + '</style>\n'
+      + '</head><body>\n'
+      + '<div class="top-bar"><h1>TODO OF THE LOOM</h1></div>\n'
+      + '<div class="hero"><div class="hero-label">CARD OF STANDING</div></div>\n'
+      + '<div class="layout">\n'
+      // Profile card
+      + '<div class="profile-card">\n'
+      + '  <div class="avatar-slot">' + avatarBlock + '</div>\n'
+      + '  <div class="identity">\n'
+      + '    <div class="identity-name">' + escHtml(snap.name) + '</div>\n'
+      + (snap.tagline ? '    <div class="identity-tagline">' + escHtml(snap.tagline) + '</div>\n' : '')
+      + '    <div class="title-row">\n'
+      + '      <span class="level-chip">' + escHtml(snap.level) + '</span>\n'
+      + '      <span class="title-chip">' + escHtml(snap.title) + '</span>\n'
+      + '    </div>\n'
+      + '    <div class="xp-bar"><div class="xp-fill" style="width:' + snap.xpPct + ';"></div></div>\n'
+      + '    <div class="xp-text">' + escHtml(snap.xpText) + '</div>\n'
+      + '  </div>\n'
+      + '</div>\n'
+      // Streak card
+      + '<div class="streak-card">\n'
+      + '  <div class="streak-flame' + (snap.streakCold ? ' cold' : '') + '">\u{1F525}</div>\n'
+      + '  <div class="streak-main">\n'
+      + '    <div class="streak-number">' + escHtml(snap.streak) + '</div>\n'
+      + '    <div class="streak-label">DAY STREAK</div>\n'
+      + '    <div class="streak-flavor">' + escHtml(snap.streakFlavor) + '</div>\n'
+      + '    <div class="streak-meta">\n'
+      + '      <div class="pill">' + escHtml(snap.longestStreak) + '</div>\n'
+      + '      <div class="pill">' + escHtml(snap.streakBonus) + '</div>\n'
+      + '    </div>\n'
+      + '  </div>\n'
+      + '</div>\n'
+      // Stats grid
+      + '<div class="stats-grid">\n'
+      // Work ledger
+      + '  <div class="stat-panel work"><h2>WORK LEDGER</h2>\n'
+      + statRow('Lifetime textiles', snap.stLifetimeBlocks, 'gold')
+      + statRow('Focus minutes', snap.stFocusMins, 'accent')
+      + statRow('Tasks completed', snap.stTasksDone, 'teal')
+      + statRow('Lifetime coins', snap.stLifetimeCoins, 'gold')
+      + statRow('Wallet', snap.stWallet, 'gold')
+      + '  </div>\n'
+      // Today & combos
+      + '  <div class="stat-panel"><h2>TODAY &amp; COMBOS</h2>\n'
+      + statRow('Today\'s textiles', snap.stTodayBlocks, 'accent')
+      + statRow('Today\'s XP', snap.stTodayXP, 'accent')
+      + statRow('Current combo', snap.stCurrentCombo, 'pink')
+      + statRow('Best combo today', snap.stComboToday, 'pink')
+      + statRow('All-time best combo', snap.stMaxCombo, 'gold')
+      + '  </div>\n'
+      // Game progress
+      + '  <div class="stat-panel game"><h2>GAME PROGRESS</h2>\n'
+      + statRow('Factory stage', snap.stStage, 'pink')
+      + statRow('Buildings', snap.stBuildings, 'teal')
+      + statRow('Personnel', snap.stPersonnel, 'teal')
+      + statRow('Looms saved', snap.stLoomsSaved, 'accent')
+      + statRow('Looms sold', snap.stLoomsSold, 'gold')
+      + statRow('Lives lost', snap.stLivesLost, '', 'color:#ff6666')
+      + '  </div>\n'
+      + '</div>\n'
+      // Footer
+      + '<div class="footer-line">' + escHtml(snap.footer) + '</div>\n'
+      + '<div class="snapshot-note">Snapshot taken ' + new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) + '. Stats may have changed since.</div>\n'
+      + '</div>\n'
+      + '</body></html>';
+
+    // Trigger download
+    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    var safeName = (snap.name || 'profile').replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '-').toLowerCase();
+    a.download = 'todo-of-the-loom-' + safeName + '.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+  }
+
+  function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function statRow(label, value, cls, style) {
+    var clsAttr = cls ? ' ' + cls : '';
+    var stAttr = style ? ' style="' + style + '"' : '';
+    return '    <div class="stat-row"><span class="stat-label">' + escHtml(label) + '</span><span class="stat-value' + clsAttr + '"' + stAttr + '>' + escHtml(value) + '</span></div>\n';
+  }
+
   // ---- Nav wiring ----
   function wireNav() {
     function send(path) {
@@ -386,10 +604,68 @@
     render(s);
   }
 
+  // ---- Profile link bar + sync ----
+  function updateProfileLinkBar(state) {
+    var bar = document.getElementById('profileLinkBar');
+    var input = document.getElementById('profileLinkInput');
+    var status = document.getElementById('profileSyncStatus');
+    if (!bar || !input) return;
+
+    if (typeof ProfileSync !== 'undefined' && ProfileSync) {
+      var url = ProfileSync.getProfileUrl(state);
+      if (url) {
+        bar.style.display = 'block';
+        input.value = url;
+      }
+    }
+  }
+
+  function syncProfile(state) {
+    if (typeof ProfileSync === 'undefined' || !ProfileSync) return;
+    var status = document.getElementById('profileSyncStatus');
+    if (status) status.textContent = 'Syncing...';
+
+    ProfileSync.sync(state).then(function(result) {
+      if (status) {
+        if (result === 'throttled') {
+          status.textContent = 'Profile up to date.';
+        } else if (result) {
+          status.textContent = 'Profile synced.';
+        } else {
+          status.textContent = 'Sync failed — check your connection.';
+        }
+      }
+      // Update link bar in case profileId was just generated
+      updateProfileLinkBar(state);
+    });
+  }
+
+  function wireCopyButton() {
+    var btn = document.getElementById('copyLinkBtn');
+    var input = document.getElementById('profileLinkInput');
+    if (!btn || !input) return;
+    btn.addEventListener('click', function() {
+      input.select();
+      try {
+        navigator.clipboard.writeText(input.value).then(function() {
+          btn.textContent = 'COPIED';
+          setTimeout(function() { btn.textContent = 'COPY'; }, 2000);
+        });
+      } catch (_) {
+        document.execCommand('copy');
+        btn.textContent = 'COPIED';
+        setTimeout(function() { btn.textContent = 'COPY'; }, 2000);
+      }
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     wireNav();
     wireEditable('displayName', 'displayName', 40);
     wireEditable('tagline', 'tagline', 140);
+    wireCopyButton();
+    var shareBtn = document.getElementById('shareProfileBtn');
+    if (shareBtn) shareBtn.addEventListener('click', exportProfile);
     load();
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
