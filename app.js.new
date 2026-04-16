@@ -1,5 +1,5 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.20.32)
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.20.30)
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
@@ -1415,20 +1415,6 @@ try {
 
       state.lastActiveDate = today;
       state.sessionBlocks = 0;
-      // v3.22.0 Stage 1: day-rollover is the cadence on which ambient
-      // events are considered. The engine honours its own 2-day global
-      // cooldown and per-event cooldowns, so calling this every rollover
-      // is safe — most rollovers will not fire anything. Trigger-class
-      // events are checked first (for beats gated by reaching a level /
-      // coin threshold overnight), then ambient if nothing triggered.
-      try {
-        if (typeof Events !== 'undefined' && Events && Events.tick) {
-          var evResult = Events.tick(state, 'either');
-          if (evResult && evResult.ok && typeof EventsModal !== 'undefined' && EventsModal && EventsModal.show) {
-            EventsModal.show(evResult);
-          }
-        }
-      } catch (_) {}
       save();
     }
   }
@@ -2115,17 +2101,7 @@ try {
     // Lobbying boosts the trickle rate; the global money mult also
     // applies so automated leadership + second location + world span
     // all multiply the passive income stream late-game.
-    // v3.22.0 Stage 1: events engine income multiplier. Composable with
-    // all other multipliers; defaults to 1.0 when no event effects are
-    // live. See events.js for the effect-expiry sweep that keeps this
-    // bounded in time.
-    var eventsMult = 1.0;
-    try {
-      if (typeof Events !== 'undefined' && Events && Events.getIncomeMultiplier) {
-        eventsMult = Events.getIncomeMultiplier(state);
-      }
-    } catch (_) {}
-    return baseRate * streakScale * getLobbyingMult() * getTotalMoneyMult() * getV317StreakTrickleMult() * incinBonus * dissMult * matBonus * bridgeBonus * eventsMult;
+    return baseRate * streakScale * getLobbyingMult() * getTotalMoneyMult() * getV317StreakTrickleMult() * incinBonus * dissMult * matBonus * bridgeBonus;
   }
 
   function awardCoins(amount, reason) {
@@ -6178,173 +6154,3 @@ try {
       var settingsBtn = $('settingsBtn');
       var settingsModal = $('settingsModal');
       var settingsModalCloseBtn = $('settingsModalCloseBtn');
-      var safeRefreshBtn = $('safeRefreshBtn');
-      var safeRefreshStatus = $('safeRefreshStatus');
-      var restoreBackupBtn = $('restoreBackupBtn');
-      var restoreBackupStatus = $('restoreBackupStatus');
-      function openSettingsModal() {
-        if (!settingsModal) return;
-        settingsModal.style.display = 'flex';
-        if (safeRefreshStatus) safeRefreshStatus.textContent = '';
-        if (restoreBackupStatus) restoreBackupStatus.textContent = '';
-      }
-      function closeSettingsModal() {
-        if (!settingsModal) return;
-        settingsModal.style.display = 'none';
-      }
-      if (settingsBtn) {
-        settingsBtn.addEventListener('click', function() {
-          try { SFX.click && SFX.click(); } catch (_) {}
-          openSettingsModal();
-        });
-      }
-      if (settingsModalCloseBtn) {
-        settingsModalCloseBtn.addEventListener('click', function() {
-          try { SFX.click && SFX.click(); } catch (_) {}
-          closeSettingsModal();
-        });
-      }
-      if (settingsModal) {
-        settingsModal.addEventListener('click', function(ev) {
-          if (ev.target === settingsModal) closeSettingsModal();
-        });
-      }
-      function pad2(n) { n = n | 0; return n < 10 ? '0' + n : '' + n; }
-      function backupFilename() {
-        var d = new Date();
-        return 'todo-of-the-loom-backup-' + d.getFullYear() + pad2(d.getMonth() + 1) +
-          pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes()) +
-          pad2(d.getSeconds()) + '.json';
-      }
-      function triggerJsonDownload(filename, jsonText) {
-        try {
-          var blob = new Blob([jsonText], { type: 'application/json' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(function() {
-            try { document.body.removeChild(a); } catch (_) {}
-            try { URL.revokeObjectURL(url); } catch (_) {}
-          }, 500);
-          return true;
-        } catch (e) {
-          return false;
-        }
-      }
-      function doReload() {
-        try {
-          chrome.runtime.sendMessage({ type: 'SAFE_REFRESH_RELOAD' }, function() {
-            try {
-              if (chrome.runtime && typeof chrome.runtime.reload === 'function') {
-                chrome.runtime.reload();
-              }
-            } catch (_) {}
-          });
-        } catch (e) {
-          try {
-            if (chrome.runtime && typeof chrome.runtime.reload === 'function') {
-              chrome.runtime.reload();
-            }
-          } catch (_) {}
-        }
-      }
-      if (safeRefreshBtn) {
-        safeRefreshBtn.addEventListener('click', function() {
-          try { SFX.click && SFX.click(); } catch (_) {}
-          if (safeRefreshStatus) safeRefreshStatus.textContent = 'Preparing backup...';
-          try { save(); } catch (_) {}
-          var payload;
-          try {
-            payload = {
-              version: '3.20.31',
-              exportedAt: new Date().toISOString(),
-              state: state
-            };
-          } catch (e) {
-            if (safeRefreshStatus) safeRefreshStatus.textContent = 'Backup failed: could not serialize state.';
-            return;
-          }
-          var jsonText;
-          try { jsonText = JSON.stringify(payload, null, 2); }
-          catch (e) {
-            if (safeRefreshStatus) safeRefreshStatus.textContent = 'Backup failed: serialization error.';
-            return;
-          }
-          var downloaded = triggerJsonDownload(backupFilename(), jsonText);
-          if (downloaded === false) {
-            if (safeRefreshStatus) safeRefreshStatus.textContent = 'Download blocked. Backup aborted.';
-            return;
-          }
-          try {
-            chrome.storage.local.set({
-              pixelFocusState_backup: {
-                savedAt: Date.now(),
-                version: '3.20.31',
-                state: state
-              }
-            }, function() {
-              if (safeRefreshStatus) safeRefreshStatus.textContent = 'Backup saved. Reloading extension...';
-              try {
-                if (typeof MsgLog !== 'undefined') {
-                  MsgLog.push('Safe refresh: backup written; the extension is being reloaded.');
-                }
-              } catch (_) {}
-              setTimeout(doReload, 700);
-            });
-          } catch (e) {
-            if (safeRefreshStatus) safeRefreshStatus.textContent = 'Saved to disk, but internal mirror failed.';
-          }
-        });
-      }
-      if (restoreBackupBtn) {
-        restoreBackupBtn.addEventListener('click', function() {
-          try { SFX.click && SFX.click(); } catch (_) {}
-          if (confirm('Restore the most recent internal backup? This will overwrite the current state.') === false) return;
-          if (restoreBackupStatus) restoreBackupStatus.textContent = 'Reading backup...';
-          try {
-            chrome.storage.local.get('pixelFocusState_backup', function(result) {
-              var backup = result && result.pixelFocusState_backup;
-              if (!backup || !backup.state) {
-                if (restoreBackupStatus) restoreBackupStatus.textContent = 'No internal backup found.';
-                return;
-              }
-              try {
-                chrome.storage.local.set({ pixelFocusState: backup.state }, function() {
-                  if (restoreBackupStatus) restoreBackupStatus.textContent = 'Restored. Reloading...';
-                  setTimeout(doReload, 500);
-                });
-              } catch (e) {
-                if (restoreBackupStatus) restoreBackupStatus.textContent = 'Restore failed.';
-              }
-            });
-          } catch (e) {
-            if (restoreBackupStatus) restoreBackupStatus.textContent = 'Backup read error.';
-          }
-        });
-      }
-
-      // ===== Tab overflow recalc on resize =====
-      // If the popup window is ever resized (e.g. the user detaches it), the
-      // overflow math needs to rerun so tabs show/hide to fit the new width.
-      var tabResizeRaf = null;
-      window.addEventListener('resize', function() {
-        if (tabResizeRaf) return;
-        tabResizeRaf = requestAnimationFrame(function() {
-          tabResizeRaf = null;
-          try { renderTabs(); } catch (e) {}
-        });
-      });
-    });
-  }
-
-  // Boot
-  init();
-
-})();
-} catch (pixelFocusInitError) {
-  console.error('PixelFocus app.js fatal error:', pixelFocusInitError);
-}

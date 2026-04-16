@@ -1437,7 +1437,36 @@
     } else {
       var W = 900, H = 90, pad = 6;
       var n = ratings.length;
-      var minR = 0, maxR = 100;
+      // v3.20.32: adaptive y-axis. Early on, practice ratings are low (say,
+      // 10-25) and the full 0-100 scale makes the line look flat at the
+      // bottom. Detect that and zoom in on the actual data range so small
+      // changes are visible. Switch back to the full 0-100 scale once the
+      // player is producing higher-rated work.
+      var dataMin = ratings[0], dataMax = ratings[0];
+      for (var k = 1; k < n; k++) {
+        if (ratings[k] < dataMin) dataMin = ratings[k];
+        if (ratings[k] > dataMax) dataMax = ratings[k];
+      }
+      var minR, maxR, zoomed, refAt, refLabel;
+      // Zoom when the player's peak is still low OR they have a short
+      // history (first 10 saves). The zoom always keeps 0 visible as the
+      // floor so they can see distance from the bottom.
+      if (dataMax <= 45 || n < 10) {
+        minR = 0;
+        // Pad the top a bit so the highest point isn't flush with the edge.
+        maxR = Math.max(10, Math.min(100, Math.ceil((dataMax + 8) / 5) * 5));
+        zoomed = true;
+        // Reference line at half the zoomed range, so the dashed marker
+        // stays meaningful as a midpoint.
+        refAt = Math.round(maxR / 2);
+        refLabel = 'midpoint of visible range';
+      } else {
+        minR = 0;
+        maxR = 100;
+        zoomed = false;
+        refAt = 50;
+        refLabel = '50 / 100';
+      }
       var step = n > 1 ? (W - pad * 2) / (n - 1) : 0;
       var pts = '';
       for (var j = 0; j < n; j++) {
@@ -1445,10 +1474,13 @@
         var y = H - pad - ((ratings[j] - minR) / (maxR - minR)) * (H - pad * 2);
         pts += (j === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
       }
-      // 50-line reference
-      var midY = H - pad - (50 / 100) * (H - pad * 2);
+      var midY = H - pad - (refAt / (maxR - minR)) * (H - pad * 2);
+      var scaleBadge = zoomed
+        ? '<div class="spark-scale" style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#6ff0a1;letter-spacing:1px;opacity:0.7;margin-bottom:4px;" title="The y-axis is auto-zoomed to 0\u2013' + maxR + ' so small changes in your early practice ratings are visible. Once your best rating climbs past 45, the chart switches to the full 0\u2013100 scale.">SCALE &middot; 0&ndash;' + maxR + ' (AUTO-ZOOMED)</div>'
+        : '<div class="spark-scale" style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#6ff0a1;letter-spacing:1px;opacity:0.5;margin-bottom:4px;" title="The y-axis covers the full practice rating range, 0\u2013100.">SCALE &middot; 0&ndash;100</div>';
       sparkBody.innerHTML =
-        '<div class="spark-wrap" title="PRACTICE RATING chart (0\u2013100), NOT the 1\u20135 stars. The game has two rating systems: STARS (1\u20135) appear on gallery cards and set your auction sell price \u2014 simple formula based on pixels, colours, canvas size. PRACTICE RATING (0\u2013100) is this line \u2014 a deeper score that also uses your operator\u2019s skill, proclivities, fatigue, rust, and health. Higher practice ratings make your skill grow faster, which feeds back into better future ratings. Green line = your score per artwork (newest on right). Dashed line = 50/100 midpoint. \u2018Last Fifty\u2019 = keeps your 50 most recent saves.">' +
+        '<div class="spark-wrap" title="PRACTICE RATING chart, NOT the 1\u20135 stars. The game has two rating systems: STARS (1\u20135) appear on gallery cards and set your auction sell price \u2014 simple formula based on pixels, colours, canvas size. PRACTICE RATING is this line \u2014 a deeper score that also uses your operator\u2019s skill, proclivities, fatigue, rust, and health. Higher practice ratings make your skill grow faster, which feeds back into better future ratings. Green line = your score per artwork (newest on right). Dashed line = ' + refLabel + '. Early on the y-axis auto-zooms so small changes are visible; once you\u2019re consistently scoring above 45, it switches to the full 0\u2013100 scale.">' +
+          scaleBadge +
           '<svg class="spark-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
             '<line x1="' + pad + '" y1="' + midY.toFixed(1) + '" x2="' + (W - pad) + '" y2="' + midY.toFixed(1) + '" stroke="#2a3d2f" stroke-width="1" stroke-dasharray="4,4"/>' +
             '<path d="' + pts + '" fill="none" stroke="#00ff88" stroke-width="2"/>' +
@@ -1902,24 +1934,13 @@
     renderStats();
     renderGallery();
     renderMasterLoomCountdown();
-    // Init-time catch-up: if the player already cleared later
-    // thresholds in other windows before this window opened,
-    // unlock any retroactive stage entries now so the LOG badge
-    // reflects reality on first render.
     try { checkGalleryStageUnlocks(); } catch (_) {}
-    // Countdown ticks every second so the hours:minutes:seconds
-    // display is always current. Kept separate from the
-    // storage-change driven renderers so it doesn't stutter.
     setInterval(renderMasterLoomCountdown, 1000);
     try {
       if (typeof MsgLog !== 'undefined') {
         MsgLog.push('Master Loom online. ' + (state.canvasSize || 8) + 'x' + (state.canvasSize || 8) + ' frame loaded.');
       }
     } catch (_) {}
-    // First-run Master Loom intro. Fires once per player; dismissal
-    // flips state.hasSeenGalleryIntro so it never auto-re-triggers.
-    // Delayed briefly so the rest of the UI has time to render
-    // underneath the modal.
     try {
       if (!state.hasSeenGalleryIntro) {
         setTimeout(function() {

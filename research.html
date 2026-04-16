@@ -329,38 +329,39 @@
 <body>
 
 <div class="top-bar">
-  <h1>Research Lab</h1>
+  <h1 title="The Research Lab. A Tier-3 factory annex where you run experiments on members of your personnel roster to earn coins, rare reagents, and narrative outcomes. Subjects can depart, be injured, or yield unexpected findings depending on the experiment.">Research Lab</h1>
   <div class="top-bar-nav">
     <button class="nav-btn" id="backToFactoryBtn" title="Return to the factory.">&larr; FACTORY</button>
     <button class="nav-btn" id="toHouseBtn" title="Walk home. Open the House &mdash; the wakeup antechamber with a short rap sheet on the household.">HOUSE</button>
     <button class="nav-btn" id="backToEmployeesBtn" title="Open the Employee Management Center.">PERSONNEL</button>
+    <button class="nav-btn" id="toBureauBtn" style="display:none;" title="Open the Bureau &mdash; the espionage annex. Hidden until the Bureau upgrade is purchased.">BUREAU</button>
     <button class="nav-btn" id="toIncineratorBtn" style="display:none;" title="Open the Incinerator &mdash; a Tier-7 late-game annex that converts employees into permanent passive income.">INCINERATOR</button>
     <button class="nav-btn gold" id="backToTrackerBtn" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
   </div>
 </div>
 
 <div class="hero">
-  <div class="hero-label">A SMALL ROOM WITH ONE WINDOW</div>
-  <div class="hero-flavor" id="labHeroFlavor">A quiet, well-lit annex off the main floor. The chairs are comfortable but not, on inspection, quite matching. A coat rack stands near the door with one brown hat on it. Nobody claims the hat.</div>
+  <div class="hero-label" title="The in-world name of the Research Lab. Flavour only &mdash; no gameplay effect.">A SMALL ROOM WITH ONE WINDOW</div>
+  <div class="hero-flavor" id="labHeroFlavor" title="Ambient description of the lab. Changes slightly based on how many experiments you have run and how many subjects have departed.">A quiet, well-lit annex off the main floor. The chairs are comfortable but not, on inspection, quite matching. A coat rack stands near the door with one brown hat on it. Nobody claims the hat.</div>
   <div class="stats-row">
-    <div class="pill coins"    id="labCoinsPill">$0</div>
-    <div class="pill roster"   id="labRosterPill">0 on roster</div>
-    <div class="pill runs"     id="labRunsPill">0 experiments run</div>
-    <div class="pill depart"   id="labDepartPill">0 departures</div>
-    <div class="pill cooldown" id="labCooldownPill" style="display:none;">Resetting&hellip;</div>
+    <div class="pill coins"    id="labCoinsPill" title="Your current coin total. Experiments cost coins to run; successful outcomes pay coins back (sometimes more than the stake, sometimes less).">$0</div>
+    <div class="pill roster"   id="labRosterPill" title="Total employees currently on your personnel roster. Each experiment needs a subject, and subjects can depart the lab depending on outcome.">0 on roster</div>
+    <div class="pill runs"     id="labRunsPill" title="Lifetime count of experiments you have run in this lab. For flavour only.">0 experiments run</div>
+    <div class="pill depart"   id="labDepartPill" title="Lifetime count of employees who have departed via the lab &mdash; failures, walkouts, or narrative outcomes that remove a subject from the roster permanently.">0 departures</div>
+    <div class="pill cooldown" id="labCooldownPill" style="display:none;" title="A global cooldown is active: too many experiments were run in a short window. Wait for this to clear before starting another.">Resetting&hellip;</div>
   </div>
 </div>
 
-<div class="notice" id="labNotice"></div>
+<div class="notice" id="labNotice" title="Status messages from the lab &mdash; shown when something is blocking you from running an experiment (e.g. a global cooldown, an empty roster, or insufficient coins)."></div>
 
 <div class="layout">
   <div class="panel">
-    <h2>Experiments on the schedule</h2>
-    <div id="expList" class="exp-list"></div>
+    <h2 title="The experiments currently approved for the lab. Each card shows the cost, the rough odds of each outcome type, and lets you pick a subject from your roster. Click the run button to stake the coins and begin.">Experiments on the schedule</h2>
+    <div id="expList" class="exp-list" title="All available experiments. Subject pickers only show employees eligible for that experiment. Cooldowns are per-experiment."></div>
   </div>
   <div class="panel">
-    <h2 class="pink">The morning's findings</h2>
-    <div id="histList" class="history-list"></div>
+    <h2 class="pink" title="Recent results, newest first. Each entry shows the subject, the outcome (success / inconclusive / failure), and any coin or narrative reward.">The morning's findings</h2>
+    <div id="histList" class="history-list" title="Your last 50 experiment outcomes. Colour coding: green left-bar = success, grey = inconclusive, red = failure. Rewards in gold text."></div>
   </div>
 </div>
 

@@ -290,33 +290,34 @@
 <body>
 
 <div class="top-bar">
-  <h1>Personnel</h1>
+  <h1 title="The Employee Management Center. Displays every named employee currently on your personnel roster. Hiring happens at the factory; this window is read-only &mdash; you can search, filter, and sort, but you cannot fire anyone from here.">Personnel</h1>
   <div class="top-bar-nav">
     <button class="nav-btn" id="backToFactoryBtn" title="Return to the factory.">&larr; FACTORY</button>
     <button class="nav-btn" id="toHouseBtn" title="Walk home. Open the House &mdash; the wakeup antechamber with a short rap sheet on the household.">HOUSE</button>
     <button class="nav-btn" id="toResearchBtn" style="display:none;" title="Open the Research Lab &mdash; conduct experiments on members of the roster. Some subjects do not come back.">RESEARCH</button>
+    <button class="nav-btn" id="toBureauBtn" style="display:none;" title="Open the Bureau &mdash; the espionage annex. Relocate employees into Bureau posts as activated agents.">BUREAU</button>
     <button class="nav-btn" id="toIncineratorBtn" style="display:none;" title="Open the Incinerator &mdash; a Tier-7 late-game annex that converts employees into permanent passive income.">INCINERATOR</button>
     <button class="nav-btn gold" id="backToTrackerBtn" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
   </div>
 </div>
 
 <div class="hero">
-  <div class="hero-label">HEADCOUNT ON THE BOOKS</div>
-  <div class="hero-number" id="empHeroCount">0</div>
-  <div class="hero-sub" id="empHeroSub">The Employee Management Center is not yet staffed. Purchase the Hire Employees upgrade in the factory to begin building a roster.</div>
-  <div class="pool-breakdown" id="empPoolBreakdown" style="display:none;">
-    <div class="chip wes" id="chipWes">Eccentrics: 0</div>
-    <div class="chip stranger" id="chipStranger">Quiet lives: 0</div>
-    <div class="chip migrant" id="chipMigrant">Recent arrivals: 0</div>
+  <div class="hero-label" title="Section label for total roster count. Flavour text only.">HEADCOUNT ON THE BOOKS</div>
+  <div class="hero-number" id="empHeroCount" title="Total number of employees currently on your personnel roster. Scales with the Hire Employees upgrade level in the factory.">0</div>
+  <div class="hero-sub" id="empHeroSub" title="Ambient description of the employee center. Updates as your roster grows.">The Employee Management Center is not yet staffed. Purchase the Hire Employees upgrade in the factory to begin building a roster.</div>
+  <div class="pool-breakdown" id="empPoolBreakdown" style="display:none;" title="Roster breakdown: recent hires, established employees, and anyone currently flagged.">
+    <div class="chip wes" id="chipWes" title="Employees hired in the last 14 days.">Recent: 0</div>
+    <div class="chip stranger" id="chipStranger" title="Employees on the books for 14 days or more.">Established: 0</div>
+    <div class="chip migrant" id="chipMigrant" title="Employees flagged as dissident or currently under stress.">Flagged: 0</div>
   </div>
 </div>
 
 <div class="controls">
-  <input type="text" id="empSearch" placeholder="Search by name, role, region, or bio keyword…" />
-  <button class="filter-btn active" data-filter="all">All</button>
-  <button class="filter-btn" data-filter="wes">Eccentrics</button>
-  <button class="filter-btn" data-filter="stranger">Quiet lives</button>
-  <button class="filter-btn" data-filter="migrant">Arrivals</button>
+  <input type="text" id="empSearch" placeholder="Search by name, role, region, or bio keyword…" title="Live-filter the roster by any word in the employee's name, role, region, or bio. Clearing the box restores the full roster." />
+  <button class="filter-btn active" data-filter="all" title="Show every employee on the roster.">All</button>
+  <button class="filter-btn" data-filter="new" title="Show only employees hired in the last 14 days.">Recent</button>
+  <button class="filter-btn" data-filter="established" title="Show only employees on the books for 14 days or more.">Established</button>
+  <button class="filter-btn" data-filter="flagged" title="Show only employees flagged as dissident or currently under stress.">Flagged</button>
   <select class="sort-select" id="empSort" title="Change roster ordering.">
     <option value="hired-new">Newest hired first</option>
     <option value="hired-old">Oldest hired first</option>
@@ -325,9 +326,9 @@
   </select>
 </div>
 
-<div class="roster" id="empRoster"></div>
+<div class="roster" id="empRoster" title="Your personnel roster. Each card shows an employee's name, role, region, and a short bio. A red border indicates the employee has been flagged as a dissident."></div>
 
-<div class="empty-state" id="empEmpty" style="display:none;">
+<div class="empty-state" id="empEmpty" style="display:none;" title="Shown when the roster is empty &mdash; either you haven't bought the Hire Employees upgrade yet, or current filters match zero employees.">
   <span class="big">NO PERSONNEL ON FILE</span>
   Once the first level of the Hire Employees upgrade is purchased in the factory,
   the standing office will begin filling this roster. You will not be consulted
@@ -336,6 +337,7 @@
 
 <script src="tooltip.js"></script>
 <script src="msglog.js"></script>
+<script src="patsy-names.js"></script>
 <script src="personnel.js"></script>
 <script src="employees.js"></script>
 </body>

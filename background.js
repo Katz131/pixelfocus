@@ -48,6 +48,17 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     openPixelFocusWindow(msg.path);
     sendResponse({ ok: true });
   }
+  // v3.20.31: Safe Refresh request from popup.js. The popup has already
+  // written a backup to disk and mirrored it into chrome.storage.local
+  // under 'pixelFocusState_backup'. We reply, then reload the extension
+  // on the next tick so the callback lands first.
+  if (msg && msg.type === 'SAFE_REFRESH_RELOAD') {
+    try { sendResponse({ ok: true }); } catch (_) {}
+    setTimeout(function() {
+      try { chrome.runtime.reload(); } catch (_) {}
+    }, 100);
+    return true;
+  }
   return false;
 });
 
@@ -95,7 +106,6 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
     state.combo = 0;
     // Do NOT reset state.canvasSize — canvas size is a paid upgrade and must
     // persist across day boundaries. Pixels were already archived to gallery
-    // above, so the canvas naturally appears empty at the user's owned size.
     state.marathonBonusesToday = [];
     state.lastActiveDate = today;
     state.sessionBlocks = 0;

@@ -403,7 +403,7 @@
   <div class="profile-card" title="Your public card &mdash; avatar, display name, tagline, and current title.">
     <div class="avatar-slot" id="avatarSlot" title="Your profile avatar. Pick any saved loom in the Master Loom gallery and press PROFILE on it to set it as this picture.">
       <canvas id="profileCanvas" width="16" height="16" style="display:none;"></canvas>
-      <div class="avatar-empty" id="avatarEmpty">NO AVATAR<br>SET ONE IN<br>THE GALLERY</div>
+      <div class="avatar-empty" id="avatarEmpty" title="You don't have a profile avatar yet. Open the Master Loom gallery, click one of your saved looms, and press the PROFILE button on it to set it here.">NO AVATAR<br>SET ONE IN<br>THE GALLERY</div>
     </div>
     <div class="identity">
       <div id="displayName"
@@ -435,7 +435,7 @@
     <div class="streak-flame" id="streakFlame" title="Flame icon &mdash; burns bright when your streak is active, fades when it dies.">&#128293;</div>
     <div class="streak-main">
       <div class="streak-number" id="streakNumber" title="Your current consecutive-day streak.">0</div>
-      <div class="streak-label">DAY STREAK</div>
+      <div class="streak-label" title="The unit of your streak counter &mdash; consecutive days of at least one completed focus session.">DAY STREAK</div>
       <div class="streak-flavor" id="streakFlavor" title="A short sentence that changes with your streak length.">
         No streak yet. Complete one focus session today to light the fire.
       </div>
@@ -449,7 +449,7 @@
   <!-- STATS GRID: three panels -->
   <div class="stats-grid">
     <div class="stat-panel work" title="The factory's ledger on your production &mdash; all-time totals.">
-      <h2>WORK LEDGER</h2>
+      <h2 title="All-time production totals &mdash; textiles, coins, minutes, and tasks.">WORK LEDGER</h2>
       <div class="stat-row" title="Every textile woven at the loom since you started playing.">
         <span class="stat-label">Lifetime textiles</span>
         <span class="stat-value gold" id="stLifetimeBlocks">0</span>
@@ -473,7 +473,7 @@
     </div>
 
     <div class="stat-panel" title="Session performance numbers &mdash; combos, today's haul, and focus intensity.">
-      <h2>TODAY &amp; COMBOS</h2>
+      <h2 title="Today's haul and your combo record. The &quot;today&quot; numbers reset at midnight; combos persist.">TODAY &amp; COMBOS</h2>
       <div class="stat-row" title="Textiles woven today. Resets at midnight.">
         <span class="stat-label">Today's textiles</span>
         <span class="stat-value accent" id="stTodayBlocks">0</span>
@@ -497,7 +497,7 @@
     </div>
 
     <div class="stat-panel game" title="Where you stand in the game's unfolding arc &mdash; buildings opened, people hired, art sold.">
-      <h2>GAME PROGRESS</h2>
+      <h2 title="Your overall journey through the factory &mdash; stages, buildings, personnel, and loom milestones.">GAME PROGRESS</h2>
       <div class="stat-row" title="Your current factory stage &mdash; a rough seniority marker.">
         <span class="stat-label">Factory stage</span>
         <span class="stat-value pink" id="stStage">Stage 0</span>
@@ -528,6 +528,7 @@
   <div class="footer-line" id="footerLine" title="When your profile card was first filed with the factory.">Filed with the clerks of standing on &mdash;.</div>
 </div>
 
+<script src="tooltip.js"></script>
 <script src="profile-window.js"></script>
 </body>
 </html>

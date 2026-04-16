@@ -67,19 +67,26 @@
     var empty     = $('empEmpty');
     if (!grid) return;
 
-    // Headline count + pool breakdown (based on the UNFILTERED roster)
+    // Headline count + roster breakdown (based on the UNFILTERED roster)
     if (heroCount) heroCount.textContent = String(roster.length);
-    var pCounts = { wes: 0, stranger: 0, migrant: 0 };
+    var bCounts = { recent: 0, established: 0, flagged: 0 };
     for (var i = 0; i < roster.length; i++) {
-      var p = roster[i] && roster[i].pool;
-      if (pCounts[p] != null) pCounts[p]++;
+      var emp = roster[i];
+      if (!emp) continue;
+      var td = 0;
+      if (typeof Personnel !== 'undefined' && Personnel && Personnel.tenureDays) {
+        td = Personnel.tenureDays(emp);
+      }
+      if (td <= 14) bCounts.recent++;
+      else bCounts.established++;
+      if (emp.dissident || (emp.stress || 0) > 0) bCounts.flagged++;
     }
     if (breakdown) {
       if (roster.length > 0) {
         breakdown.style.display = 'flex';
-        var cWes = $('chipWes'); if (cWes) cWes.textContent = 'Eccentrics: ' + pCounts.wes;
-        var cStr = $('chipStranger'); if (cStr) cStr.textContent = 'Quiet lives: ' + pCounts.stranger;
-        var cMig = $('chipMigrant'); if (cMig) cMig.textContent = 'Recent arrivals: ' + pCounts.migrant;
+        var cRec = $('chipWes'); if (cRec) cRec.textContent = 'Recent: ' + bCounts.recent;
+        var cEst = $('chipStranger'); if (cEst) cEst.textContent = 'Established: ' + bCounts.established;
+        var cFlg = $('chipMigrant'); if (cFlg) cFlg.textContent = 'Flagged: ' + bCounts.flagged;
       } else {
         breakdown.style.display = 'none';
       }
@@ -101,10 +108,20 @@
     }
     if (empty) empty.style.display = 'none';
 
-    // Apply pool filter
+    // Apply roster filter (All / Recent / Established / Flagged)
     var filtered = roster.filter(function(e) {
+      if (!e) return false;
       if (currentFilter === 'all') return true;
-      return e && e.pool === currentFilter;
+      if (currentFilter === 'flagged') {
+        return !!e.dissident || (e.stress || 0) > 0;
+      }
+      var tDays = 0;
+      if (typeof Personnel !== 'undefined' && Personnel && Personnel.tenureDays) {
+        tDays = Personnel.tenureDays(e);
+      }
+      if (currentFilter === 'new') return tDays <= 14;
+      if (currentFilter === 'established') return tDays > 14;
+      return true;
     });
 
     // Apply search
@@ -262,6 +279,12 @@
     if (toIncinerator) {
       if (state && state.incineratorUnlocked) toIncinerator.style.display = '';
       toIncinerator.addEventListener('click', function() { openWindow('incinerator.html'); });
+    }
+    // v3.21.0 Stage 1: BUREAU nav button (hidden until commissioned).
+    var toBureau = $('toBureauBtn');
+    if (toBureau) {
+      if (state && state.bureauUnlocked) toBureau.style.display = '';
+      toBureau.addEventListener('click', function() { openWindow('bureau.html'); });
     }
 
     // Live-sync: if the roster grows from another window (factory

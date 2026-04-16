@@ -337,6 +337,12 @@
       if (state && state.incineratorUnlocked) toInc.style.display = '';
       toInc.addEventListener('click', function() { openWindow('incinerator.html'); });
     }
+    // v3.21.0 Stage 1: BUREAU nav button. Hidden until commissioned.
+    var toBur = $('toBureauBtn');
+    if (toBur) {
+      if (state && state.bureauUnlocked) toBur.style.display = '';
+      toBur.addEventListener('click', function() { openWindow('bureau.html'); });
+    }
 
     // Live-sync: if the roster or research log changes from another window,
     // refresh. We intentionally re-render everything because the experiment

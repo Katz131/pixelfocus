@@ -243,7 +243,7 @@
   // Generate a single employee object. poolKey is one of 'wes' | 'stranger' | 'migrant'.
   // id is a unique string — the roster uses the running count (hiredAt + index).
   // ---------------------------------------------------------------------------
-  function makeEmployee(id, poolKey, hiredAtTs) {
+  function makeEmployee(id, poolKey, hiredAtTs, usedNames) {
     var seed = hashSeed(id + ':' + poolKey);
     var name, role, bio, regionLabel;
     if (poolKey === 'wes') {
@@ -263,6 +263,22 @@
       role = seedPick(seed >>> 4, STRANGER_ROLES); // migrants take ordinary roles
       bio  = seedPick(seed >>> 8, pool.stories);
       regionLabel = pool.region + ' arrival';
+    }
+    // Collision safety net (v3.20.31, tightened v3.20.32): never allow two
+    // employees to share a FIRST name. `usedNames` is now a Set of first
+    // names already in the roster. If the generated name's first-name
+    // collides, swap in a name from the expanded PatsyNames pool whose
+    // first name is not yet in use. The primary Wes/Stranger/Migrant pools
+    // still do all the creative work — this only fires on collision.
+    var PN = (typeof window !== 'undefined') ? window.PatsyNames : null;
+    if (usedNames && typeof usedNames.has === 'function' && name && PN && typeof PN.firstNameOf === 'function') {
+      var fn = PN.firstNameOf(name);
+      if (fn && usedNames.has(fn)) {
+        if (typeof PN.pickUniqueFirstName === 'function') {
+          var alt = PN.pickUniqueFirstName(usedNames);
+          if (alt && typeof alt === 'string') name = alt;
+        }
+      }
     }
     return {
       id: id,
@@ -309,6 +325,39 @@
     if (roster.length >= target) return 0;
     var hiredNow = 0;
     var baseSeed = 'r' + (state.lifetimeCoins || 0) + ':' + roster.length;
+    // v3.20.32: Build a Set of existing first names. If any already-hired
+    // employees share a first name (legacy duplicates from before this
+    // check existed), silently rename the duplicate using PatsyNames so
+    // the user's progress is preserved but the roster ends up unique.
+    // This only touches the NAME field — id, pool, role, bio, region,
+    // hiredAt, stress, etc. all stay intact.
+    var PN = (typeof window !== 'undefined') ? window.PatsyNames : null;
+    var usedNames = new Set();
+    if (PN && typeof PN.firstNameOf === 'function') {
+      for (var u = 0; u < roster.length; u++) {
+        var emp0 = roster[u];
+        if (!emp0 || !emp0.name) continue;
+        var fn0 = PN.firstNameOf(emp0.name);
+        if (!fn0) continue;
+        if (usedNames.has(fn0)) {
+          // Legacy duplicate — swap in a unique alternative.
+          if (typeof PN.pickUniqueFirstName === 'function') {
+            var alt0 = PN.pickUniqueFirstName(usedNames);
+            if (alt0 && typeof alt0 === 'string') {
+              emp0.renamedFrom = emp0.name;
+              emp0.name = alt0;
+              fn0 = PN.firstNameOf(alt0);
+            }
+          }
+        }
+        if (fn0) usedNames.add(fn0);
+      }
+    } else {
+      // Fallback when PatsyNames isn't loaded: dedup by full name only.
+      for (var u2 = 0; u2 < roster.length; u2++) {
+        if (roster[u2] && roster[u2].name) usedNames.add(roster[u2].name);
+      }
+    }
     while (roster.length < target) {
       var seed = hashSeed(baseSeed + ':' + roster.length);
       // Pick pool based on seed + current level mix
@@ -326,8 +375,12 @@
       }
       var idStr = 'emp-' + (state.personnelNextId || 1);
       state.personnelNextId = (state.personnelNextId || 1) + 1;
-      var emp = makeEmployee(idStr, poolKey, Date.now());
+      var emp = makeEmployee(idStr, poolKey, Date.now(), usedNames);
       roster.push(emp);
+      if (emp && emp.name) {
+        var empFirst = (PN && typeof PN.firstNameOf === 'function') ? PN.firstNameOf(emp.name) : emp.name;
+        if (empFirst) usedNames.add(empFirst);
+      }
       hiredNow++;
     }
     return hiredNow;
@@ -506,7 +559,6 @@
     targetRosterSize: targetRosterSize,
     removeById: removeById,
     findById: findById,
-    // v3.20.0 Stage 4 — stress / dissident helpers
     getStress: getStress,
     isDissident: isDissident,
     addStress: addStress,
@@ -514,7 +566,6 @@
     listDissidents: listDissidents,
     markDissident: markDissident,
     STRESS_MAX: STRESS_MAX,
-    // Exposed for the management center UI to show pool breakdown:
     POOL_LABELS: {
       wes:      'Local eccentric',
       stranger: 'Quiet life',

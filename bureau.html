@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  The Bureau / The Black Warp — v3.21.0 Stage 1
+
+  A full browser tab (not a popup) where the player runs an espionage service
+  parallel to the loom. The Bureau is a Tier-4+ annex that is unlocked via
+  a one-time factory upgrade. It consumes headcount: employees can be
+  *relocated* from the personnel roster into Bureau slots (Chief of Station,
+  Case Officer, Sparrow, Cipher Clerk, Archivist, Vault Runner, Street Asset).
+  Relocated employees are "activated personnel" — they stop producing passive
+  income and instead become available as subjects or operators for Bureau
+  operations.
+
+  This window is a view-and-act surface for bureau.js. It holds NO outcome
+  logic of its own. All rolls, cooldowns, relocations, and reward payouts
+  happen inside bureau.js (Bureau.runOperation / relocateEmployee / returnAgent).
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo of the Loom - The Bureau</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a14;
+    --surface: #12122a;
+    --surface2: #1a1a3a;
+    --accent: #00ff88;
+    --accent2: #ff6b9d;
+    --accent3: #4ecdc4;
+    --bureau: #a89cff;       /* cool lavender for Bureau chrome */
+    --bureau-dim: #6a5fb8;
+    --gold: #ffd700;
+    --gold-dim: #b8860b;
+    --danger: #ff4466;
+    --warn: #ffb43c;
+    --text: #e0e0e0;
+    --text-dim: #5a5a7e;
+    --border: #2a2a4a;
+    --glow: rgba(168, 156, 255, 0.25);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 40px;
+  }
+
+  .top-bar {
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 2px solid var(--bureau);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 0 20px rgba(168,156,255,0.12);
+  }
+  .top-bar h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    color: var(--bureau);
+    text-shadow: 0 0 10px rgba(168,156,255,0.35);
+  }
+  .top-bar-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nav-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .nav-btn:hover { border-color: var(--accent); }
+  .nav-btn.gold { color: var(--gold); border-color: var(--gold); }
+  .nav-btn.gold:hover { background: rgba(255,215,0,0.08); }
+  .nav-btn.lav  { color: var(--bureau); border-color: var(--bureau-dim); }
+
+  .hero {
+    text-align: center;
+    padding: 28px 20px 14px;
+    background: radial-gradient(ellipse at center, rgba(168,156,255,0.08), transparent 70%);
+  }
+  .hero-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .hero-flavor {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-style: italic;
+    max-width: 780px;
+    margin: 6px auto 0;
+    line-height: 1.5;
+  }
+
+  .stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .stats-row .pill {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+  }
+  .pill.coins    { color: var(--gold);   border-color: #3a2a0a; }
+  .pill.agents   { color: var(--bureau); border-color: #2a2464; }
+  .pill.roster   { color: var(--accent3);border-color: #1a2a3a; }
+  .pill.ops      { color: var(--accent2);border-color: #3a1a2a; }
+  .pill.blown    { color: var(--danger); border-color: #3a0a14; }
+  .pill.heat     { color: var(--warn);   border-color: #3a2a0a; }
+
+  .layout {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 18px 24px 40px;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .panel h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--bureau);
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+  }
+  .panel h2.pink { color: var(--accent2); }
+  .panel h2.gold { color: var(--gold); }
+  .panel h2.teal { color: var(--accent3); }
+
+  /* ---------- Slot grid ---------- */
+  .slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px;
+  }
+  .slot-card {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .slot-card.occupied { border-color: var(--bureau-dim); }
+  .slot-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--bureau);
+    letter-spacing: 0.4px;
+  }
+  .slot-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-style: italic;
+    line-height: 1.4;
+  }
+  .slot-agent {
+    font-size: 12px;
+    color: var(--text);
+    padding-top: 5px;
+    border-top: 1px dashed var(--border);
+  }
+  .slot-agent .empty { color: var(--text-dim); font-style: italic; }
+  .slot-agent .codename { color: var(--bureau); }
+  .slot-stats {
+    display: flex;
+    gap: 6px;
+    font-size: 9px;
+    flex-wrap: wrap;
+  }
+  .slot-stats .chip {
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-dim);
+  }
+  .chip.seniority { color: var(--accent3); }
+  .chip.loyalty   { color: var(--accent);  }
+  .chip.heatc     { color: var(--warn);    }
+
+  .slot-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 4px;
+  }
+  select.relocate-select {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 6px;
+    border-radius: 5px;
+    font-size: 11px;
+    min-width: 0;
+    cursor: pointer;
+  }
+  select.relocate-select:focus { outline: none; border-color: var(--bureau); }
+  button.slot-btn {
+    background: var(--surface);
+    border: 1px solid var(--bureau-dim);
+    color: var(--bureau);
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    cursor: pointer;
+  }
+  button.slot-btn:hover:not(:disabled) { background: rgba(168,156,255,0.08); }
+  button.slot-btn:disabled { color: var(--text-dim); border-color: var(--border); cursor: not-allowed; }
+  button.slot-btn.return { border-color: var(--danger); color: var(--danger); }
+  button.slot-btn.return:hover { background: rgba(255,68,102,0.06); }
+
+  /* ---------- Operations list ---------- */
+  .op-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .op-card {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .op-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--text);
+    letter-spacing: 0.4px;
+  }
+  .op-sub { font-size: 11px; color: var(--accent3); font-style: italic; }
+  .op-desc {
+    font-size: 12px; line-height: 1.5; color: var(--text);
+    padding-top: 5px; border-top: 1px dashed var(--border);
+  }
+  .op-meta {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    font-size: 10px; color: var(--text-dim);
+  }
+  .op-meta .odds-chip {
+    padding: 2px 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  }
+  .odds-chip.success  { color: var(--accent);  border-color: #0a3a1a; }
+  .odds-chip.partial  { color: var(--text-dim); }
+  .odds-chip.blown    { color: var(--danger);  border-color: #3a0a14; }
+
+  .op-actions {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 4px;
+  }
+  .op-cost { font-size: 11px; color: var(--gold); font-family: 'Press Start 2P', monospace; }
+  select.agent-select {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 12px; min-width: 140px; cursor: pointer;
+  }
+  select.agent-select:focus { outline: none; border-color: var(--bureau); }
+  button.run-op-btn {
+    background: var(--surface); border: 1px solid var(--bureau); color: var(--bureau);
+    padding: 7px 14px; border-radius: 6px; font-family: 'Press Start 2P', monospace;
+    font-size: 10px; cursor: pointer; transition: all 120ms ease;
+  }
+  button.run-op-btn:hover:not(:disabled) { background: rgba(168,156,255,0.1); color: var(--text); }
+  button.run-op-btn:disabled { color: var(--text-dim); border-color: var(--border); cursor: not-allowed; }
+
+  .op-unavailable { font-size: 10px; color: var(--warn); margin-top: 3px; font-style: italic; }
+
+  /* ---------- History ---------- */
+  .history-list { display: flex; flex-direction: column; gap: 8px; max-height: 720px; overflow-y: auto; }
+  .hist-entry { border-left: 3px solid var(--border); padding: 8px 12px; background: var(--surface2);
+    border-radius: 4px; font-size: 12px; line-height: 1.45; }
+  .hist-entry.success { border-left-color: var(--accent); }
+  .hist-entry.partial { border-left-color: var(--text-dim); }
+  .hist-entry.blown   { border-left-color: var(--danger); }
+  .hist-head { font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--text-dim);
+    display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .hist-head .outcome-tag { color: var(--bureau); }
+  .hist-entry.success .outcome-tag { color: var(--accent); }
+  .hist-entry.blown   .outcome-tag { color: var(--danger); }
+  .hist-line { color: var(--text); }
+  .hist-reward { color: var(--gold); font-size: 11px; margin-top: 3px; font-style: italic; }
+
+  .empty-state {
+    padding: 24px; text-align: center; color: var(--text-dim);
+    font-size: 12px; font-style: italic;
+    border: 1px dashed var(--border); border-radius: 8px; background: var(--surface2);
+  }
+
+  .notice {
+    margin: 14px 24px 0;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    color: var(--warn);
+    font-size: 12px;
+    line-height: 1.5;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    display: none;
+  }
+  .notice.visible { display: block; }
+
+  /* Two-column sub-layout for slots + ops */
+  .bureau-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 1080px) { .bureau-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1 title="The Bureau / The Black Warp. A Tier-4+ factory annex where you run an espionage service parallel to the loom. Relocate employees from your personnel roster into Bureau slots and use them to collect intelligence, recruit assets, and harass rival looms.">The Bureau</h1>
+  <div class="top-bar-nav">
+    <button class="nav-btn" id="backToFactoryBtn" title="Return to the factory.">&larr; FACTORY</button>
+    <button class="nav-btn" id="toHouseBtn" title="Walk home. Open the House.">HOUSE</button>
+    <button class="nav-btn" id="backToEmployeesBtn" title="Open the Employee Management Center.">PERSONNEL</button>
+    <button class="nav-btn lav" id="toResearchBtn" style="display:none;" title="Open the Research Lab.">RESEARCH</button>
+    <button class="nav-btn" id="toIncineratorBtn" style="display:none;" title="Open the Incinerator.">INCINERATOR</button>
+    <button class="nav-btn gold" id="backToTrackerBtn" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="hero-label" title="The in-world name of the Bureau. Flavour only.">A ROOM WITH NO WINDOWS</div>
+  <div class="hero-flavor" id="bureauHeroFlavor" title="Ambient description of the Bureau. Changes slightly based on how many agents have been relocated and how many operations have been run.">A hardened annex off the corridor behind the dyeworks. The door has no handle on the outside. Inside: a tall steel cabinet, a rack of unmarked coats, and a single telephone that does not seem to be plugged in but occasionally rings.</div>
+  <div class="stats-row">
+    <div class="pill coins"   id="bureauCoinsPill"  title="Your current coin total. Operations cost coins; some return coins, favours, or intelligence.">$0</div>
+    <div class="pill agents"  id="bureauAgentsPill" title="Number of employees currently relocated into Bureau slots. These employees are active agents &mdash; they no longer produce passive income.">0 agents posted</div>
+    <div class="pill roster"  id="bureauRosterPill" title="Personnel still on the loom floor. Only they can be relocated into Bureau slots.">0 on roster</div>
+    <div class="pill ops"     id="bureauOpsPill"    title="Lifetime count of operations the Bureau has conducted.">0 operations</div>
+    <div class="pill blown"   id="bureauBlownPill"  title="Lifetime count of agents burned / blown / lost in the field via Bureau operations.">0 burned</div>
+    <div class="pill heat"    id="bureauHeatPill"   style="display:none;" title="Bureau heat level. When elevated, certain operations become unavailable or carry higher risk.">Heat: low</div>
+  </div>
+</div>
+
+<div class="notice" id="bureauNotice" title="Status messages from the Bureau &mdash; shown when something is blocking an action (empty roster, insufficient coins, elevated heat, etc.)."></div>
+
+<div class="layout">
+  <div class="bureau-grid">
+    <div class="panel">
+      <h2 title="The seven standing Bureau slots. Drag an employee from your roster into any slot to post them there as an activated agent. Relocated employees keep drawing payroll but no longer contribute to passive income &mdash; in exchange, they unlock Bureau operations.">Standing roster &mdash; posts and agents</h2>
+      <div id="slotGrid" class="slot-grid"></div>
+    </div>
+    <div class="panel">
+      <h2 class="pink" title="Operations currently approved. Each operation has a required slot, a cost, and rough odds of success / partial / blown. Click RUN to commit the stake.">Approved operations</h2>
+      <div id="opList" class="op-list"></div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2 class="teal" title="Recent Bureau results, newest first. Each entry shows the operation, the agent, and the outcome.">Logbook &mdash; recent traffic</h2>
+    <div id="bureauHistList" class="history-list"></div>
+  </div>
+</div>
+
+<script src="tooltip.js"></script>
+<script src="msglog.js"></script>
+<script src="personnel.js"></script>
+<script src="bureau.js"></script>
+<script src="bureau-window.js"></script>
+</body>
+</html>

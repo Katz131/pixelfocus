@@ -191,8 +191,16 @@
   function render(state) {
     currentState = state;
     // Identity
-    applyPlaceholder(document.getElementById('displayName'), state.displayName || '');
-    applyPlaceholder(document.getElementById('tagline'), state.tagline || '');
+    // IMPORTANT: never clobber an inline-editable field that currently has
+    // focus. render() is called on every storage change (which is constant
+    // in this app), and overwriting a focused field mid-keystroke replaces
+    // the player's draft with the placeholder text. Only apply the
+    // placeholder/value when the field is not being actively edited.
+    var active = (typeof document !== 'undefined') ? document.activeElement : null;
+    var nameEl = document.getElementById('displayName');
+    var tagEl  = document.getElementById('tagline');
+    if (nameEl && nameEl !== active) applyPlaceholder(nameEl, state.displayName || '');
+    if (tagEl  && tagEl  !== active) applyPlaceholder(tagEl,  state.tagline || '');
 
     // Avatar
     renderAvatar(state);

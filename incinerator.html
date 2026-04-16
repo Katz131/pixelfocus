@@ -307,44 +307,45 @@
 <body>
 
 <div class="top-bar">
-  <h1>Incinerator</h1>
+  <h1 title="The Incinerator. A Tier-7 factory annex that converts employees into permanent passive-income multipliers. Use the intake list on the left to burn candidates; the ledger on the right records each conversion.">Incinerator</h1>
   <div class="top-bar-nav">
     <button class="nav-btn" id="backToFactoryBtn" title="Return to the factory.">&larr; FACTORY</button>
     <button class="nav-btn" id="toHouseBtn" title="Walk home. Open the House &mdash; the wakeup antechamber. (Unreachable once the land bridge has been built.)">HOUSE</button>
     <button class="nav-btn" id="toEmployeesBtn" title="Open the Employee Management Center.">PERSONNEL</button>
     <button class="nav-btn" id="toResearchBtn" title="Open the Research Lab.">RESEARCH</button>
+    <button class="nav-btn" id="toBureauBtn" style="display:none;" title="Open the Bureau &mdash; the espionage annex. Hidden until the Bureau upgrade is purchased.">BUREAU</button>
     <button class="nav-btn gold" id="backToTrackerBtn" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
   </div>
 </div>
 
 <div class="hero">
-  <div class="hero-label">A CONVERSION ROOM, TEMPERATURE-CONTROLLED</div>
-  <div class="hero-flavor">A room with a door that opens only one way. The floor is always warm. A hatch labelled INTAKE is recessed into one wall and cannot be removed even by the standing office that installed it. The standing office has not, at this time, been named.</div>
+  <div class="hero-label" title="The in-world name of the Incinerator. Flavour only &mdash; no gameplay effect.">A CONVERSION ROOM, TEMPERATURE-CONTROLLED</div>
+  <div class="hero-flavor" title="Ambient description of the incinerator. Flavour text only.">A room with a door that opens only one way. The floor is always warm. A hatch labelled INTAKE is recessed into one wall and cannot be removed even by the standing office that installed it. The standing office has not, at this time, been named.</div>
   <div class="stats-row">
-    <div class="pill fuel"   id="incFuelPill">0 fuel</div>
-    <div class="pill burned" id="incBurnedPill">0 conversions</div>
-    <div class="pill bonus"  id="incBonusPill">+0.00% passive</div>
-    <div class="pill diss"   id="incDissPill">0 dissidents</div>
-    <div class="pill coins"  id="incCoinsPill">$0</div>
+    <div class="pill fuel"   id="incFuelPill" title="Fuel on hand. Each burn produces fuel based on the subject's tenure and yield; fuel is consumed passively to maintain your passive-income bonus.">0 fuel</div>
+    <div class="pill burned" id="incBurnedPill" title="Lifetime count of employees converted in this room. Permanent and not reversible.">0 conversions</div>
+    <div class="pill bonus"  id="incBonusPill" title="Your current permanent passive-income multiplier, earned from prior conversions. Applies to all coin gains factory-wide.">+0.00% passive</div>
+    <div class="pill diss"   id="incDissPill" title="Number of employees currently flagged as dissidents on your roster. Dissidents yield extra fuel when converted.">0 dissidents</div>
+    <div class="pill coins"  id="incCoinsPill" title="Your current coin total.">$0</div>
   </div>
 </div>
 
-<div class="notice" id="incNotice"></div>
+<div class="notice" id="incNotice" title="Status messages from the incinerator &mdash; shown when something is blocking a burn (e.g. empty roster, ineligible subject, or a cooldown)."></div>
 
 <div class="layout">
   <div class="panel">
-    <h2 class="ember">Candidates on the intake list</h2>
+    <h2 class="ember" title="Your roster as candidates for conversion. Each card shows the subject's name, pool, tenure, and estimated fuel yield. Click the burn button to convert them permanently.">Candidates on the intake list</h2>
     <div class="controls-row">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="dissident">Dissidents only</button>
-      <button class="filter-btn" data-filter="longest">Longest tenure</button>
-      <button class="filter-btn" data-filter="best">Best yield</button>
+      <button class="filter-btn active" data-filter="all" title="Show every employee on the roster.">All</button>
+      <button class="filter-btn" data-filter="dissident" title="Show only employees flagged as dissidents &mdash; these yield bonus fuel when converted.">Dissidents only</button>
+      <button class="filter-btn" data-filter="longest" title="Sort by tenure, longest-serving first. Longer-tenured subjects yield more fuel.">Longest tenure</button>
+      <button class="filter-btn" data-filter="best" title="Sort by estimated fuel yield, highest first.">Best yield</button>
     </div>
-    <div id="empGrid" class="emp-grid"></div>
+    <div id="empGrid" class="emp-grid" title="All candidates matching the active filter. Burn actions cannot be undone."></div>
   </div>
   <div class="panel">
-    <h2>Conversion ledger</h2>
-    <div id="logList" class="log-list"></div>
+    <h2 title="Recent conversions, newest first. Each entry records the subject, the fuel produced, and the resulting passive-income bonus applied.">Conversion ledger</h2>
+    <div id="logList" class="log-list" title="Your last 50 conversion entries. Red left-bar entries were dissidents. Fuel rewards in ember text."></div>
   </div>
 </div>
 

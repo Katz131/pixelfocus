@@ -259,6 +259,12 @@
     var h = $('toHouseBtn');         if (h) h.addEventListener('click', function() { openWindow('house.html'); });
     var e = $('toEmployeesBtn');     if (e) e.addEventListener('click', function() { openWindow('employees.html'); });
     var r = $('toResearchBtn');      if (r) r.addEventListener('click', function() { openWindow('research.html'); });
+    // v3.21.0 Stage 1: BUREAU nav button (hidden until commissioned).
+    var b = $('toBureauBtn');
+    if (b) {
+      if (state && state.bureauUnlocked) b.style.display = '';
+      b.addEventListener('click', function() { openWindow('bureau.html'); });
+    }
     var t = $('backToTrackerBtn');   if (t) t.addEventListener('click', function() { openWindow('popup.html'); });
 
     // Live sync

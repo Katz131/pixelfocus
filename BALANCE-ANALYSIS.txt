@@ -1,0 +1,159 @@
+================================================================================
+EVENTS CATALOG BALANCE ANALYSIS — events-catalog.js (v3.22.0)
+================================================================================
+
+CRITICAL STATUS: File is INCOMPLETE
+  - Only 2 of 10 tiers present (T1 complete, T2 truncated mid-event)
+  - Total events: 21 (T1: 20 complete, T2: 1 partial)
+  - Tiers 3-10: Not present
+
+================================================================================
+TIER 1 — THE CRAFT (lv. 0–30)
+================================================================================
+
+EVENT COUNT: 20 events
+
+LEVEL GATES:
+  Gate Range: 8 to 12
+
+  levelAtLeast(12):
+    1 event — t1-dissertation
+
+  levelAtLeast(10):
+    1 event — t1-plant-layoffs (embedded: state.level >= 10)
+
+  levelAtLeast(8):
+    1 event — t1-luddite-manifesto (embedded: state.level >= 8)
+
+  Outliers: None
+
+MONEY RANGE:
+  addCoins:    50–1200       (6 events, values: 50, 60, 120, 400, 850, 1200)
+  loseCoins:   80–700        (11 events, values: 80, 120, 150, 180, 200, 250, 300, 350, 400, 700)
+
+TEXTILES RANGE:
+  addTextiles:   NONE (0 events)
+  loseTextiles:  20–80        (5 events, values: 20, 30, 35, 40, 80)
+
+CLASS BREAKDOWN:
+  ambient:  15 events (75%)
+  trigger:   5 events (25%)
+
+AMBIENT WEIGHT DISTRIBUTION:
+  weight: 1  →  8 events
+  weight: 2  →  5 events
+  weight: 3  →  2 events
+
+COOLDOWN RANGE (ambient events only):
+  Min: 14 days    Max: 90 days
+
+  14d  (1)  | 21d  (1)  | 30d  (2)  | 40d  (1)  | 45d  (2)  | 60d  (4)  | 75d  (1)  | 90d  (3)
+
+SUSPENSION DURATIONS (suspendUpgrade):
+  3 events use suspendUpgrade (all target 'loomLevel')
+
+  Duration N values (in DAYs):
+    1 DAY  (t1-loom-seizure)
+    2 DAY  (t1-studio-fire, t1-arson-report)
+
+MULTIPLIER FACTORS & DURATIONS:
+
+  Income Multiplier:
+    1.25 × 2 DAY    (t1-loom-sings)
+    1.35 × 2 DAY    (t1-museum-order)
+    1.5  × 3 DAY    (t1-state-dinner)
+
+  Marketing Multiplier:
+    0.45 × 4 DAY    (t1-dye-denouncement)
+    0.55 × 4 DAY    (t1-arson-report)
+    0.6  × 3 DAY    (t1-etsy-takedown)
+    0.7  × 3 DAY    (t1-mislabel-right)
+    0.8  × 3 DAY    (t1-luddite-manifesto)
+    0.85 × 2 DAY    (t1-buyer-ghosts, t1-vestment-cutup)
+    0.9  × 1 DAY    (t1-mislabel-wrong)
+    0.9  × 2 DAY    (t1-transit-theft)
+    1.1  × 7 DAY    (t1-dissertation)
+    1.15 × 2 DAY    (t1-pattern-zine)
+    1.8  × 3 DAY    (t1-loom-sings)
+    2.2  × 3 DAY    (t1-state-dinner)
+
+  Textile Multiplier:
+    0.5  × 6 DAY    (t1-supply-shortage)
+    0.75 × 5 DAY    (t1-alpaca-wildfire)
+    0.8  × 3 DAY    (t1-coyote-flock)
+
+UPGRADE IDS REFERENCED:
+  'loomLevel'     (3 events: t1-studio-fire, t1-loom-seizure, t1-arson-report)
+
+FLAGS DEFINED (setFlag):
+  'luddite_thread_active'    (t1-luddite-manifesto → schedules t2-luddite-trade-show)
+  'county_rep_favor'         (t1-loom-seizure)
+
+FLAGS CLEARED (clearFlag):
+  None
+
+================================================================================
+TIER 2 — THE TRADE (lv. 30–57) [INCOMPLETE]
+================================================================================
+
+STATUS: File truncates mid-event. Only partial data recovered.
+
+EVENT COUNT: 1 partial event
+
+Available Event (t2-cargo-lost-at-sea):
+  class: ambient
+  weight: 2
+  cooldownDays: 45
+  loseTextiles: 180
+  loseCoins: 1400
+  marketingMultiplier: factor 0.85 × 3 DAY
+  [definition incomplete at file end]
+
+TIERS 3–10:
+  Not present in file.
+
+================================================================================
+GLOBAL SUMMARY (COMPLETE CATALOG)
+================================================================================
+
+TOTAL EVENTS: 21
+  T1: 20 (complete)
+  T2:  1 (incomplete)
+  T3-T10: 0 (not present)
+
+DISTINCT UPGRADE IDS (across all tiers):
+  1. 'loomLevel'
+
+DISTINCT FLAGS DEFINED (setFlag):
+  1. 'luddite_thread_active'
+  2. 'county_rep_favor'
+
+DISTINCT FLAGS CLEARED (clearFlag):
+  None
+
+FLAGS REFERENCED BY requiresFlags/forbidsFlags:
+  None found in catalog
+
+BUG AUDIT:
+  Flags referenced but NEVER defined: NONE
+  Flags defined but NEVER used:
+    - 'county_rep_favor' (set only, no conditional logic or clearing)
+    - 'luddite_thread_active' (set + scheduleFollowup, no conditional logic)
+
+CONSEQUENCE TYPE DISTRIBUTION:
+  addCoins:            6 events
+  loseCoins:          11 events
+  addTextiles:         0 events
+  loseTextiles:        5 events
+  incomeMultiplier:    3 events
+  marketingMultiplier: 12 events
+  textileMultiplier:   3 events
+  suspendUpgrade:      3 events
+  setFlag:             2 events
+  clearFlag:           0 events
+  adjustReputation:   12 events
+  addDissident:        1 event
+  grantFreeHire:       1 event
+  scheduleFollowup:    1 event
+
+================================================================================

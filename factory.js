@@ -1304,13 +1304,35 @@
       id: 'researchLabLevel',
       title: 'Open the Research Lab',
       tree: 'Operations',
-      desc: 'File the paperwork for a quiet, well-lit annex off the factory floor. A standing office whose letterhead is not, at this time, disclosed will supply the coat rack, the chairs, and one brown hat. The annex will conduct studies on members of the personnel roster. Some subjects do not come back. One-time purchase.',
+      desc: 'File the paperwork for a quiet, well-lit annex off the factory floor. A standing office whose letterhead is not, at this time, disclosed will supply the coat rack, the chairs, and one brown hat. The annex will be used for personnel studies on a rolling basis. A second coat rack has been ordered. One-time purchase.',
       effects: [
         'The lab is certified. Its door appears on the factory top bar.'
       ],
       costs: [12000],
       milestones: [
         'The Research Lab has been commissioned. A coat rack, a window, and one brown hat. A bell has been installed but has not yet rung.'
+      ]
+    },
+
+    // ================================================================
+    // v3.21.0 Stage 1 — THE BUREAU / THE BLACK WARP
+    // One-time unlock. Buying level 1 flips state.bureauUnlocked and
+    // exposes a new nav button on the factory top bar pointing at
+    // bureau.html. Tier-4+ gated: requires an open Research Lab (so
+    // the player already thinks of employees as assets) and at least
+    // two on the roster (Bureau needs someone to relocate).
+    // ================================================================
+    {
+      id: 'bureauLevel',
+      title: 'Commission the Bureau',
+      tree: 'Operations',
+      desc: 'Hollow out a hardened annex behind the dyeworks. The door has no handle on the outside. A steel cabinet, a rack of unmarked coats, and a telephone that does not, on inspection, appear to be plugged in. Employees may be relocated here as activated agents. They stop producing passive income and start producing something else. One-time purchase.',
+      effects: [
+        'The Bureau is commissioned. Its door appears on the factory top bar.'
+      ],
+      costs: [35000],
+      milestones: [
+        'The Bureau has been commissioned. The telephone has not yet rung but has, twice now, briefly hummed.'
       ]
     },
 
@@ -1549,6 +1571,16 @@
     researchLabLevel: function(s) {
       return (s.employeesLevel || 0) >= 1
           || (Array.isArray(s.personnelRoster) && s.personnelRoster.length >= 1);
+    },
+
+    // --- v3.21.0 Stage 1: The Bureau. Visible once the Research Lab
+    //     has been opened (the player understands personnel as
+    //     resources) and the roster has grown to at least two. The
+    //     Bureau needs headcount to relocate into slots, and we don't
+    //     want to dangle the room in front of a one-employee operation. ---
+    bureauLevel: function(s) {
+      return !!s.researchLabUnlocked
+          && (Array.isArray(s.personnelRoster) && s.personnelRoster.length >= 2);
     },
 
     // --- v3.20.0 Stage 4: Incinerator. Tier-7 gated. Requires maxed
@@ -1986,7 +2018,17 @@
     // the corresponding upgrades.
     var matBonus = 1 + Math.min(0.05, state.materialsPowerBonus || 0);
     var bridgeBonus = state.landBridgeBuilt ? 1.05 : 1.0;
-    return baseRate * (1 + (state.streak - 1) * 0.10) * incinBonus * dissMult * matBonus * bridgeBonus;
+    // v3.22.0 Stage 1: events engine income multiplier — fires from live
+    // consequences such as "viral short" (+50% for 2 days) or "carcinogen
+    // story" (-45% for 3 days). Defaults to 1.0 when no event effects are
+    // active. Safe-guarded so the game still runs if events.js is missing.
+    var eventsMult = 1.0;
+    try {
+      if (typeof Events !== 'undefined' && Events && Events.getIncomeMultiplier) {
+        eventsMult = Events.getIncomeMultiplier(state);
+      }
+    } catch (_) {}
+    return baseRate * (1 + (state.streak - 1) * 0.10) * incinBonus * dissMult * matBonus * bridgeBonus * eventsMult;
   }
 
   function getNextMarathon() {
@@ -2051,6 +2093,14 @@
       var _incNavBtn = document.getElementById('incineratorNavBtn');
       if (_incNavBtn) {
         _incNavBtn.style.display = state.incineratorUnlocked ? '' : 'none';
+      }
+    } catch (_) {}
+    // v3.21.0 Stage 1: BUREAU nav button. Hidden until the Bureau has
+    // been commissioned.
+    try {
+      var _burNavBtn = document.getElementById('bureauNavBtn');
+      if (_burNavBtn) {
+        _burNavBtn.style.display = state.bureauUnlocked ? '' : 'none';
       }
     } catch (_) {}
     renderLedger();
@@ -2268,7 +2318,21 @@
     var btn = document.createElement('button');
     btn.className = 'buy-btn';
     btn.type = 'button';
-    if (maxed) {
+    // v3.22.0 Stage 1: events engine can temporarily suspend upgrades
+    // (e.g. fire damage suspends the loom for 2 days). When suspended
+    // the button shows SUSPENDED with a countdown and cannot be clicked.
+    var suspension = null;
+    try {
+      if (typeof Events !== 'undefined' && Events && Events.getSuspension) {
+        suspension = Events.getSuspension(state, u.id);
+      }
+    } catch (_) {}
+    if (suspension) {
+      var rem = (typeof Events !== 'undefined' && Events.formatRemaining) ? Events.formatRemaining(suspension.until) : '';
+      btn.textContent = 'SUSPENDED' + (rem ? ' (' + rem + ')' : '');
+      btn.disabled = true;
+      btn.setAttribute('title', 'This upgrade is temporarily suspended by an event: "' + (suspension.label || 'Event') + '". The upgrade becomes available again when the suspension expires.');
+    } else if (maxed) {
       btn.textContent = 'MAX LEVEL';
       btn.disabled = true;
       btn.setAttribute('title', 'This upgrade is at its maximum level.');
@@ -2343,6 +2407,15 @@
   function purchase(u) {
     var level = state[u.id] || 0;
     if (level >= u.costs.length) { SFX.error(); return; }
+    // v3.22.0 Stage 1: backstop — even if the buy button somehow fires,
+    // block purchase while the upgrade is under event suspension.
+    try {
+      if (typeof Events !== 'undefined' && Events && Events.isUpgradeSuspended && Events.isUpgradeSuspended(state, u.id)) {
+        SFX.error();
+        notify('This upgrade is temporarily suspended.');
+        return;
+      }
+    } catch (_) {}
     var rawCost = u.costs[level];
     var cost = discountedCost(rawCost, u.id);
     if ((state.coins || 0) < cost) {
@@ -2382,6 +2455,18 @@
       try {
         if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
           MsgLog.push('The Research Lab has been commissioned. Its door appears on the factory top bar. The coat rack has one brown hat on it already.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.21.0 Stage 1: Buying the Bureau flips its unlock flag and
+    // exposes a new nav door on the factory top bar pointing at
+    // bureau.html. One-time purchase.
+    if (u.id === 'bureauLevel' && (level + 1) === 1) {
+      state.bureauUnlocked = true;
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('The Bureau has been commissioned. A door has appeared on the factory top bar. The door has no handle on the outside.');
         }
       } catch (_) {}
     }
@@ -2477,6 +2562,23 @@
       // memo-unlock threshold. Re-check immediately so the MEMO
       // badge lights up in response to the action that caused it.
       try { checkFactoryStageUnlocks(); } catch (_) {}
+      // v3.22.0 Stage 1: upgrade purchase is a natural trigger point for
+      // the events engine. Try to fire a trigger-class event; if one
+      // fires, show the modal and persist the resulting state changes.
+      try {
+        if (typeof Events !== 'undefined' && Events && Events.tick) {
+          var result = Events.tick(state, 'trigger');
+          if (result && result.ok) {
+            save(function() {
+              renderHero();
+              renderUpgrades();
+              if (typeof EventsModal !== 'undefined' && EventsModal && EventsModal.show) {
+                EventsModal.show(result);
+              }
+            });
+          }
+        }
+      } catch (_) {}
     });
   }
 
@@ -2534,6 +2636,21 @@
     researchNavBtn.addEventListener('click', function() {
       SFX.click();
       openWindow('research.html');
+    });
+  }
+
+  // v3.21.0 Stage 1: Bureau nav button. Visible only after the
+  // Commission the Bureau upgrade has flipped state.bureauUnlocked.
+  var bureauNavBtn = document.getElementById('bureauNavBtn');
+  if (bureauNavBtn) {
+    if (state && state.bureauUnlocked) {
+      bureauNavBtn.style.display = '';
+    } else {
+      bureauNavBtn.style.display = 'none';
+    }
+    bureauNavBtn.addEventListener('click', function() {
+      SFX.click();
+      openWindow('bureau.html');
     });
   }
 
