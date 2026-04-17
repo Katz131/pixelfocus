@@ -1,5 +1,5 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (v3.20.32)
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (version read from manifest)
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
@@ -2409,8 +2409,6 @@ try {
   var _gameLockGraceUntil = 0;  // ms epoch; 0 = no active grace
 
   function isGameLocked() {
-    // v3.21.10: grace period after completing a focus session overrides ALL
-    // lockout — including priority tasks — for the full 5-minute window.
     if (Date.now() < _gameLockGraceUntil) return false;
     var hasPriorities = getActivePriorityTasks().length > 0;
     if (hasPriorities) return true;
@@ -2444,20 +2442,14 @@ try {
         btn.style.filter = '';
       }
     }
-    // Also lock profile-opening elements
+    // Profile is always accessible — never locked out.
     var profileEls = ['profileAvatar', 'levelProfileIcon', 'levelProfileBtn'];
     for (var j = 0; j < profileEls.length; j++) {
       var pel = document.getElementById(profileEls[j]);
       if (!pel) continue;
-      if (locked) {
-        pel.style.opacity = '0.35';
-        pel.style.pointerEvents = 'none';
-        pel.style.filter = 'grayscale(80%)';
-      } else {
-        pel.style.opacity = '';
-        pel.style.pointerEvents = '';
-        pel.style.filter = '';
-      }
+      pel.style.opacity = '';
+      pel.style.pointerEvents = '';
+      pel.style.filter = '';
     }
     // Also lock the block counter (textile counter -> gallery) and
     // coins display (coins stat -> factory) shortcuts
@@ -5742,7 +5734,16 @@ try {
   }
 
   // ============== INIT ==============
+  // Read version from manifest once at load — used everywhere instead of hardcoded strings.
+  var _manifestVersion = '0.0.0';
+  try { _manifestVersion = chrome.runtime.getManifest().version; } catch (_) {}
+
   function init() {
+    // Populate version tag in the header from manifest.json
+    try {
+      var vTag = document.getElementById('versionTag');
+      if (vTag) vTag.textContent = 'v' + _manifestVersion;
+    } catch (_) {}
     // Mount the paperclips-style textile console early so any subsequent
     // notify() calls during render can push into it.
     try {
@@ -6375,7 +6376,7 @@ try {
           var payload;
           try {
             payload = {
-              version: '3.20.31',
+              version: _manifestVersion,
               exportedAt: new Date().toISOString(),
               state: state
             };
@@ -6398,7 +6399,7 @@ try {
             chrome.storage.local.set({
               pixelFocusState_backup: {
                 savedAt: Date.now(),
-                version: '3.20.31',
+                version: _manifestVersion,
                 state: state
               }
             }, function() {
