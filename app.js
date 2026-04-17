@@ -4754,6 +4754,12 @@ try {
     // may have advanced. If any new entries unlock, a MsgLog line lands and
     // the BRIEF badge will refresh on the next render().
     try { checkTrackerStageUnlocks(); } catch (_) {}
+    // v3.21.18: Auto-sync profile to Firestore after every completed session
+    try {
+      if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
+        window.ProfileSync.sync(state);
+      }
+    } catch (_) {}
   }
 
   // ============== RECURRING TASKS (v3.20.21) ==============
@@ -6752,6 +6758,15 @@ try {
 
   // v3.21.15: Show Cold Turkey daily prompt after init (delayed so UI is ready).
   setTimeout(function() { try { maybeColdTurkeyDailyPrompt(); } catch (_) {} }, 1500);
+
+  // v3.21.18: Auto-sync profile to Firestore on every extension open (delayed).
+  setTimeout(function() {
+    try {
+      if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
+        window.ProfileSync.sync(state);
+      }
+    } catch (_) {}
+  }, 3000);
 
 })();
 } catch (pixelFocusInitError) {
