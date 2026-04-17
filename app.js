@@ -2378,6 +2378,7 @@ try {
     renderCoins();
     renderProfileAvatar();
     renderRatiocinatoryBtn();
+    renderGameLockout();
     refreshTrackerBriefBadge();
     attachHoverSounds();
   }
@@ -2392,6 +2393,86 @@ try {
       btn.style.display = 'flex';
     } else {
       btn.style.display = 'none';
+    }
+  }
+
+  // v3.21.7: Game lockout — blocks navigation to game windows (gallery,
+  // factory, house, profile, ratiocinatory) when either:
+  //   (a) uncompleted priority tasks exist, or
+  //   (b) the focus timer is running/counting-down.
+  // Task-related functions (adding/completing tasks, managing priorities)
+  // remain fully accessible. Only the "fun" side of the extension is gated.
+  // v3.21.10: After completing a qualifying focus session (10+ min, confirmed
+  // with "Yes"), the player gets a 5-minute grace window where the timer
+  // lockout is suspended so they can visit the gallery/factory/profile as
+  // a reward break. The grace period bypasses ALL lockout, including priorities.
+  var _gameLockGraceUntil = 0;  // ms epoch; 0 = no active grace
+
+  function isGameLocked() {
+    // v3.21.10: grace period after completing a focus session overrides ALL
+    // lockout — including priority tasks — for the full 5-minute window.
+    if (Date.now() < _gameLockGraceUntil) return false;
+    var hasPriorities = getActivePriorityTasks().length > 0;
+    if (hasPriorities) return true;
+    var timerActive = state.timerState === 'running' || state.timerState === 'countdown';
+    return timerActive;
+  }
+
+  function getGameLockReason() {
+    if (getActivePriorityTasks().length > 0) return 'Complete your priority tasks first.';
+    if (state.timerState === 'running' || state.timerState === 'countdown') return 'Focus session in progress — finish or reset first.';
+    return '';
+  }
+
+  // Visual lockout: dims game-nav buttons and adds a lock indicator when
+  // the game is locked. Called from render() every cycle.
+  function renderGameLockout() {
+    var locked = isGameLocked();
+    var ids = ['galleryBtn', 'factoryBtn', 'houseBtn', 'ratiocinatoryBtn'];
+    for (var i = 0; i < ids.length; i++) {
+      var btn = document.getElementById(ids[i]);
+      if (!btn) continue;
+      // Skip ratiocinatory if it's still hidden (not unlocked yet)
+      if (ids[i] === 'ratiocinatoryBtn' && btn.style.display === 'none') continue;
+      if (locked) {
+        btn.style.opacity = '0.35';
+        btn.style.pointerEvents = 'none';
+        btn.style.filter = 'grayscale(80%)';
+      } else {
+        btn.style.opacity = '';
+        btn.style.pointerEvents = '';
+        btn.style.filter = '';
+      }
+    }
+    // Also lock profile-opening elements
+    var profileEls = ['profileAvatar', 'levelProfileIcon', 'levelProfileBtn'];
+    for (var j = 0; j < profileEls.length; j++) {
+      var pel = document.getElementById(profileEls[j]);
+      if (!pel) continue;
+      if (locked) {
+        pel.style.opacity = '0.35';
+        pel.style.pointerEvents = 'none';
+        pel.style.filter = 'grayscale(80%)';
+      } else {
+        pel.style.opacity = '';
+        pel.style.pointerEvents = '';
+        pel.style.filter = '';
+      }
+    }
+    // Also lock the block counter (textile counter -> gallery) and
+    // coins display (coins stat -> factory) shortcuts
+    var blockCounter = document.getElementById('blockCounter');
+    if (blockCounter) {
+      blockCounter.style.pointerEvents = locked ? 'none' : '';
+      blockCounter.style.opacity = locked ? '0.35' : '';
+    }
+    var coinsDisplay = document.getElementById('coinsDisplay');
+    if (coinsDisplay) {
+      var coinsStat = coinsDisplay.closest('.stat');
+      if (coinsStat) {
+        coinsStat.style.pointerEvents = locked ? 'none' : '';
+        coinsStat.style.opacity = locked ? '0.35' : '';
+      }
     }
   }
 
@@ -3855,6 +3936,7 @@ try {
 
   function beginActualSession() {
     SFX.startTimer();
+    _gameLockGraceUntil = 0; // v3.21.10: new session cancels any grace window
     state.timerState = 'running';
     // Anchor the session to a wall-clock end time. Now + whatever is
     // left on the clock. The tick reads this directly rather than
@@ -3984,6 +4066,7 @@ try {
     timerInterval = null;
     // Also kill any in-progress 15-second pre-start countdown.
     cancelPreStartCountdown();
+    _gameLockGraceUntil = 0; // v3.21.10: manual reset cancels grace window
     state.timerState = 'idle';
     state.timerRemaining = state.sessionDurationSec || 600;
     state.timerEndsAt = 0;
@@ -4402,6 +4485,12 @@ try {
       _focusConfirmArmed = false;
       closeModal();
       awardSessionReward(reward);
+      // v3.21.10: 5-minute grace unlock after completing a 10+ min session.
+      // The player earned their break — let them visit the game pages.
+      var sessionSec = state.sessionDurationSec || 600;
+      if (sessionSec >= 600) {
+        _gameLockGraceUntil = Date.now() + (5 * 60 * 1000);
+      }
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
       save();
@@ -4705,6 +4794,7 @@ try {
     inputEl.value = '';
     save();
     renderPriorities();
+    renderGameLockout();
     try { SFX.addTask && SFX.addTask(); } catch (_) {}
   }
 
@@ -4726,9 +4816,27 @@ try {
       // else: drop it (one-off task)
     }
     state.priorityTasks = nextList;
+    // v3.21.9: Priority completions produce dust + bump lifetime counter,
+    // just like regular task completions.
+    state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
+    if (!state.dustPixels) state.dustPixels = [];
+    var palette = state.unlockedColors || ['#00ff88'];
+    var dustColor = palette[Math.floor(Math.random() * palette.length)];
+    state.dustPixels.push({
+      x: Math.random(),
+      y: Math.random(),
+      color: dustColor,
+      d: todayStr()
+    });
+    state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+    var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
+    if (state.dustPixels.length > dustCap) {
+      state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
+    }
     save();
     renderPriorities();
     renderPriorityModalList();
+    renderGameLockout();
     try { SFX.completeTask && SFX.completeTask(); } catch (_) {}
     // If the modal is open and the list is now empty, close it.
     if (getActivePriorityTasks().length === 0) hidePriorityModal();
@@ -4740,6 +4848,7 @@ try {
     save();
     renderPriorities();
     renderPriorityModalList();
+    renderGameLockout();
     if (getActivePriorityTasks().length === 0) hidePriorityModal();
   }
 
@@ -5829,6 +5938,12 @@ try {
       // helper (sent via runtime message) so we get dedup: a second click
       // focuses the existing tab instead of opening a duplicate.
       function openPFWindow(path) {
+        // v3.21.7: Block game windows when locked (priorities or timer).
+        var gamePages = ['gallery.html', 'factory.html', 'house.html', 'profile.html', 'ratiocinatory.html', 'bureau.html', 'employees.html', 'research.html', 'incinerator.html'];
+        if (gamePages.indexOf(path) !== -1 && isGameLocked()) {
+          notify(getGameLockReason(), 'var(--warning)');
+          return;
+        }
         try { chrome.runtime.sendMessage({ type: 'pf-open', path: path }); } catch (e) {}
       }
 

@@ -60,10 +60,20 @@
   .cta-bar{text-align:center;margin-top:18px;padding:16px;background:var(--surface);border:1px solid var(--accent);border-radius:10px}
   .cta-bar a{color:var(--accent);font-family:'Press Start 2P',monospace;font-size:10px;text-decoration:none;letter-spacing:1px}
   .cta-bar a:hover{text-decoration:underline}
+  .nav-link{display:inline-block;font-family:'Press Start 2P',monospace;font-size:9px;text-decoration:none;padding:8px 14px;border:1px solid var(--border);border-radius:8px;transition:border-color 200ms,box-shadow 200ms;letter-spacing:1px}
+  .nav-link:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(0,255,136,0.15)}
+  .nav-link.gold{color:var(--gold);border-color:var(--gold)}
+  .nav-link.gold:hover{box-shadow:0 0 12px rgba(255,215,0,0.2)}
+  .nav-link.accent{color:var(--accent)}
+  .site-nav{text-align:center;padding:14px 20px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 <div class="top-bar"><h1>TODO OF THE LOOM</h1></div>
+<div class="site-nav">
+  <a class="nav-link gold" href="/">&larr; LEADERBOARD</a>
+  <a class="nav-link accent" href="https://chromewebstore.google.com" target="_blank">GET THE EXTENSION &rarr;</a>
+</div>
 <div class="hero"><div class="hero-label">CARD OF STANDING</div></div>
 
 <div id="loadingView" class="loading">Loading profile...</div>

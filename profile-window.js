@@ -260,6 +260,15 @@
     setText('stTasksDone', fmtNum(state.tasksCompletedLifetime || 0));
     setText('stLifetimeCoins', fmtCoins(state.lifetimeCoins || 0));
     setText('stWallet', fmtCoins(state.coins || 0));
+    // Start date — when the player first installed / created their state
+    var startEl = document.getElementById('stStartDate');
+    if (startEl) {
+      startEl.textContent = state.profileCreated ? fmtDate(state.profileCreated) : '—';
+      if (state.profileCreated) {
+        var days = Math.floor((Date.now() - state.profileCreated) / 86400000);
+        startEl.title = 'You started ' + days + ' day' + (days === 1 ? '' : 's') + ' ago.';
+      }
+    }
 
     // Stats — Today & Combos
     setText('stTodayBlocks', fmtNum(state.todayBlocks || 0));
@@ -664,8 +673,10 @@
     wireEditable('displayName', 'displayName', 40);
     wireEditable('tagline', 'tagline', 140);
     wireCopyButton();
-    var shareBtn = document.getElementById('shareProfileBtn');
-    if (shareBtn) shareBtn.addEventListener('click', exportProfile);
+    var lbBtn = document.getElementById('leaderboardBtn');
+    if (lbBtn) lbBtn.addEventListener('click', function() {
+      window.open('https://todo-of-the-loom.web.app/', '_blank');
+    });
     load();
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);

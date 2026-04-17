@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Todo of the Loom",
-  "version": "3.21.4",
+  "version": "3.21.11",
   "description": "Todo of the Loom — a Pomodoro todo list wrapped in a slow-unfolding factory yarn. Earn pixel blocks by staying focused, build up your loom, and read the dispatches from the floor.",
   "permissions": [
     "storage",
