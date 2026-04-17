@@ -145,6 +145,8 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 .task-text { flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .task-select-btn { font-family:'Press Start 2P',monospace; font-size:7px; padding:3px 6px; background:var(--surface2); border:1px solid var(--accent3); color:var(--accent3); border-radius:3px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
 .task-select-btn:hover { background:rgba(78,205,196,0.15); }
+.task-today-btn { font-family:'Press Start 2P',monospace; font-size:7px; padding:3px 6px; background:rgba(255,180,60,0.1); border:1px solid #b8731a; color:#ffb43c; border-radius:3px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+.task-today-btn:hover { background:rgba(255,180,60,0.2); }
 .task-delete { color:var(--text-dim); cursor:pointer; font-size:16px; padding:0 4px; transition:color 0.2s; }
 .task-delete:hover { color:var(--danger); }
 .task-blocks { display:flex; gap:1px; align-items:center; margin-left:auto; margin-right:4px; }
@@ -353,6 +355,20 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   <div id="todayTasksList" style="max-height:200px;overflow-y:auto;"></div>
 </div>
 
+<!-- v3.21.25: Daily Reminders section -->
+<div id="dailyRemindersSection" style="margin:0 10px 8px;background:linear-gradient(180deg,#0a1a2a,#08122a);border:1px solid #2a6090;border-radius:6px;padding:8px;box-shadow:0 0 10px rgba(60,140,220,0.1) inset;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#5aadff;letter-spacing:1px;text-shadow:0 0 6px rgba(90,173,255,0.4);">&#9672; DAILY REMINDERS</span>
+    <span class="tip" data-tip="Personal wisdoms and things to keep in mind. A pop-up walks you through these once per day. Manage them here — add, remove, reorder.">?</span>
+    <span id="dailyRemindersCount" style="margin-left:auto;font-family:'Press Start 2P',monospace;font-size:8px;color:#b0d4ff;background:#1a3a5a;padding:2px 6px;border-radius:8px;">0</span>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">
+    <input type="text" id="dailyReminderInput" placeholder="Add a reminder or wisdom..." style="flex:1;background:#08122a;border:1px solid #2a6090;border-radius:4px;padding:6px 10px;color:#b0d4ff;font-size:12px;outline:none;" />
+    <button type="button" id="addDailyReminderBtn" style="background:#1a3a5a;color:#fff;border:1px solid #5aadff;border-radius:4px;padding:0 12px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;">+</button>
+  </div>
+  <div id="dailyRemindersList" style="max-height:150px;overflow-y:auto;"></div>
+</div>
+
 <div style="margin:0 10px 8px;background:var(--surface);border-radius:0 0 8px 8px;border:1px solid var(--border);border-top:none;">
   <div style="display:flex;padding:8px;gap:6px;border-bottom:1px solid var(--border);">
     <input type="text" id="taskInput" placeholder="Add a new task..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;" title="Type a task name and press Enter (or click +) to add it to the active project." />
@@ -550,6 +566,60 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </div>
 </div>
 
+<!-- v3.21.25: Daily Reminders walk-through modal -->
+<div id="dailyRemindersModal" style="display:none;position:fixed;inset:0;background:rgba(4,8,16,0.92);z-index:9997;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:linear-gradient(180deg,#0a1a2a,#06101a);border:2px solid #5aadff;border-radius:10px;max-width:440px;width:92%;max-height:72vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(90,173,255,0.25),0 12px 40px rgba(0,0,0,0.7);">
+    <div style="padding:18px 18px 10px;border-bottom:1px solid #1a3a5a;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:11px;color:#5aadff;letter-spacing:2px;text-align:center;text-shadow:0 0 8px rgba(90,173,255,0.5);margin-bottom:4px;">&#9672; DAILY REMINDERS &#9672;</div>
+      <div id="reminderProgress" style="font-family:'Courier New',monospace;font-size:10px;color:#6688aa;text-align:center;"></div>
+    </div>
+    <div style="padding:24px 22px;flex:1;display:flex;align-items:center;justify-content:center;">
+      <div id="reminderCardText" style="font-family:'Courier New',monospace;font-size:14px;color:#d0e4ff;text-align:center;line-height:1.6;word-break:break-word;"></div>
+    </div>
+    <div style="padding:10px 18px 18px;border-top:1px solid #1a3a5a;display:flex;gap:8px;justify-content:center;">
+      <button type="button" id="reminderNextBtn" style="background:#1a3a5a;color:#b0d4ff;border:1px solid #5aadff;border-radius:4px;padding:8px 24px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">NEXT</button>
+      <button type="button" id="reminderDoneBtn" style="display:none;background:#2a5a2a;color:#d4ffd4;border:1px solid #4a8a4a;border-radius:4px;padding:8px 24px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">GOT IT</button>
+      <button type="button" id="reminderSkipAllBtn" style="background:transparent;color:#6688aa;border:1px solid #1a3a5a;border-radius:4px;padding:8px 16px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;">SKIP ALL</button>
+    </div>
+  </div>
+</div>
+
+<!-- v3.21.22: INCREMENTALIZATION modal — appears for 24h+ stale today tasks -->
+<div id="incrementalizeModal" style="display:none;position:fixed;inset:0;background:rgba(10,6,0,0.92);z-index:9998;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:linear-gradient(180deg,#2a1a00,#1a0f00);border:2px solid #ffb43c;border-radius:10px;max-width:480px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(255,180,60,0.3),0 12px 40px rgba(0,0,0,0.7);">
+    <div style="padding:18px 18px 10px;border-bottom:1px solid #8b5e1a;position:relative;">
+      <button type="button" id="incrementalizeCloseBtn" style="position:absolute;top:10px;right:12px;background:transparent;color:#886655;border:1px solid #5a3a10;border-radius:4px;padding:4px 8px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;line-height:1;" title="Close without changes.">&times;</button>
+      <div style="font-family:'Press Start 2P',monospace;font-size:11px;color:#ffb43c;letter-spacing:2px;text-align:center;text-shadow:0 0 8px rgba(255,180,60,0.5);margin-bottom:6px;">&#9874; INCREMENTALIZE &#9874;</div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:#ffe0b2;text-align:center;font-style:italic;">This task has been sitting for 24+ hours. Break it down or dismiss it.</div>
+    </div>
+    <div id="incrementalizeBody" style="padding:14px 18px;overflow-y:auto;flex:1;">
+      <div id="incrementalizeTaskName" style="font-size:13px;color:#ffe0b2;font-weight:bold;margin-bottom:12px;word-break:break-word;padding:8px;background:#1a0f00;border:1px solid #8b5e1a;border-radius:6px;"></div>
+      <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ffb43c;margin-bottom:6px;letter-spacing:1px;">ADD AQUEDUCT STAGES</div>
+      <div style="font-size:11px;color:#886655;margin-bottom:10px;line-height:1.4;">What smaller steps flow toward completing this task? Add stages that come <em>before</em> the main task.</div>
+      <div id="incrementalizeStages" style="margin-bottom:10px;"></div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="text" id="incrementalizeInput" placeholder="e.g. Find the URL first..." style="flex:1;background:#0a0600;border:1px solid #b8731a;border-radius:4px;padding:6px 10px;color:#ffe0b2;font-size:12px;outline:none;" />
+        <button type="button" id="incrementalizeAddBtn" style="background:#8b5e1a;color:#fff;border:1px solid #ffb43c;border-radius:4px;padding:0 12px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;">+</button>
+      </div>
+      <div id="incrementalizeFromTodayWrap" style="display:none;">
+        <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#886655;margin-bottom:4px;letter-spacing:0.5px;">OR PULL FROM TODAY'S TASKS</div>
+        <div id="incrementalizeFromTodayList" style="max-height:100px;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div style="padding:10px 18px 14px;border-top:1px solid #8b5e1a;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button type="button" id="incrementalizeSaveBtn" style="background:#2a5a2a;color:#d4ffd4;border:1px solid #4a8a4a;border-radius:4px;padding:8px 16px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">SAVE AQUEDUCTS</button>
+      <button type="button" id="incrementalizeDismissBtn" style="background:transparent;color:#886655;border:1px solid #5a3a10;border-radius:4px;padding:8px 16px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">DISMISS TASK</button>
+    </div>
+    <div style="padding:0 18px 14px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#886655;width:100%;text-align:center;margin-bottom:4px;letter-spacing:1px;">DELAY PROMPT</div>
+      <button type="button" class="incr-delay-btn" data-delay="1" style="background:transparent;color:#ffb43c;border:1px solid #5a3a10;border-radius:4px;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;">1 DAY</button>
+      <button type="button" class="incr-delay-btn" data-delay="2" style="background:transparent;color:#ffb43c;border:1px solid #5a3a10;border-radius:4px;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;">2 DAYS</button>
+      <button type="button" class="incr-delay-btn" data-delay="7" style="background:transparent;color:#ffb43c;border:1px solid #5a3a10;border-radius:4px;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;">1 WEEK</button>
+      <button type="button" class="incr-delay-btn" data-delay="30" style="background:transparent;color:#ffb43c;border:1px solid #5a3a10;border-radius:4px;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;">1 MONTH</button>
+    </div>
+  </div>
+</div>
+
 <!-- v3.20.31 Settings modal. Gear button in header opens this. Safe Refresh
      writes a timestamped JSON backup to the user's computer AND mirrors
      it into chrome.storage.local under 'pixelFocusState_backup', then
@@ -574,6 +644,13 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <div id="restoreBackupStatus" style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;min-height:14px;text-align:center;"></div>
     </div>
     <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
+      <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:#f0c040;letter-spacing:1px;margin-bottom:6px;">IMPORT BACKUP FROM FILE</div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px;">Pick a Safe Refresh JSON file from your computer and restore your full state from it. Use this after re-installing or replacing extension files.</div>
+      <input type="file" id="importBackupFile" accept=".json" style="display:none;">
+      <button type="button" id="importBackupBtn" style="width:100%;background:transparent;color:#f0c040;border:1px solid #f0c040;border-radius:4px;padding:9px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;" title="Import a Safe Refresh JSON backup file from your Downloads folder.">&#128194; IMPORT FROM JSON FILE</button>
+      <div id="importBackupStatus" style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;min-height:14px;text-align:center;"></div>
+    </div>
+    <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
       <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--accent3);letter-spacing:1px;margin-bottom:6px;">COLD TURKEY INTEGRATION</div>
       <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px;">Automatically start a Cold Turkey block when you begin a focus session. The block locks for the session duration. Requires Cold Turkey Blocker + one-time setup (run setup-cold-turkey.bat).</div>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:8px;">
@@ -589,6 +666,14 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
         <input type="text" id="coldTurkeyBlockName" placeholder="e.g. My Block List" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-family:'Courier New',monospace;font-size:11px;color:var(--text);">
       </div>
       <div id="coldTurkeyStatus" style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;min-height:14px;text-align:center;"></div>
+    </div>
+    <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
+      <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffb43c;letter-spacing:1px;margin-bottom:6px;">DAILY REMINDERS</div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px;">A daily pop-up that walks you through your personal reminders, wisdoms, and things to keep in mind. Shows once every 24 hours when the list has entries.</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:4px;">
+        <input type="checkbox" id="dailyRemindersToggle" checked style="width:16px;height:16px;accent-color:#ffb43c;cursor:pointer;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Show daily reminders pop-up</span>
+      </label>
     </div>
     <div style="padding:10px 18px 16px;font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);font-style:italic;border-top:1px solid rgba(0,255,136,0.15);">Tip: keep the downloaded JSON file somewhere safe. It is a complete snapshot you can re-import later if the browser ever clears the extension storage.</div>
   </div>

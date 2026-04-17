@@ -647,6 +647,12 @@ try {
     priorityTasks: [],
     // v3.21.20: Today's Tasks — simple daily list, no locks, orange section
     todayTasks: [],
+    // v3.21.23: Incrementalization log — tracks which tasks were prompted today
+    incrementalizeLog: {},
+    // v3.21.25: Daily reminders
+    dailyReminders: [],           // [{id, text}]
+    dailyRemindersEnabled: true,  // toggle in settings
+    dailyRemindersLastShown: '',  // 'YYYY-MM-DD'
     selectedTaskId: null,
     blocks: 0,
     totalLifetimeBlocks: 0,
@@ -2516,6 +2522,7 @@ try {
     renderRatiocinatoryBtn();
     renderGameLockout();
     renderTodayTasks();
+    renderDailyReminders();
     renderFocusTimeline();
     refreshTrackerBriefBadge();
     attachHoverSounds();
@@ -3800,6 +3807,7 @@ try {
         <span class="task-text">${escHtml(task.text)}</span>
         ${blocksHtml}
         ${!task.completed ? `<button class="task-select-btn" title="Pin this task as your current focus target. While it's pinned, every textile earned from a completed focus session gets credited to THIS task (the little dots next to the task name track how many sessions you've finished while it was pinned). Pinned tasks never get flagged as aging, since they're being actively worked on. Click FOCUS again on the same task to unpin it. Only one task can be pinned at a time &mdash; picking a new one swaps the pin.">FOCUS</button>` : ''}
+        ${!task.completed ? `<button class="task-today-btn" title="Send to Today&rsquo;s Tasks.">\u2192TODAY</button>` : ''}
         ${recurBtn}
         <span class="task-delete" title="Delete this task. Cannot be undone.">\u00d7</span>
       `;
@@ -3816,6 +3824,23 @@ try {
       }
       const focusBtn = item.querySelector('.task-select-btn');
       if (focusBtn) focusBtn.addEventListener('click', (e) => { e.stopPropagation(); selectTask(task.id); });
+      const todayBtn2 = item.querySelector('.task-today-btn');
+      if (todayBtn2) {
+        if (isInTodayTasks(task.id)) {
+          todayBtn2.textContent = '\u2605';
+          todayBtn2.title = 'Already in Today\u2019s Tasks.';
+          todayBtn2.disabled = true;
+          todayBtn2.style.opacity = '0.4';
+          todayBtn2.style.cursor = 'default';
+        }
+        todayBtn2.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!isInTodayTasks(task.id)) {
+            addTodayTask(task.text, task.id, 'project');
+            render();
+          }
+        });
+      }
       const recurBtn2 = item.querySelector('.task-recur-btn');
       if (recurBtn2) recurBtn2.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -5484,25 +5509,35 @@ try {
     if (getActivePriorityTasks().length > 0) showPriorityModal();
   }
 
-  // ============== TODAY'S TASKS (v3.21.21) ==============
+  // ============== TODAY'S TASKS (v3.21.22) ==============
   // Simple orange daily task list — no locks, no modals, no recurrence.
-  // Add tasks directly, or use "→ TODAY" buttons on priority/normal tasks
-  // to copy them here. Completing a linked task also marks the source done.
+  // Add tasks directly, or use "→ TODAY" buttons on priority/normal tasks.
+  // Tasks older than 24h trigger an INCREMENTALIZATION prompt: break the
+  // task into smaller "aqueduct" stages that must be completed before the
+  // main task can be marked done.
+  //
+  // Data shape per today task:
+  //   { id, text, createdAt, sourceId, sourceType,
+  //     aqueducts: [ { id, text, done: bool } ],
+  //     incrementalizedAt: timestamp|null,
+  //     lastIncrementalizePrompt: timestamp|null }
 
   function addTodayTask(text, sourceId, sourceType) {
     if (!Array.isArray(state.todayTasks)) state.todayTasks = [];
-    // Prevent duplicates of the same source task
     if (sourceId) {
       for (var d = 0; d < state.todayTasks.length; d++) {
-        if (state.todayTasks[d].sourceId === sourceId) return; // already in today
+        if (state.todayTasks[d].sourceId === sourceId) return;
       }
     }
     state.todayTasks.push({
       id: 'td' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       text: text,
       createdAt: Date.now(),
-      sourceId: sourceId || null,   // id of the original task (priority or project)
-      sourceType: sourceType || null // 'priority' or 'project'
+      sourceId: sourceId || null,
+      sourceType: sourceType || null,
+      aqueducts: [],
+      incrementalizedAt: null,
+      lastIncrementalizePrompt: null
     });
     save();
     renderTodayTasks();
@@ -5519,6 +5554,46 @@ try {
     inputEl.value = '';
   }
 
+  function _todayTaskHasOpenAqueducts(t) {
+    if (!t.aqueducts || !t.aqueducts.length) return false;
+    for (var i = 0; i < t.aqueducts.length; i++) {
+      if (!t.aqueducts[i].done) return true;
+    }
+    return false;
+  }
+
+  function completeAqueduct(taskId, aqId) {
+    if (!Array.isArray(state.todayTasks)) return;
+    for (var i = 0; i < state.todayTasks.length; i++) {
+      var t = state.todayTasks[i];
+      if (t.id !== taskId) continue;
+      if (!t.aqueducts) break;
+      for (var j = 0; j < t.aqueducts.length; j++) {
+        if (t.aqueducts[j].id === aqId) {
+          t.aqueducts[j].done = true;
+          // Credit the aqueduct stage completion
+          state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
+          logDailyTaskCompletion(t.aqueducts[j].text);
+          if (!state.dustPixels) state.dustPixels = [];
+          var palette = state.unlockedColors || ['#00ff88'];
+          var dustColor = palette[Math.floor(Math.random() * palette.length)];
+          state.dustPixels.push({ x: Math.random(), y: Math.random(), color: dustColor, d: todayStr() });
+          state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+          var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
+          if (state.dustPixels.length > dustCap) {
+            state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
+          }
+          break;
+        }
+      }
+      break;
+    }
+    save();
+    renderTodayTasks();
+    renderDustbin();
+    try { SFX.completeTask && SFX.completeTask(); } catch (_) {}
+  }
+
   function completeTodayTask(id) {
     if (!Array.isArray(state.todayTasks)) return;
     var task = null;
@@ -5526,26 +5601,33 @@ try {
       if (state.todayTasks[f].id === id) { task = state.todayTasks[f]; break; }
     }
     if (!task) return;
+    // Block if aqueducts remain
+    if (_todayTaskHasOpenAqueducts(task)) {
+      try { notify('Complete all aqueduct stages first.', '#ffb43c'); } catch (_) {}
+      return;
+    }
     var completedText = task.text || '';
 
-    // If linked to a source, mark the source done too
+    // Mark source task done too
     if (task.sourceId && task.sourceType === 'priority') {
       completePriority(task.sourceId);
+    } else if (task.sourceId && task.sourceType === 'project') {
+      var srcTask = findTask(task.sourceId);
+      if (srcTask && !srcTask.completed) {
+        toggleTask(task.sourceId);
+      }
     }
 
-    // Remove from today list
     state.todayTasks = state.todayTasks.filter(function(t) { return t.id !== id; });
 
-    // Credit completion (skip if source priority already credited it)
-    if (task.sourceType !== 'priority') {
+    // Credit completion (skip if source already credited it)
+    if (task.sourceType !== 'priority' && task.sourceType !== 'project') {
       state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
       logDailyTaskCompletion(completedText);
       if (!state.dustPixels) state.dustPixels = [];
       var palette = state.unlockedColors || ['#00ff88'];
       var dustColor = palette[Math.floor(Math.random() * palette.length)];
-      state.dustPixels.push({
-        x: Math.random(), y: Math.random(), color: dustColor, d: todayStr()
-      });
+      state.dustPixels.push({ x: Math.random(), y: Math.random(), color: dustColor, d: todayStr() });
       state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
       var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
       if (state.dustPixels.length > dustCap) {
@@ -5574,14 +5656,12 @@ try {
     return false;
   }
 
-  // Clean up today tasks whose source was completed/removed elsewhere
   function pruneOrphanedTodayTasks() {
     if (!Array.isArray(state.todayTasks)) return;
     var changed = false;
     state.todayTasks = state.todayTasks.filter(function(t) {
-      if (!t.sourceId) return true; // manually added, keep
+      if (!t.sourceId) return true;
       if (t.sourceType === 'priority') {
-        // Keep only if source still exists and is due today
         var found = false;
         var active = getActivePriorityTasks();
         for (var i = 0; i < active.length; i++) {
@@ -5594,6 +5674,470 @@ try {
     if (changed) save();
   }
 
+  // ============== DAILY REMINDERS (v3.21.25) ==============
+  // A list of personal wisdoms/reminders the user curates. Once per day,
+  // a modal walks through them one at a time like flashcards.
+
+  function addDailyReminder(text) {
+    if (!text) return;
+    if (!Array.isArray(state.dailyReminders)) state.dailyReminders = [];
+    state.dailyReminders.push({
+      id: 'dr' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      text: text
+    });
+    save();
+    renderDailyReminders();
+  }
+
+  function removeDailyReminder(id) {
+    if (!Array.isArray(state.dailyReminders)) return;
+    state.dailyReminders = state.dailyReminders.filter(function(r) { return r.id !== id; });
+    save();
+    renderDailyReminders();
+  }
+
+  function renderDailyReminders() {
+    var listEl = document.getElementById('dailyRemindersList');
+    var countEl = document.getElementById('dailyRemindersCount');
+    if (!listEl) return;
+    var items = Array.isArray(state.dailyReminders) ? state.dailyReminders : [];
+    if (countEl) countEl.textContent = String(items.length);
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'padding:8px;text-align:center;color:#6688aa;font-size:11px;font-style:italic;';
+      empty.textContent = 'No reminders yet. Add wisdoms to see daily.';
+      listEl.appendChild(empty);
+      return;
+    }
+    items.forEach(function(r) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 4px;border-bottom:1px solid rgba(42,96,144,0.3);';
+
+      var txt = document.createElement('div');
+      txt.style.cssText = 'flex:1;color:#b0d4ff;font-size:12px;word-break:break-word;';
+      txt.textContent = r.text;
+      row.appendChild(txt);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = '\u2715';
+      removeBtn.title = 'Remove this reminder.';
+      removeBtn.style.cssText = 'background:transparent;color:#6688aa;border:1px solid #2a6090;border-radius:4px;padding:3px 7px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      removeBtn.addEventListener('click', function() { removeDailyReminder(r.id); });
+      row.appendChild(removeBtn);
+
+      listEl.appendChild(row);
+    });
+  }
+
+  // Wire input + button
+  (function() {
+    var input = document.getElementById('dailyReminderInput');
+    var btn = document.getElementById('addDailyReminderBtn');
+    if (input) input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var text = (input.value || '').trim();
+        if (text) { addDailyReminder(text); input.value = ''; }
+      }
+    });
+    if (btn) btn.addEventListener('click', function() {
+      var text = (input.value || '').trim();
+      if (text) { addDailyReminder(text); input.value = ''; }
+    });
+  })();
+
+  // ---- Daily reminders walk-through popup ----
+  var _reminderIdx = 0;
+
+  function maybeDailyRemindersPopup() {
+    if (!state.dailyRemindersEnabled) return;
+    if (!Array.isArray(state.dailyReminders) || state.dailyReminders.length === 0) return;
+    var today = todayStr();
+    if (state.dailyRemindersLastShown === today) return;
+    // Show the popup
+    _reminderIdx = 0;
+    _showReminderCard();
+  }
+
+  function _showReminderCard() {
+    var items = state.dailyReminders || [];
+    if (_reminderIdx >= items.length) {
+      // Done — close
+      var modal = document.getElementById('dailyRemindersModal');
+      if (modal) modal.style.display = 'none';
+      state.dailyRemindersLastShown = todayStr();
+      save();
+      return;
+    }
+    var modal = document.getElementById('dailyRemindersModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    var textEl = document.getElementById('reminderCardText');
+    var progressEl = document.getElementById('reminderProgress');
+    var nextBtn = document.getElementById('reminderNextBtn');
+    var doneBtn = document.getElementById('reminderDoneBtn');
+
+    if (textEl) textEl.textContent = items[_reminderIdx].text;
+    if (progressEl) progressEl.textContent = (_reminderIdx + 1) + ' of ' + items.length;
+
+    var isLast = (_reminderIdx >= items.length - 1);
+    if (nextBtn) nextBtn.style.display = isLast ? 'none' : 'inline-block';
+    if (doneBtn) doneBtn.style.display = isLast ? 'inline-block' : 'none';
+  }
+
+  // Wire modal buttons
+  (function() {
+    var nextBtn = document.getElementById('reminderNextBtn');
+    var doneBtn = document.getElementById('reminderDoneBtn');
+    var skipBtn = document.getElementById('reminderSkipAllBtn');
+
+    if (nextBtn) nextBtn.addEventListener('click', function() {
+      _reminderIdx++;
+      _showReminderCard();
+    });
+    if (doneBtn) doneBtn.addEventListener('click', function() {
+      _reminderIdx = (state.dailyReminders || []).length; // force close
+      _showReminderCard();
+    });
+    if (skipBtn) skipBtn.addEventListener('click', function() {
+      var modal = document.getElementById('dailyRemindersModal');
+      if (modal) modal.style.display = 'none';
+      state.dailyRemindersLastShown = todayStr();
+      save();
+    });
+  })();
+
+  // ---- Incrementalization prompt (Q.I.D. — once per day per task) ----
+  // Scans ALL tasks (project, priority, today) that are 24h+ old and
+  // uncompleted. Shows once per calendar day per task. Saving aqueducts on
+  // a non-today task auto-sends it to Today's Tasks with stages attached.
+  var _incrementalizeQueue = [];  // [{id, text, type:'today'|'project'|'priority', projectId?}]
+  var _incrementalizePendingStages = [];
+
+  function _incrLogKey(id) { return 'incr_' + id; }
+
+  function _wasPromptedToday(id) {
+    if (!state.incrementalizeLog) return false;
+    var key = _incrLogKey(id);
+    var last = state.incrementalizeLog[key];
+    if (!last) return false;
+    // Check if on hold (delay-until timestamp)
+    var holdKey = 'hold_' + id;
+    var holdUntil = state.incrementalizeLog[holdKey];
+    if (holdUntil && Date.now() < holdUntil) return true; // still on hold
+    var today = todayStr();
+    return new Date(last).toISOString().slice(0, 10) === today;
+  }
+
+  function _markPromptedToday(id) {
+    if (!state.incrementalizeLog) state.incrementalizeLog = {};
+    state.incrementalizeLog[_incrLogKey(id)] = Date.now();
+    save();
+  }
+
+  function _putOnHold(id, days) {
+    if (!state.incrementalizeLog) state.incrementalizeLog = {};
+    state.incrementalizeLog['hold_' + id] = Date.now() + (days * 24 * 60 * 60 * 1000);
+    state.incrementalizeLog[_incrLogKey(id)] = Date.now();
+    save();
+  }
+
+  function checkIncrementalization() {
+    var now = Date.now();
+    var STALE_MS = 24 * 60 * 60 * 1000;
+    _incrementalizeQueue = [];
+
+    // 1. Today's tasks
+    if (Array.isArray(state.todayTasks)) {
+      for (var i = 0; i < state.todayTasks.length; i++) {
+        var t = state.todayTasks[i];
+        if (t.incrementalizedAt) continue;
+        if (!t.createdAt || (now - t.createdAt) < STALE_MS) continue;
+        if (_wasPromptedToday(t.id)) continue;
+        _incrementalizeQueue.push({ id: t.id, text: t.text, type: 'today' });
+      }
+    }
+
+    // 2. Project tasks (uncompleted, 24h+ old)
+    if (state.projects && state.tasks) {
+      for (var p = 0; p < state.projects.length; p++) {
+        var proj = state.projects[p];
+        var ptasks = state.tasks[proj.id] || [];
+        for (var j = 0; j < ptasks.length; j++) {
+          var pt = ptasks[j];
+          if (pt.completed) continue;
+          if (!pt.createdAt || (now - pt.createdAt) < STALE_MS) continue;
+          if (_wasPromptedToday(pt.id)) continue;
+          // Skip if already in today tasks
+          if (isInTodayTasks(pt.id)) continue;
+          _incrementalizeQueue.push({ id: pt.id, text: pt.text, type: 'project', projectId: proj.id });
+        }
+      }
+    }
+
+    // 3. Priority tasks (active, 24h+ old)
+    if (Array.isArray(state.priorityTasks)) {
+      var activePri = getActivePriorityTasks();
+      for (var k = 0; k < activePri.length; k++) {
+        var pri = activePri[k];
+        if (!pri.createdAt || (now - pri.createdAt) < STALE_MS) continue;
+        if (_wasPromptedToday(pri.id)) continue;
+        if (isInTodayTasks(pri.id)) continue;
+        _incrementalizeQueue.push({ id: pri.id, text: pri.text, type: 'priority' });
+      }
+    }
+
+    if (_incrementalizeQueue.length > 0) _showNextIncrementalize();
+  }
+
+  function _showNextIncrementalize() {
+    if (_incrementalizeQueue.length === 0) return;
+    var entry = _incrementalizeQueue[0];
+    showIncrementalizeModal(entry.id, entry.text, entry.type, entry.projectId);
+  }
+
+  function showIncrementalizeModal(taskId, taskText, taskType, projectId) {
+    var modal = document.getElementById('incrementalizeModal');
+    if (!modal) return;
+    _incrementalizePendingStages = [];
+
+    var nameEl = document.getElementById('incrementalizeTaskName');
+    if (nameEl) nameEl.textContent = taskText || '(unknown task)';
+
+    var stagesEl = document.getElementById('incrementalizeStages');
+    if (stagesEl) stagesEl.innerHTML = '';
+
+    var inputEl = document.getElementById('incrementalizeInput');
+    if (inputEl) inputEl.value = '';
+
+    modal.style.display = 'flex';
+    modal.dataset.taskId = taskId;
+    modal.dataset.taskType = taskType || 'today';
+    modal.dataset.projectId = projectId || '';
+    modal.dataset.taskText = taskText || '';
+
+    // Populate "pull from today" list
+    var fromTodayWrap = document.getElementById('incrementalizeFromTodayWrap');
+    var fromTodayList = document.getElementById('incrementalizeFromTodayList');
+    if (fromTodayWrap && fromTodayList) {
+      fromTodayList.innerHTML = '';
+      var todayItems = (Array.isArray(state.todayTasks) ? state.todayTasks : []).filter(function(t) {
+        return t.id !== taskId; // exclude the task being incrementalized
+      });
+      if (todayItems.length === 0) {
+        fromTodayWrap.style.display = 'none';
+      } else {
+        fromTodayWrap.style.display = 'block';
+        todayItems.forEach(function(t) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px;';
+          var pickBtn = document.createElement('button');
+          pickBtn.type = 'button';
+          pickBtn.textContent = '+';
+          pickBtn.title = 'Add "' + t.text + '" as an aqueduct stage.';
+          pickBtn.style.cssText = 'background:#8b5e1a;color:#fff;border:1px solid #ffb43c;border-radius:3px;padding:2px 8px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;';
+          pickBtn.addEventListener('click', function() {
+            if (_incrementalizePendingStages.indexOf(t.text) === -1) {
+              _incrementalizePendingStages.push(t.text);
+              _renderPendingStages();
+            }
+            row.style.opacity = '0.4';
+            pickBtn.disabled = true;
+          });
+          row.appendChild(pickBtn);
+          var txt = document.createElement('span');
+          txt.style.cssText = 'color:#ffe0b2;font-size:11px;';
+          txt.textContent = t.text;
+          row.appendChild(txt);
+          fromTodayList.appendChild(row);
+        });
+      }
+    }
+
+    if (inputEl) setTimeout(function() { inputEl.focus(); }, 100);
+  }
+
+  function _renderPendingStages() {
+    var stagesEl = document.getElementById('incrementalizeStages');
+    if (!stagesEl) return;
+    stagesEl.innerHTML = '';
+    var circled = ['\u2776','\u2777','\u2778','\u2779','\u277A','\u277B','\u277C','\u277D','\u277E'];
+    _incrementalizePendingStages.forEach(function(s, idx) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;background:rgba(255,180,60,0.08);border:1px solid rgba(184,115,26,0.3);border-radius:4px;';
+
+      var num = document.createElement('span');
+      num.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:#ffb43c;min-width:18px;';
+      num.textContent = circled[idx] || '\u25CF';
+      row.appendChild(num);
+
+      var txt = document.createElement('span');
+      txt.style.cssText = 'flex:1;color:#ffe0b2;font-size:12px;';
+      txt.textContent = s;
+      row.appendChild(txt);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = '\u2715';
+      removeBtn.style.cssText = 'background:transparent;color:#886655;border:1px solid #5a3a10;border-radius:3px;padding:2px 6px;font-size:10px;cursor:pointer;';
+      removeBtn.addEventListener('click', function() {
+        _incrementalizePendingStages.splice(idx, 1);
+        _renderPendingStages();
+      });
+      row.appendChild(removeBtn);
+
+      stagesEl.appendChild(row);
+    });
+  }
+
+  function _applyAqueductsToTodayTask(taskId, stages) {
+    for (var i = 0; i < state.todayTasks.length; i++) {
+      if (state.todayTasks[i].id !== taskId) continue;
+      if (!state.todayTasks[i].aqueducts) state.todayTasks[i].aqueducts = [];
+      for (var j = 0; j < stages.length; j++) {
+        state.todayTasks[i].aqueducts.push({
+          id: 'aq' + Date.now() + '-' + Math.random().toString(36).slice(2, 5) + j,
+          text: stages[j],
+          done: false
+        });
+      }
+      state.todayTasks[i].incrementalizedAt = Date.now();
+      return true;
+    }
+    return false;
+  }
+
+  function _advanceIncrQueue() {
+    _incrementalizeQueue.shift();
+    if (_incrementalizeQueue.length > 0) {
+      setTimeout(_showNextIncrementalize, 300);
+    }
+  }
+
+  // Wire incrementalize modal buttons
+  (function() {
+    function addStageFromInput() {
+      var inputEl = document.getElementById('incrementalizeInput');
+      if (!inputEl) return;
+      var text = (inputEl.value || '').trim();
+      if (!text) return;
+      _incrementalizePendingStages.push(text);
+      inputEl.value = '';
+      _renderPendingStages();
+      inputEl.focus();
+    }
+    var addBtn = document.getElementById('incrementalizeAddBtn');
+    if (addBtn) addBtn.addEventListener('click', addStageFromInput);
+    var addInput = document.getElementById('incrementalizeInput');
+    if (addInput) addInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); addStageFromInput(); }
+    });
+
+    // Save aqueducts
+    var saveBtn = document.getElementById('incrementalizeSaveBtn');
+    if (saveBtn) saveBtn.addEventListener('click', function() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      var taskId = modal.dataset.taskId;
+      var taskType = modal.dataset.taskType;
+      var taskText = modal.dataset.taskText;
+      if (!taskId || _incrementalizePendingStages.length === 0) {
+        try { notify('Add at least one aqueduct stage.', '#ffb43c'); } catch (_) {}
+        return;
+      }
+
+      _markPromptedToday(taskId);
+
+      if (taskType === 'today') {
+        // Already in Today's Tasks — just attach aqueducts
+        _applyAqueductsToTodayTask(taskId, _incrementalizePendingStages);
+      } else {
+        // Project or Priority task: send to Today's Tasks with aqueducts
+        var srcType = taskType === 'priority' ? 'priority' : 'project';
+        addTodayTask(taskText, taskId, srcType);
+        // Now find the newly added today task and attach aqueducts
+        var newest = state.todayTasks[state.todayTasks.length - 1];
+        if (newest && newest.sourceId === taskId) {
+          newest.aqueducts = [];
+          for (var j = 0; j < _incrementalizePendingStages.length; j++) {
+            newest.aqueducts.push({
+              id: 'aq' + Date.now() + '-' + Math.random().toString(36).slice(2, 5) + j,
+              text: _incrementalizePendingStages[j],
+              done: false
+            });
+          }
+          newest.incrementalizedAt = Date.now();
+        }
+      }
+
+      _incrementalizePendingStages = [];
+      save();
+      renderTodayTasks();
+      render();
+      modal.style.display = 'none';
+      _advanceIncrQueue();
+    });
+
+    // Dismiss task — removes from today if it's there, or just skips
+    var dismissBtn = document.getElementById('incrementalizeDismissBtn');
+    if (dismissBtn) dismissBtn.addEventListener('click', function() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      var taskId = modal.dataset.taskId;
+      var taskType = modal.dataset.taskType;
+      _markPromptedToday(taskId);
+      if (taskType === 'today') {
+        removeTodayTask(taskId);
+      } else if (taskType === 'project') {
+        // Delete from project
+        try { deleteTask(taskId); } catch (_) {}
+      } else if (taskType === 'priority') {
+        try { removePriority(taskId); } catch (_) {}
+      }
+      modal.style.display = 'none';
+      _advanceIncrQueue();
+    });
+
+    // Not now — mark prompted today, come back tomorrow
+    // Close button + backdrop click — just closes, marks prompted today
+    function closeIncrModal() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      var taskId = modal.dataset.taskId;
+      if (taskId) _markPromptedToday(taskId);
+      modal.style.display = 'none';
+      _advanceIncrQueue();
+    }
+    var closeBtn = document.getElementById('incrementalizeCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', closeIncrModal);
+    var incrModal = document.getElementById('incrementalizeModal');
+    if (incrModal) incrModal.addEventListener('click', function(ev) {
+      if (ev.target === incrModal) closeIncrModal();
+    });
+
+    // Delay / hold buttons (1 day, 2 days, 1 week, 1 month)
+    var delayBtns = document.querySelectorAll('.incr-delay-btn');
+    delayBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var modal = document.getElementById('incrementalizeModal');
+        if (!modal) return;
+        var taskId = modal.dataset.taskId;
+        var days = parseInt(btn.dataset.delay, 10) || 1;
+        _putOnHold(taskId, days);
+        try {
+          var labels = { 1: '1 day', 2: '2 days', 7: '1 week', 30: '1 month' };
+          notify('Task on hold for ' + (labels[days] || days + ' days') + '.', '#ffb43c');
+        } catch (_) {}
+        modal.style.display = 'none';
+        _advanceIncrQueue();
+      });
+    });
+  })();
+
+  // ---- Render Today's Tasks ----
   function renderTodayTasks() {
     pruneOrphanedTodayTasks();
     var listEl = document.getElementById('todayTasksList');
@@ -5610,12 +6154,30 @@ try {
       return;
     }
     tasks.forEach(function(t) {
+      // Ensure aqueducts array exists (migration for older tasks)
+      if (!t.aqueducts) t.aqueducts = [];
+
+      var hasOpenAqueducts = _todayTaskHasOpenAqueducts(t);
+      var allAqueductsDone = t.aqueducts.length > 0 && !hasOpenAqueducts;
+
+      // -- Main task row --
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid rgba(184,115,26,0.3);';
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:' +
+        (t.aqueducts.length > 0 ? 'none' : '1px solid rgba(184,115,26,0.3)') + ';';
 
       var txt = document.createElement('div');
-      txt.style.cssText = 'flex:1;color:#ffe0b2;font-size:12px;word-break:break-word;';
+      txt.style.cssText = 'flex:1;color:#ffe0b2;font-size:12px;word-break:break-word;' +
+        (hasOpenAqueducts ? 'opacity:0.5;' : '') +
+        (allAqueductsDone ? 'text-shadow:0 0 6px rgba(255,180,60,0.4);' : '');
       txt.textContent = t.text;
+      if (t.aqueducts.length > 0) {
+        var completedAq = t.aqueducts.filter(function(a) { return a.done; }).length;
+        var aqBadge = document.createElement('span');
+        aqBadge.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#ffb43c;margin-left:6px;border:1px solid #8b5e1a;border-radius:8px;padding:1px 5px;';
+        aqBadge.textContent = completedAq + '/' + t.aqueducts.length + ' \u2B62';
+        aqBadge.title = completedAq + ' of ' + t.aqueducts.length + ' aqueduct stage(s) complete';
+        txt.appendChild(aqBadge);
+      }
       row.appendChild(txt);
 
       if (t.sourceType) {
@@ -5626,10 +6188,23 @@ try {
         row.appendChild(srcBadge);
       }
 
+      // Manual incrementalize button (add aqueducts any time)
+      var aqBtn = document.createElement('button');
+      aqBtn.type = 'button'; aqBtn.textContent = '\u2B62';
+      aqBtn.title = 'Incrementalize \u2014 break this task into aqueduct stages.';
+      aqBtn.style.cssText = 'background:transparent;color:#ffb43c;border:1px solid #5a3a10;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;';
+      aqBtn.addEventListener('click', function() { showIncrementalizeModal(t.id); });
+      row.appendChild(aqBtn);
+
       var doneBtn = document.createElement('button');
       doneBtn.type = 'button'; doneBtn.textContent = '\u2713';
-      doneBtn.title = t.sourceType ? 'Mark done (also completes the source task).' : 'Mark done.';
-      doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      if (hasOpenAqueducts) {
+        doneBtn.title = 'Complete aqueduct stages first.';
+        doneBtn.style.cssText = 'background:#1a1a1a;color:#555;border:1px solid #333;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:not-allowed;opacity:0.4;';
+      } else {
+        doneBtn.title = t.sourceType ? 'Mark done (also completes the source task).' : 'Mark done.';
+        doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      }
       doneBtn.addEventListener('click', function() { completeTodayTask(t.id); });
       row.appendChild(doneBtn);
 
@@ -5641,6 +6216,53 @@ try {
       row.appendChild(removeBtn);
 
       listEl.appendChild(row);
+
+      // -- Aqueduct stages (rendered under the main task) --
+      if (t.aqueducts.length > 0) {
+        var aqWrap = document.createElement('div');
+        aqWrap.style.cssText = 'margin:0 0 4px 16px;padding:4px 0 6px;border-left:2px solid #8b5e1a;border-bottom:1px solid rgba(184,115,26,0.3);';
+
+        var circled = ['\u2776','\u2777','\u2778','\u2779','\u277A','\u277B','\u277C','\u277D','\u277E'];
+        t.aqueducts.forEach(function(aq, aqIdx) {
+          var aqRow = document.createElement('div');
+          aqRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;';
+
+          var numEl = document.createElement('span');
+          numEl.style.cssText = 'font-size:11px;color:' + (aq.done ? '#4a8a4a' : '#ffb43c') + ';min-width:16px;';
+          numEl.textContent = circled[aqIdx] || '\u25CF';
+          aqRow.appendChild(numEl);
+
+          var aqTxt = document.createElement('span');
+          aqTxt.style.cssText = 'flex:1;font-size:11px;color:' + (aq.done ? '#4a8a4a' : '#ffe0b2') + ';' +
+            (aq.done ? 'text-decoration:line-through;opacity:0.6;' : '');
+          aqTxt.textContent = aq.text;
+          aqRow.appendChild(aqTxt);
+
+          if (!aq.done) {
+            var aqDone = document.createElement('button');
+            aqDone.type = 'button'; aqDone.textContent = '\u2713';
+            aqDone.title = 'Complete this aqueduct stage.';
+            aqDone.style.cssText = 'background:#2a4a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:3px;padding:2px 6px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;';
+            aqDone.addEventListener('click', function() { completeAqueduct(t.id, aq.id); });
+            aqRow.appendChild(aqDone);
+          } else {
+            var aqCheck = document.createElement('span');
+            aqCheck.textContent = '\u2713';
+            aqCheck.style.cssText = 'color:#4a8a4a;font-size:12px;';
+            aqRow.appendChild(aqCheck);
+          }
+
+          aqWrap.appendChild(aqRow);
+        });
+
+        // Label
+        var aqLabel = document.createElement('div');
+        aqLabel.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#886655;padding:2px 8px;letter-spacing:1px;';
+        aqLabel.textContent = 'AQUEDUCT STAGES \u2B62 ' + t.text.substring(0, 20) + (t.text.length > 20 ? '...' : '');
+        aqWrap.insertBefore(aqLabel, aqWrap.firstChild);
+
+        listEl.appendChild(aqWrap);
+      }
     });
   }
 
@@ -6778,6 +7400,16 @@ try {
         });
       }
 
+      // v3.21.25: Daily reminders toggle
+      var dailyRemindersToggle = $('dailyRemindersToggle');
+      if (dailyRemindersToggle) {
+        dailyRemindersToggle.checked = state.dailyRemindersEnabled !== false;
+        dailyRemindersToggle.addEventListener('change', function() {
+          state.dailyRemindersEnabled = dailyRemindersToggle.checked;
+          save();
+        });
+      }
+
       function openSettingsModal() {
         if (!settingsModal) return;
         settingsModal.style.display = 'flex';
@@ -6787,6 +7419,7 @@ try {
         if (coldTurkeyToggle) coldTurkeyToggle.checked = !!state.coldTurkeyEnabled;
         if (coldTurkeyDailyToggle) coldTurkeyDailyToggle.checked = !!state.coldTurkeyDailyPrompt;
         if (coldTurkeyBlockNameInput) coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
+        if (dailyRemindersToggle) dailyRemindersToggle.checked = state.dailyRemindersEnabled !== false;
       }
       function closeSettingsModal() {
         if (!settingsModal) return;
@@ -6927,6 +7560,48 @@ try {
         });
       }
 
+      // ===== Import Backup from JSON File (v3.21.29) =====
+      var importBackupBtn = $('importBackupBtn');
+      var importBackupFile = $('importBackupFile');
+      var importBackupStatus = $('importBackupStatus');
+      if (importBackupBtn && importBackupFile) {
+        importBackupBtn.addEventListener('click', function() {
+          try { SFX.click && SFX.click(); } catch (_) {}
+          importBackupFile.value = '';
+          importBackupFile.click();
+        });
+        importBackupFile.addEventListener('change', function() {
+          var file = importBackupFile.files && importBackupFile.files[0];
+          if (!file) return;
+          if (importBackupStatus) importBackupStatus.textContent = 'Reading file...';
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            try {
+              var payload = JSON.parse(e.target.result);
+              var restoredState = payload.state || payload;
+              if (typeof restoredState !== 'object' || restoredState === null) {
+                if (importBackupStatus) importBackupStatus.textContent = 'Invalid file — no state found.';
+                return;
+              }
+              if (confirm('Import backup from "' + file.name + '"? This will overwrite ALL current state.') === false) {
+                if (importBackupStatus) importBackupStatus.textContent = 'Cancelled.';
+                return;
+              }
+              chrome.storage.local.set({ pixelFocusState: restoredState }, function() {
+                if (importBackupStatus) importBackupStatus.textContent = 'Imported! Reloading...';
+                setTimeout(doReload, 500);
+              });
+            } catch (err) {
+              if (importBackupStatus) importBackupStatus.textContent = 'Parse error — is this a valid JSON file?';
+            }
+          };
+          reader.onerror = function() {
+            if (importBackupStatus) importBackupStatus.textContent = 'Could not read file.';
+          };
+          reader.readAsText(file);
+        });
+      }
+
       // ===== Tab overflow recalc on resize =====
       // If the popup window is ever resized (e.g. the user detaches it), the
       // overflow math needs to rerun so tabs show/hide to fit the new width.
@@ -6946,6 +7621,12 @@ try {
 
   // v3.21.15: Show Cold Turkey daily prompt after init (delayed so UI is ready).
   setTimeout(function() { try { maybeColdTurkeyDailyPrompt(); } catch (_) {} }, 1500);
+
+  // v3.21.25: Daily reminders pop-up (after cold turkey, before incrementalization).
+  setTimeout(function() { try { maybeDailyRemindersPopup(); } catch (_) {} }, 1800);
+
+  // v3.21.22: Check for stale today-tasks that need incrementalization.
+  setTimeout(function() { try { checkIncrementalization(); } catch (_) {} }, 2000);
 
   // v3.21.18: Auto-sync profile to Firestore on every extension open (delayed).
   setTimeout(function() {
