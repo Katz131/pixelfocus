@@ -54,6 +54,14 @@
   .stat-value.accent{color:var(--accent)}
   .stat-value.pink{color:var(--accent2)}
   .stat-value.teal{color:var(--accent3)}
+  .daily-tasks{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:18px 20px;margin-top:2px}
+  .daily-tasks h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:12px;letter-spacing:0.5px}
+  .daily-tasks-date{font-size:10px;color:var(--text-dim);margin-bottom:10px;font-family:'Press Start 2P',monospace}
+  .task-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border)}
+  .task-item:last-child{border-bottom:none}
+  .task-name{font-size:12px;color:var(--text);max-width:75%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .task-count{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);white-space:nowrap}
+  .no-tasks{font-size:11px;color:var(--text-dim);font-style:italic;text-align:center;padding:10px 0}
   .footer-line{text-align:center;font-size:11px;color:var(--text-dim);font-style:italic;margin-top:4px}
   .loading{text-align:center;padding:100px 20px;font-family:'Press Start 2P',monospace;font-size:12px;color:var(--text-dim)}
   .error-msg{text-align:center;padding:100px 20px;font-family:'Press Start 2P',monospace;font-size:12px;color:var(--accent2)}
@@ -75,178 +83,173 @@
   <a class="nav-link accent" href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET THE EXTENSION &rarr;</a>
 </div>
 <div class="hero"><div class="hero-label">CARD OF STANDING</div></div>
-
 <div id="loadingView" class="loading">Loading profile...</div>
 <div id="errorView" class="error-msg" style="display:none;"></div>
-
-<div class="layout" id="profileLayout" style="display:none;">
-  <!-- Filled by JS -->
-</div>
-
+<div class="layout" id="profileLayout" style="display:none;"></div>
 <script>
-(function() {
+(function(){
   'use strict';
-  var PROJECT_ID = 'todo-of-the-loom';
-  var API_KEY = 'AIzaSyCd200oa970-M-sDbcEn4U7dfENVBm4FOA';
-  var BASE = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID + '/databases/(default)/documents';
-
-  // Parse ?id= from URL
-  var params = new URLSearchParams(window.location.search);
-  var profileId = params.get('id');
-
-  if (!profileId) {
-    showError('No profile ID provided.');
-    return;
-  }
-
-  // Fetch from Firestore
-  fetch(BASE + '/profiles/' + profileId + '?key=' + API_KEY)
-    .then(function(r) {
-      if (r.status === 404) throw new Error('not_found');
-      if (!r.ok) throw new Error('fetch_failed');
+  var PID='todo-of-the-loom';
+  var KEY='AIzaSyCd200oa970-M-sDbcEn4U7dfENVBm4FOA';
+  var BASE='https://firestore.googleapis.com/v1/projects/'+PID+'/databases/(default)/documents';
+  var params=new URLSearchParams(window.location.search);
+  var profileId=params.get('id');
+  if(!profileId){showError('No profile ID provided.');return;}
+  fetch(BASE+'/profiles/'+profileId+'?key='+KEY)
+    .then(function(r){
+      if(r.status===404)throw new Error('not_found');
+      if(!r.ok)throw new Error('fetch_failed');
       return r.json();
     })
-    .then(function(doc) {
-      var d = parseFirestoreDoc(doc.fields || {});
-      document.title = (d.displayName || 'Profile') + ' — Todo of the Loom';
+    .then(function(doc){
+      var d=parseDoc(doc.fields||{});
+      document.title=(d.displayName||'Profile')+' \u2014 Todo of the Loom';
       renderProfile(d);
     })
-    .catch(function(err) {
-      if (err.message === 'not_found') {
-        showError('Profile not found. It may not have been synced yet.');
-      } else {
-        showError('Failed to load profile. Try again later.');
-      }
+    .catch(function(err){
+      if(err.message==='not_found'){showError('Profile not found. It may not have been synced yet.');}
+      else{showError('Failed to load profile. Try again later.');}
     });
-
-  function showError(msg) {
-    document.getElementById('loadingView').style.display = 'none';
-    var el = document.getElementById('errorView');
-    el.textContent = msg;
-    el.style.display = 'block';
+  function showError(msg){
+    document.getElementById('loadingView').style.display='none';
+    var el=document.getElementById('errorView');
+    el.textContent=msg;el.style.display='block';
   }
-
-  // Convert Firestore JSON back to plain values
-  function parseFirestoreDoc(fields) {
-    var obj = {};
-    Object.keys(fields).forEach(function(k) {
-      obj[k] = parseValue(fields[k]);
-    });
+  function parseDoc(fields){
+    var obj={};
+    Object.keys(fields).forEach(function(k){obj[k]=parseVal(fields[k]);});
     return obj;
   }
-  function parseValue(v) {
-    if (!v) return null;
-    if ('stringValue' in v) return v.stringValue;
-    if ('integerValue' in v) return parseInt(v.integerValue, 10);
-    if ('doubleValue' in v) return v.doubleValue;
-    if ('booleanValue' in v) return v.booleanValue;
-    if ('nullValue' in v) return null;
-    if ('mapValue' in v) return parseFirestoreDoc(v.mapValue.fields || {});
-    if ('arrayValue' in v) return (v.arrayValue.values || []).map(parseValue);
+  function parseVal(v){
+    if(!v)return null;
+    if('stringValue' in v)return v.stringValue;
+    if('integerValue' in v)return parseInt(v.integerValue,10);
+    if('doubleValue' in v)return v.doubleValue;
+    if('booleanValue' in v)return v.booleanValue;
+    if('nullValue' in v)return null;
+    if('mapValue' in v)return parseDoc(v.mapValue.fields||{});
+    if('arrayValue' in v)return(v.arrayValue.values||[]).map(parseVal);
     return null;
   }
-
-  // Format helpers
-  function fmtNum(n) {
-    n = parseInt(n, 10) || 0;
-    if (n < 1000) return String(n);
-    if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-    if (n < 1000000) return Math.round(n / 1000) + 'k';
-    return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  function fmtNum(n){
+    n=parseInt(n,10)||0;
+    if(n<1000)return String(n);
+    if(n<10000)return(n/1000).toFixed(1).replace(/\.0$/,'')+'k';
+    if(n<1000000)return Math.round(n/1000)+'k';
+    return(n/1000000).toFixed(1).replace(/\.0$/,'')+'M';
   }
-  function fmtCoins(n) { return '$' + Math.floor(n || 0).toLocaleString(); }
-  function fmtMins(m) {
-    m = parseInt(m, 10) || 0;
-    if (m < 60) return m + ' min';
-    var h = Math.floor(m / 60), r = m % 60;
-    if (h < 24) return h + 'h ' + (r ? r + 'm' : '');
-    return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+  function fmtCoins(n){return'$'+Math.floor(n||0).toLocaleString();}
+  function fmtMins(m){
+    m=parseInt(m,10)||0;
+    if(m<60)return m+' min';
+    var h=Math.floor(m/60),r=m%60;
+    if(h<24)return h+'h '+(r?r+'m':'');
+    return Math.floor(h/24)+'d '+(h%24)+'h';
   }
-  function fmtDate(iso) {
-    if (!iso) return '\u2014';
-    try { return new Date(iso).toLocaleDateString(undefined, {year:'numeric',month:'long',day:'numeric'}); }
-    catch(_) { return '\u2014'; }
+  function fmtDate(iso){
+    if(!iso)return'\u2014';
+    try{return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});}
+    catch(_){return'\u2014';}
   }
-  function esc(s) { var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
-
-  function streakFlavor(s) {
-    if (s <= 0) return 'No streak yet.';
-    if (s === 1) return 'Day 1. Small embers.';
-    if (s < 4) return 'Getting warm. The kettle is noticing.';
-    if (s < 7) return 'A respectable run.';
-    if (s < 14) return 'A proper streak now.';
-    if (s < 30) return 'The loom knows your footsteps.';
-    if (s < 60) return 'You are now a fixture.';
-    if (s < 120) return 'Institutional.';
-    return 'Legend-tier consistency.';
+  function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+  function streakFlavor(s){
+    if(s<=0)return'No streak yet.';
+    if(s===1)return'Day 1. Small embers.';
+    if(s<4)return'Getting warm. The kettle is noticing.';
+    if(s<7)return'A respectable run.';
+    if(s<14)return'A proper streak now.';
+    if(s<30)return'The loom knows your footsteps.';
+    if(s<60)return'You are now a fixture.';
+    if(s<120)return'Institutional.';
+    return'Legend-tier consistency.';
   }
-
-  function statRow(label, value, cls, style) {
-    return '<div class="stat-row"><span class="stat-label">' + esc(label) + '</span><span class="stat-value' + (cls ? ' ' + cls : '') + '"' + (style ? ' style="' + style + '"' : '') + '>' + esc(value) + '</span></div>';
+  function statRow(label,value,cls,style){
+    return'<div class="stat-row"><span class="stat-label">'+esc(label)+'</span><span class="stat-value'+(cls?' '+cls:'')+'"'+(style?' style="'+style+'"':'')+'>'+esc(value)+'</span></div>';
   }
-
-  function renderProfile(d) {
-    document.getElementById('loadingView').style.display = 'none';
-    var layout = document.getElementById('profileLayout');
-    layout.style.display = 'flex';
-
-    var avatarBlock = d.avatarDataURL
-      ? '<img src="' + d.avatarDataURL + '" alt="Avatar">'
-      : '<div class="avatar-empty">NO AVATAR</div>';
-
-    var xpPct = d.nextLevelXP > 0 ? Math.min(100, ((d.currentXP || 0) / d.nextLevelXP) * 100) : 100;
-    var streak = d.streak || 0;
-    var bonus = 1.0 + Math.min(streak, 10) * 0.05;
-
-    layout.innerHTML = ''
-      // Profile card
-      + '<div class="profile-card">'
-      + '<div class="avatar-slot">' + avatarBlock + '</div>'
-      + '<div class="identity">'
-      + '<div class="identity-name">' + esc(d.displayName) + '</div>'
-      + (d.tagline ? '<div class="identity-tagline">' + esc(d.tagline) + '</div>' : '')
-      + '<div class="title-row">'
-      + '<span class="level-chip">LV ' + (d.level || 1) + '</span>'
-      + '<span class="title-chip">' + esc(d.title || 'Would-Be Weaver') + '</span>'
-      + '</div>'
-      + '<div class="xp-bar"><div class="xp-fill" style="width:' + xpPct + '%;"></div></div>'
-      + '<div class="xp-text">' + (d.currentXP || 0) + ' / ' + (d.nextLevelXP || 50) + ' XP</div>'
-      + '</div></div>'
-      // Streak card
-      + '<div class="streak-card">'
-      + '<div class="streak-flame' + (streak <= 0 ? ' cold' : '') + '">\u{1F525}</div>'
-      + '<div class="streak-main">'
-      + '<div class="streak-number">' + streak + '</div>'
-      + '<div class="streak-label">DAY STREAK</div>'
-      + '<div class="streak-flavor">' + esc(streakFlavor(streak)) + '</div>'
-      + '<div class="streak-meta">'
-      + '<div class="pill">Best: ' + (d.longestStreak || 0) + ' days</div>'
-      + '<div class="pill">XP bonus: x' + bonus.toFixed(2) + '</div>'
-      + '</div></div></div>'
-      // Stats grid
-      + '<div class="stats-grid">'
-      + '<div class="stat-panel work"><h2>WORK LEDGER</h2>'
-      + statRow('Lifetime textiles', fmtNum(d.lifetimeBlocks), 'gold')
-      + statRow('Focus minutes', fmtMins(d.focusMinutes), 'accent')
-      + statRow('Tasks completed', fmtNum(d.tasksCompleted), 'teal')
-      + statRow('Lifetime coins', fmtCoins(d.lifetimeCoins), 'gold')
-      + statRow('Wallet', fmtCoins(d.wallet), 'gold')
-      + '</div>'
-      + '<div class="stat-panel"><h2>COMBOS</h2>'
-      + statRow('Current combo', (d.combo || 0) + 'x', 'pink')
-      + statRow('All-time best combo', (d.maxCombo || 0) + 'x', 'gold')
-      + '</div>'
-      + '<div class="stat-panel game"><h2>GAME PROGRESS</h2>'
-      + statRow('Personnel', (d.personnel || 0) + ' on roster', 'teal')
-      + statRow('Looms saved', fmtNum(d.loomsSaved), 'accent')
-      + statRow('Looms sold', fmtNum(d.loomsSold), 'gold')
-      + statRow('Lives lost', String(d.livesLost || 0), '', 'color:#ff6666')
-      + '</div></div>'
-      // Footer
-      + '<div class="footer-line">Filed with the clerks of standing on ' + esc(fmtDate(d.profileCreated)) + '.</div>'
-      + '<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;font-style:italic;">Last synced ' + esc(fmtDate(d.updatedAt)) + '</div>'
-      // CTA
-      + '<div class="cta-bar"><a href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET TODO OF THE LOOM &rarr;</a></div>';
+  function buildDailyTasks(d){
+    var log=d.dailyTaskLog;
+    if(!log||!log.tasks||typeof log.tasks!=='object')return'';
+    var keys=Object.keys(log.tasks);
+    if(keys.length===0)return'';
+    // Sort by count descending
+    keys.sort(function(a,b){return(log.tasks[b]||0)-(log.tasks[a]||0);});
+    var dateLabel=log.date||'today';
+    try{
+      var parts=dateLabel.split('-');
+      if(parts.length===3){
+        var dt=new Date(parseInt(parts[0],10),parseInt(parts[1],10)-1,parseInt(parts[2],10));
+        dateLabel=dt.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+      }
+    }catch(_){}
+    var html='<div class="daily-tasks">'
+      +'<h2>TODAY\'S COMPLETED TASKS</h2>'
+      +'<div class="daily-tasks-date">'+esc(dateLabel)+'</div>';
+    for(var i=0;i<keys.length;i++){
+      var name=keys[i];
+      var count=log.tasks[name]||0;
+      html+='<div class="task-item">'
+        +'<span class="task-name">'+esc(name)+'</span>'
+        +'<span class="task-count">'+(count>1?'x'+count:'\u2713')+'</span>'
+        +'</div>';
+    }
+    html+='</div>';
+    return html;
+  }
+  function renderProfile(d){
+    document.getElementById('loadingView').style.display='none';
+    var layout=document.getElementById('profileLayout');
+    layout.style.display='flex';
+    var avatarBlock=d.avatarDataURL
+      ?'<img src="'+d.avatarDataURL+'" alt="Avatar">'
+      :'<div class="avatar-empty">NO AVATAR</div>';
+    var xpPct=d.nextLevelXP>0?Math.min(100,((d.currentXP||0)/d.nextLevelXP)*100):100;
+    var streak=d.streak||0;
+    var bonus=1.0+Math.min(streak,10)*0.05;
+    layout.innerHTML=''
+      +'<div class="profile-card">'
+      +'<div class="avatar-slot">'+avatarBlock+'</div>'
+      +'<div class="identity">'
+      +'<div class="identity-name">'+esc(d.displayName)+'</div>'
+      +(d.tagline?'<div class="identity-tagline">'+esc(d.tagline)+'</div>':'')
+      +'<div class="title-row">'
+      +'<span class="level-chip">LV '+(d.level||1)+'</span>'
+      +'<span class="title-chip">'+esc(d.title||'Would-Be Weaver')+'</span>'
+      +'</div>'
+      +'<div class="xp-bar"><div class="xp-fill" style="width:'+xpPct+'%;"></div></div>'
+      +'<div class="xp-text">'+(d.currentXP||0)+' / '+(d.nextLevelXP||50)+' XP</div>'
+      +'</div></div>'
+      +'<div class="streak-card">'
+      +'<div class="streak-flame'+(streak<=0?' cold':'')+'">&#x1F525;</div>'
+      +'<div class="streak-main">'
+      +'<div class="streak-number">'+streak+'</div>'
+      +'<div class="streak-label">DAY STREAK</div>'
+      +'<div class="streak-flavor">'+esc(streakFlavor(streak))+'</div>'
+      +'<div class="streak-meta">'
+      +'<div class="pill">Best: '+(d.longestStreak||0)+' days</div>'
+      +'<div class="pill">XP bonus: x'+bonus.toFixed(2)+'</div>'
+      +'</div></div></div>'
+      +'<div class="stats-grid">'
+      +'<div class="stat-panel work"><h2>WORK LEDGER</h2>'
+      +statRow('Lifetime textiles',fmtNum(d.lifetimeBlocks),'gold')
+      +statRow('Focus minutes',fmtMins(d.focusMinutes),'accent')
+      +statRow('Tasks completed',fmtNum(d.tasksCompleted),'teal')
+      +statRow('Lifetime coins',fmtCoins(d.lifetimeCoins),'gold')
+      +statRow('Wallet',fmtCoins(d.wallet),'gold')
+      +'</div>'
+      +'<div class="stat-panel"><h2>COMBOS</h2>'
+      +statRow('Current combo',(d.combo||0)+'x','pink')
+      +statRow('All-time best combo',(d.maxCombo||0)+'x','gold')
+      +'</div>'
+      +'<div class="stat-panel game"><h2>GAME PROGRESS</h2>'
+      +statRow('Personnel',(d.personnel||0)+' on roster','teal')
+      +statRow('Looms saved',fmtNum(d.loomsSaved),'accent')
+      +statRow('Looms sold',fmtNum(d.loomsSold),'gold')
+      +statRow('Lives lost',String(d.livesLost||0),'','color:#ff6666')
+      +'</div></div>'
+      +buildDailyTasks(d)
+      +'<div class="footer-line">Filed with the clerks of standing on '+esc(fmtDate(d.profileCreated))+'.</div>'
+      +'<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;font-style:italic;">Last synced '+esc(fmtDate(d.updatedAt))+'</div>'
+      +'<div class="cta-bar"><a href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET TODO OF THE LOOM &rarr;</a></div>';
   }
 })();
 </script>

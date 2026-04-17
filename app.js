@@ -4795,6 +4795,11 @@ try {
 
   function completePriority(id) {
     if (!Array.isArray(state.priorityTasks)) return;
+    // Grab the task text before we process it (it may get removed).
+    var completedText = '';
+    for (var f = 0; f < state.priorityTasks.length; f++) {
+      if (state.priorityTasks[f].id === id) { completedText = state.priorityTasks[f].text || ''; break; }
+    }
     // For recurring tasks we keep the task and just mark it done-for-today,
     // so it reappears on the next qualifying calendar day. For one-off
     // tasks we remove them outright — their whole point is to disappear.
@@ -4814,6 +4819,7 @@ try {
     // v3.21.9: Priority completions produce dust + bump lifetime counter,
     // just like regular task completions.
     state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
+    logDailyTaskCompletion(completedText);
     if (!state.dustPixels) state.dustPixels = [];
     var palette = state.unlockedColors || ['#00ff88'];
     var dustColor = palette[Math.floor(Math.random() * palette.length)];
@@ -4832,6 +4838,7 @@ try {
     renderPriorities();
     renderPriorityModalList();
     renderGameLockout();
+    renderDustbin();
     try { SFX.completeTask && SFX.completeTask(); } catch (_) {}
     // If the modal is open and the list is now empty, close it.
     if (getActivePriorityTasks().length === 0) hidePriorityModal();
@@ -5297,6 +5304,18 @@ try {
     return null;
   }
 
+  // v3.21.13: Daily task completion log for public profile.
+  // state.dailyTaskLog = { date: 'YYYY-MM-DD', tasks: { 'Task name': count } }
+  function logDailyTaskCompletion(taskName) {
+    var today = todayStr();
+    if (!state.dailyTaskLog || state.dailyTaskLog.date !== today) {
+      state.dailyTaskLog = { date: today, tasks: {} };
+    }
+    var name = (taskName || '').trim();
+    if (!name) return;
+    state.dailyTaskLog.tasks[name] = (state.dailyTaskLog.tasks[name] || 0) + 1;
+  }
+
   function toggleTask(id) {
     var task = findTask(id);
     if (!task) return;
@@ -5305,6 +5324,7 @@ try {
       SFX.completeTask();
       // v3.20.26: bump lifetime task-completion count for the profile page.
       state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
+      logDailyTaskCompletion(task.text);
       // v3.20.21: if this is a recurring task, show the "still want it?" toast
       if (task.recurring || isRecurringText(task.text)) {
         setTimeout(function() { showRecurringToast(task.text); }, 600);

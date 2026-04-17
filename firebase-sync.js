@@ -140,6 +140,8 @@
       loomsSold: state.loomsSold || 0,
       livesLost: livesLost,
       avatarDataURL: avatarDataURL,
+      dailyTaskLog: (state.dailyTaskLog && state.dailyTaskLog.date === new Date().toISOString().slice(0, 10))
+        ? state.dailyTaskLog : { date: new Date().toISOString().slice(0, 10), tasks: {} },
       updatedAt: new Date().toISOString(),
       profileCreated: state.profileCreated
         ? new Date(state.profileCreated).toISOString()
