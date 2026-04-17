@@ -241,6 +241,21 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </div>
 </div>
 
+<!-- v3.21.17: Daily focus timeline -->
+<div id="focusTimelinePanel" class="timeline-panel" style="background:var(--surface,#12122a);border:1px solid #4ecdc4;border-radius:10px;padding:12px 14px;margin:8px 0;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#4ecdc4;letter-spacing:0.5px;">TODAY'S FOCUS</div>
+    <div style="display:flex;gap:4px;align-items:center;">
+      <button id="tlPrev" style="background:none;border:1px solid #4ecdc4;color:#4ecdc4;font-family:'Press Start 2P',monospace;font-size:8px;padding:2px 6px;border-radius:4px;cursor:pointer;">&lt;</button>
+      <span id="tlWindowLabel" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;min-width:70px;text-align:center;"></span>
+      <button id="tlNext" style="background:none;border:1px solid #4ecdc4;color:#4ecdc4;font-family:'Press Start 2P',monospace;font-size:8px;padding:2px 6px;border-radius:4px;cursor:pointer;">&gt;</button>
+    </div>
+  </div>
+  <div id="focusTimelineBar" style="position:relative;height:24px;background:#1a1a3a;border:1px solid #2a2a4a;border-radius:5px;overflow:hidden;margin-bottom:4px;"></div>
+  <div id="focusTimelineLabels" style="display:flex;justify-content:space-between;font-family:'Press Start 2P',monospace;font-size:6px;color:#5a5a7e;padding:0 2px;"></div>
+  <div id="focusTimelineSummary" style="font-size:10px;color:#5a5a7e;text-align:center;margin-top:4px;font-family:'Courier New',monospace;">No focus sessions yet today.</div>
+</div>
+
 <div class="xp-section">
   <div class="xp-top-row">
     <div class="level-badge" id="levelBadge" style="cursor:pointer;" title="Your current rank. Click to see the full title ladder &mdash; every rank in the loom, with the XP thresholds where your title changes.">
@@ -543,6 +558,23 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px;">Overwrites the current state with the last internal backup. Use this if a Safe Refresh went wrong.</div>
       <button type="button" id="restoreBackupBtn" style="width:100%;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:9px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;" title="Restore the most recent internal backup. You will be asked to confirm before anything is overwritten.">&#8630; RESTORE LAST BACKUP</button>
       <div id="restoreBackupStatus" style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;min-height:14px;text-align:center;"></div>
+    </div>
+    <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
+      <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--accent3);letter-spacing:1px;margin-bottom:6px;">COLD TURKEY INTEGRATION</div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px;">Automatically start a Cold Turkey block when you begin a focus session. The block locks for the session duration. Requires Cold Turkey Blocker + one-time setup (run setup-cold-turkey.bat).</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:8px;">
+        <input type="checkbox" id="coldTurkeyToggle" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Auto-start block on focus</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:8px;">
+        <input type="checkbox" id="coldTurkeyDailyToggle" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Daily prompt to open Cold Turkey</span>
+      </label>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <span style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);white-space:nowrap;">Block name:</span>
+        <input type="text" id="coldTurkeyBlockName" placeholder="e.g. My Block List" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-family:'Courier New',monospace;font-size:11px;color:var(--text);">
+      </div>
+      <div id="coldTurkeyStatus" style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;min-height:14px;text-align:center;"></div>
     </div>
     <div style="padding:10px 18px 16px;font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);font-style:italic;border-top:1px solid rgba(0,255,136,0.15);">Tip: keep the downloaded JSON file somewhere safe. It is a complete snapshot you can re-import later if the browser ever clears the extension storage.</div>
   </div>

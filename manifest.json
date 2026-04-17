@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Todo of the Loom",
-  "version": "3.21.14",
-  "description": "Todo of the Loom — The demoralizing gamified To-do list. v3.2️⃣1️⃣.14",
+  "version": "3.21.18",
+  "description": "Todo of the Loom — The demoralizing gamified To-do list. v3.2️⃣1️⃣.18",
   "permissions": [
     "storage",
     "alarms",
     "notifications",
-    "tabs"
+    "tabs",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "https://firestore.googleapis.com/*"

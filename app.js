@@ -713,6 +713,13 @@ try {
     // v3.19.15: lifetime loom-sale stats (auction house)
     loomsSold: 0,
     coinsFromLoomSales: 0,
+    // v3.21.16: Daily session timeline for public profile
+    dailySessionLog: { date: '', sessions: [] }, // { date:'YYYY-MM-DD', sessions:[{start:ms,end:ms,min:N}] }
+    // v3.21.15: Cold Turkey integration (off by default)
+    coldTurkeyEnabled: false,
+    coldTurkeyBlockName: '111 claude blocker',
+    coldTurkeyDailyPrompt: false,   // show "open Cold Turkey" popup once per day
+    coldTurkeyLastPromptDate: '',   // YYYY-MM-DD of last prompt shown
     // Streak-driven passive currency (Paperclips-style precursor)
     coins: 0,                 // current spendable coin balance
     lifetimeCoins: 0,         // all-time coins earned
@@ -2366,6 +2373,130 @@ try {
     }
   }
 
+  // ============== FOCUS TIMELINE (6-hour window) ==============
+  var _tlWindowStart = -1; // -1 = auto (current 6h window)
+
+  function renderFocusTimeline() {
+    var bar = document.getElementById('focusTimelineBar');
+    var labels = document.getElementById('focusTimelineLabels');
+    var summary = document.getElementById('focusTimelineSummary');
+    var winLabel = document.getElementById('tlWindowLabel');
+    if (!bar) return;
+
+    // Determine current 6-hour window
+    var now = new Date();
+    var currentHour = now.getHours();
+    if (_tlWindowStart < 0) _tlWindowStart = Math.floor(currentHour / 6) * 6;
+    var wStart = _tlWindowStart; // 0, 6, 12, or 18
+    var wEnd = wStart + 6;
+
+    // Format hour labels
+    function fmtHr(h) {
+      h = h % 24;
+      if (h === 0) return '12AM';
+      if (h === 12) return '12PM';
+      return h < 12 ? h + 'AM' : (h - 12) + 'PM';
+    }
+
+    // Update window label
+    if (winLabel) winLabel.textContent = fmtHr(wStart) + '-' + fmtHr(wEnd);
+
+    // Build hour labels (7 marks for 6 hours)
+    if (labels) {
+      labels.innerHTML = '';
+      for (var h = wStart; h <= wEnd; h++) {
+        var sp = document.createElement('span');
+        sp.textContent = fmtHr(h);
+        labels.appendChild(sp);
+      }
+    }
+
+    // Clear bar
+    bar.innerHTML = '';
+
+    // Draw hour gridlines
+    for (var g = 1; g < 6; g++) {
+      var line = document.createElement('div');
+      line.style.cssText = 'position:absolute;top:0;bottom:0;width:1px;background:#2a2a4a;left:' + ((g / 6) * 100) + '%;';
+      bar.appendChild(line);
+    }
+
+    // Get today's sessions
+    var today = todayStr();
+    var sessions = (state.dailySessionLog && state.dailySessionLog.date === today)
+      ? (state.dailySessionLog.sessions || []) : [];
+
+    var totalMin = 0;
+    var sessionCount = 0;
+    var windowMs = 6 * 60 * 60 * 1000; // 6 hours in ms
+    var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    var windowStartMs = dayStart + (wStart * 60 * 60 * 1000);
+    var windowEndMs = dayStart + (wEnd * 60 * 60 * 1000);
+
+    for (var i = 0; i < sessions.length; i++) {
+      var s = sessions[i];
+      totalMin += (s.min || 0);
+      sessionCount++;
+
+      // Clip session to window
+      var sStart = Math.max(s.start, windowStartMs);
+      var sEnd = Math.min(s.end, windowEndMs);
+      if (sStart >= sEnd) continue; // outside this window
+
+      var leftPct = ((sStart - windowStartMs) / windowMs) * 100;
+      var widthPct = ((sEnd - sStart) / windowMs) * 100;
+      if (widthPct < 0.5) widthPct = 0.5; // minimum visible width
+
+      var block = document.createElement('div');
+      block.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;background:linear-gradient(180deg,#4ecdc4,#26a69a);opacity:0.85;left:' + leftPct + '%;width:' + widthPct + '%;';
+
+      // Tooltip
+      var startTime = new Date(s.start);
+      var endTime = new Date(s.end);
+      block.title = startTime.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + ' - ' +
+                     endTime.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + ' (' + (s.min || '?') + ' min)';
+      bar.appendChild(block);
+    }
+
+    // Now marker (if in this window)
+    var nowMs = now.getTime();
+    if (nowMs >= windowStartMs && nowMs < windowEndMs) {
+      var nowPct = ((nowMs - windowStartMs) / windowMs) * 100;
+      var marker = document.createElement('div');
+      marker.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;background:#ff6b6b;left:' + nowPct + '%;z-index:2;';
+      marker.title = 'Now';
+      bar.appendChild(marker);
+    }
+
+    // Summary
+    if (summary) {
+      if (sessionCount === 0) {
+        summary.textContent = 'No focus sessions yet today.';
+      } else {
+        var hrs = Math.floor(totalMin / 60);
+        var mins = totalMin % 60;
+        var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
+        summary.textContent = timeStr + ' across ' + sessionCount + ' session' + (sessionCount !== 1 ? 's' : '') + ' today';
+      }
+    }
+  }
+
+  // Wire timeline nav buttons
+  (function() {
+    var prev = document.getElementById('tlPrev');
+    var next = document.getElementById('tlNext');
+    if (prev) prev.addEventListener('click', function() {
+      if (_tlWindowStart <= 0) _tlWindowStart = 18;
+      else _tlWindowStart -= 6;
+      renderFocusTimeline();
+    });
+    if (next) next.addEventListener('click', function() {
+      if (_tlWindowStart >= 18) _tlWindowStart = 0;
+      else _tlWindowStart += 6;
+      renderFocusTimeline();
+    });
+  })();
+
   // ============== RENDER ==============
   function render() {
     renderXP();
@@ -2382,6 +2513,7 @@ try {
     renderProfileAvatar();
     renderRatiocinatoryBtn();
     renderGameLockout();
+    renderFocusTimeline();
     refreshTrackerBriefBadge();
     attachHoverSounds();
   }
@@ -3929,6 +4061,78 @@ try {
     }, 1000);
   }
 
+  // v3.21.15: Cold Turkey integration — start/stop a block via native messaging.
+  function triggerColdTurkey(action, minutes) {
+    if (!state.coldTurkeyEnabled) return;
+    var blockName = (state.coldTurkeyBlockName || '').trim();
+    if (!blockName) return;
+    try {
+      chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', {
+        action: action,
+        block: blockName,
+        minutes: minutes || 0
+      }, function(response) {
+        if (chrome.runtime.lastError) {
+          console.warn('[ColdTurkey] Native messaging error:', chrome.runtime.lastError.message);
+        } else {
+          console.log('[ColdTurkey] Response:', response);
+        }
+      });
+    } catch (err) {
+      console.warn('[ColdTurkey] Failed to send native message:', err);
+    }
+  }
+
+  // v3.21.15: Open Cold Turkey's UI via native messaging.
+  function openColdTurkeyApp() {
+    try {
+      chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', {
+        action: 'open'
+      }, function(response) {
+        if (chrome.runtime.lastError) {
+          console.warn('[ColdTurkey] Could not open app:', chrome.runtime.lastError.message);
+        }
+      });
+    } catch (err) {
+      console.warn('[ColdTurkey] Failed to open app:', err);
+    }
+  }
+
+  // v3.21.15: Daily Cold Turkey prompt — shows once per day on first load.
+  function maybeColdTurkeyDailyPrompt() {
+    if (!state.coldTurkeyDailyPrompt) return;
+    var today = todayStr();
+    if (state.coldTurkeyLastPromptDate === today) return;
+    // Mark as shown for today
+    state.coldTurkeyLastPromptDate = today;
+    save();
+    // Build and show the modal
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:linear-gradient(135deg,#0a0a14,#12121f);border:2px solid #4ecdc4;border-radius:8px;max-width:380px;width:100%;padding:24px;text-align:center;box-shadow:0 0 28px rgba(78,205,196,0.35);';
+    box.innerHTML = ''
+      + '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#4ecdc4;margin-bottom:14px;letter-spacing:1px;">COLD TURKEY</div>'
+      + '<div style="font-family:\'Courier New\',monospace;font-size:12px;color:#e0e0e0;line-height:1.6;margin-bottom:18px;">Open Cold Turkey to set up your blocks for today?</div>'
+      + '<div style="display:flex;gap:10px;justify-content:center;">'
+      + '<button id="ctDailyOpen" style="background:#4ecdc4;color:#08080f;border:none;border-radius:4px;padding:10px 16px;font-family:\'Press Start 2P\',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">OPEN COLD TURKEY</button>'
+      + '<button id="ctDailySkip" style="background:transparent;color:#5a5a7e;border:1px solid #5a5a7e;border-radius:4px;padding:10px 16px;font-family:\'Press Start 2P\',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">SKIP TODAY</button>'
+      + '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    function dismiss() {
+      try { document.body.removeChild(overlay); } catch (_) {}
+    }
+    overlay.addEventListener('click', function(ev) { if (ev.target === overlay) dismiss(); });
+    document.getElementById('ctDailyOpen').addEventListener('click', function() {
+      openColdTurkeyApp();
+      dismiss();
+    });
+    document.getElementById('ctDailySkip').addEventListener('click', function() {
+      dismiss();
+    });
+  }
+
   function beginActualSession() {
     SFX.startTimer();
     _gameLockGraceUntil = 0; // v3.21.10: new session cancels any grace window
@@ -3942,8 +4146,13 @@ try {
       state.timerRemaining = state.sessionDurationSec || 600;
     }
     state.timerEndsAt = Date.now() + (state.timerRemaining * 1000);
+    // v3.21.17: Record session start for the daily timeline.
+    state._sessionStartedAt = Date.now();
     save();
     render();
+    // v3.21.15: Start Cold Turkey block for the session duration.
+    var sessionMinutes = Math.ceil((state.timerRemaining || 600) / 60);
+    triggerColdTurkey('start', sessionMinutes);
     try { if (typeof MsgLog !== 'undefined') MsgLog.push('Shuttle in motion. Master Loom primed.'); } catch(_){}
     // NOTE: The 10-minute honor-system check-in is DELIBERATELY NOT
     // armed here any more. For 10-min sessions it was a no-op (session
@@ -4512,6 +4721,20 @@ try {
     try {
       var mins = Math.round((state.sessionDurationSec || 600) / 60);
       state.lifetimeFocusMinutes = (state.lifetimeFocusMinutes || 0) + mins;
+    } catch (_) {}
+    // v3.21.17: Log completed session to daily timeline.
+    try {
+      var today = todayStr();
+      if (!state.dailySessionLog || state.dailySessionLog.date !== today) {
+        state.dailySessionLog = { date: today, sessions: [] };
+      }
+      var startAt = state._sessionStartedAt || (Date.now() - ((state.sessionDurationSec || 600) * 1000));
+      state.dailySessionLog.sessions.push({
+        start: startAt,
+        end: Date.now(),
+        min: Math.round((state.sessionDurationSec || 600) / 60)
+      });
+      state._sessionStartedAt = 0;
     } catch (_) {}
     for (var i = 0; i < reward.blocks; i++) {
       try { earnBlock(); } catch (e) { console.error(e); }
@@ -6321,11 +6544,55 @@ try {
       var safeRefreshStatus = $('safeRefreshStatus');
       var restoreBackupBtn = $('restoreBackupBtn');
       var restoreBackupStatus = $('restoreBackupStatus');
+      // v3.21.15: Cold Turkey settings wiring
+      var coldTurkeyToggle = $('coldTurkeyToggle');
+      var coldTurkeyBlockNameInput = $('coldTurkeyBlockName');
+      var coldTurkeyStatus = $('coldTurkeyStatus');
+      if (coldTurkeyToggle) {
+        coldTurkeyToggle.checked = !!state.coldTurkeyEnabled;
+        coldTurkeyToggle.addEventListener('change', function() {
+          state.coldTurkeyEnabled = coldTurkeyToggle.checked;
+          save();
+          if (coldTurkeyStatus) {
+            coldTurkeyStatus.textContent = state.coldTurkeyEnabled ? 'Cold Turkey will activate on focus.' : 'Cold Turkey disabled.';
+            setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 3000);
+          }
+        });
+      }
+      var coldTurkeyDailyToggle = $('coldTurkeyDailyToggle');
+      if (coldTurkeyDailyToggle) {
+        coldTurkeyDailyToggle.checked = !!state.coldTurkeyDailyPrompt;
+        coldTurkeyDailyToggle.addEventListener('change', function() {
+          state.coldTurkeyDailyPrompt = coldTurkeyDailyToggle.checked;
+          save();
+          if (coldTurkeyStatus) {
+            coldTurkeyStatus.textContent = state.coldTurkeyDailyPrompt ? 'Daily prompt enabled.' : 'Daily prompt disabled.';
+            setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 2000);
+          }
+        });
+      }
+
+      if (coldTurkeyBlockNameInput) {
+        coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
+        coldTurkeyBlockNameInput.addEventListener('change', function() {
+          state.coldTurkeyBlockName = coldTurkeyBlockNameInput.value.trim();
+          save();
+          if (coldTurkeyStatus) {
+            coldTurkeyStatus.textContent = 'Block name saved.';
+            setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 2000);
+          }
+        });
+      }
+
       function openSettingsModal() {
         if (!settingsModal) return;
         settingsModal.style.display = 'flex';
         if (safeRefreshStatus) safeRefreshStatus.textContent = '';
         if (restoreBackupStatus) restoreBackupStatus.textContent = '';
+        // Sync Cold Turkey UI with state
+        if (coldTurkeyToggle) coldTurkeyToggle.checked = !!state.coldTurkeyEnabled;
+        if (coldTurkeyDailyToggle) coldTurkeyDailyToggle.checked = !!state.coldTurkeyDailyPrompt;
+        if (coldTurkeyBlockNameInput) coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
       }
       function closeSettingsModal() {
         if (!settingsModal) return;
@@ -6482,6 +6749,9 @@ try {
 
   // Boot
   init();
+
+  // v3.21.15: Show Cold Turkey daily prompt after init (delayed so UI is ready).
+  setTimeout(function() { try { maybeColdTurkeyDailyPrompt(); } catch (_) {} }, 1500);
 
 })();
 } catch (pixelFocusInitError) {

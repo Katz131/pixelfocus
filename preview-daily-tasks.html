@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Daily Tasks Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#08080f;--surface:#12122a;--surface2:#1a1a3a;--accent:#00ff88;--accent2:#ff6b9d;--accent3:#4ecdc4;--gold:#ffd700;--text:#e0e0e0;--text-dim:#5a5a7e;--border:#2a2a4a}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px}
+  .daily-tasks{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:18px 20px;max-width:500px;width:100%}
+  .daily-tasks h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:12px;letter-spacing:0.5px}
+  .daily-tasks-date{font-size:10px;color:var(--text-dim);margin-bottom:10px;font-family:'Press Start 2P',monospace}
+  .task-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border)}
+  .task-item:last-child{border-bottom:none}
+  .task-name{font-size:12px;color:var(--text);max-width:75%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .task-count{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="daily-tasks">
+  <h2>TODAY'S COMPLETED TASKS</h2>
+  <div class="daily-tasks-date">Apr 17, 2026</div>
+  <div class="task-item">
+    <span class="task-name">Drink water</span>
+    <span class="task-count">x4</span>
+  </div>
+  <div class="task-item">
+    <span class="task-name">Review pull requests</span>
+    <span class="task-count">x2</span>
+  </div>
+  <div class="task-item">
+    <span class="task-name">Take vitamin D</span>
+    <span class="task-count">&#x2713;</span>
+  </div>
+  <div class="task-item">
+    <span class="task-name">Reply to emails</span>
+    <span class="task-count">&#x2713;</span>
+  </div>
+  <div class="task-item">
+    <span class="task-name">Stretch / walk break</span>
+    <span class="task-count">x3</span>
+  </div>
+</div>
+</body>
+</html>

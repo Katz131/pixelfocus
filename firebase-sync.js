@@ -142,6 +142,8 @@
       avatarDataURL: avatarDataURL,
       dailyTaskLog: (state.dailyTaskLog && state.dailyTaskLog.date === new Date().toISOString().slice(0, 10))
         ? state.dailyTaskLog : { date: new Date().toISOString().slice(0, 10), tasks: {} },
+      dailySessionLog: (state.dailySessionLog && state.dailySessionLog.date === new Date().toISOString().slice(0, 10))
+        ? state.dailySessionLog : { date: new Date().toISOString().slice(0, 10), sessions: [] },
       updatedAt: new Date().toISOString(),
       profileCreated: state.profileCreated
         ? new Date(state.profileCreated).toISOString()

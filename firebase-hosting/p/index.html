@@ -54,6 +54,13 @@
   .stat-value.accent{color:var(--accent)}
   .stat-value.pink{color:var(--accent2)}
   .stat-value.teal{color:var(--accent3)}
+  .timeline-panel{background:var(--surface);border:1px solid var(--accent3);border-radius:10px;padding:18px 20px;margin-top:2px}
+  .timeline-panel h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent3);margin-bottom:12px;letter-spacing:0.5px}
+  .timeline-bar-wrap{position:relative;height:32px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:8px}
+  .timeline-block{position:absolute;top:4px;bottom:4px;background:linear-gradient(180deg,var(--accent),var(--accent3));border-radius:3px;min-width:3px;opacity:0.85}
+  .timeline-labels{display:flex;justify-content:space-between;font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);padding:0 2px}
+  .timeline-summary{font-size:11px;color:var(--text-dim);text-align:center;margin-top:8px;font-family:'Courier New',monospace}
+  .timeline-summary strong{color:var(--accent);font-weight:normal}
   .daily-tasks{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:18px 20px;margin-top:2px}
   .daily-tasks h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:12px;letter-spacing:0.5px}
   .daily-tasks-date{font-size:10px;color:var(--text-dim);margin-bottom:10px;font-family:'Press Start 2P',monospace}
@@ -166,31 +173,86 @@
   function statRow(label,value,cls,style){
     return'<div class="stat-row"><span class="stat-label">'+esc(label)+'</span><span class="stat-value'+(cls?' '+cls:'')+'"'+(style?' style="'+style+'"':'')+'>'+esc(value)+'</span></div>';
   }
+  function buildTimeline(d){
+    var log=d.dailySessionLog;
+    var today=new Date();
+    var dateLabel=today.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    var sessions=[];
+    if(log&&Array.isArray(log.sessions)){
+      sessions=log.sessions;
+      if(log.date){
+        try{
+          var parts=log.date.split('-');
+          if(parts.length===3){
+            var dt=new Date(parseInt(parts[0],10),parseInt(parts[1],10)-1,parseInt(parts[2],10));
+            dateLabel=dt.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+          }
+        }catch(_){}
+      }
+    }
+    var totalMin=0;
+    for(var i=0;i<sessions.length;i++){totalMin+=(sessions[i].min||0);}
+    var blocks='';
+    for(var j=0;j<sessions.length;j++){
+      var s=sessions[j];
+      if(!s.start||!s.end)continue;
+      var sd=new Date(s.start);
+      var ed=new Date(s.end);
+      var startPct=((sd.getHours()*60+sd.getMinutes())/(24*60))*100;
+      var endPct=((ed.getHours()*60+ed.getMinutes())/(24*60))*100;
+      var widthPct=Math.max(0.5,endPct-startPct);
+      var startTime=sd.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+      var endTime=ed.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+      blocks+='<div class="timeline-block" style="left:'+startPct.toFixed(1)+'%;width:'+widthPct.toFixed(1)+'%;" title="'+startTime+' - '+endTime+' ('+s.min+'min)"></div>';
+    }
+    var html='<div class="timeline-panel">'
+      +'<h2>TODAY\'S FOCUS TIMELINE</h2>'
+      +'<div class="timeline-bar-wrap">'+blocks+'</div>'
+      +'<div class="timeline-labels"><span>12AM</span><span>6AM</span><span>12PM</span><span>6PM</span><span>12AM</span></div>'
+      +'<div class="timeline-summary">';
+    if(sessions.length===0){
+      html+='No focus sessions yet today.';
+    } else {
+      var hrs=Math.floor(totalMin/60);
+      var mins=totalMin%60;
+      var timeStr=hrs>0?(hrs+'h '+(mins>0?mins+'m':'')):(mins+' min');
+      html+='<strong>'+timeStr+'</strong> focused across <strong>'+sessions.length+'</strong> session'+(sessions.length===1?'':'s');
+    }
+    html+='</div></div>';
+    return html;
+  }
   function buildDailyTasks(d){
     var log=d.dailyTaskLog;
-    if(!log||!log.tasks||typeof log.tasks!=='object')return'';
-    var keys=Object.keys(log.tasks);
-    if(keys.length===0)return'';
-    // Sort by count descending
-    keys.sort(function(a,b){return(log.tasks[b]||0)-(log.tasks[a]||0);});
-    var dateLabel=log.date||'today';
-    try{
-      var parts=dateLabel.split('-');
-      if(parts.length===3){
-        var dt=new Date(parseInt(parts[0],10),parseInt(parts[1],10)-1,parseInt(parts[2],10));
-        dateLabel=dt.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    var today=new Date();
+    var dateLabel=today.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    var keys=[];
+    if(log&&log.tasks&&typeof log.tasks==='object'){
+      keys=Object.keys(log.tasks);
+      keys.sort(function(a,b){return(log.tasks[b]||0)-(log.tasks[a]||0);});
+      if(log.date){
+        try{
+          var parts=log.date.split('-');
+          if(parts.length===3){
+            var dt=new Date(parseInt(parts[0],10),parseInt(parts[1],10)-1,parseInt(parts[2],10));
+            dateLabel=dt.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+          }
+        }catch(_){}
       }
-    }catch(_){}
+    }
     var html='<div class="daily-tasks">'
       +'<h2>TODAY\'S COMPLETED TASKS</h2>'
       +'<div class="daily-tasks-date">'+esc(dateLabel)+'</div>';
-    for(var i=0;i<keys.length;i++){
-      var name=keys[i];
-      var count=log.tasks[name]||0;
-      html+='<div class="task-item">'
-        +'<span class="task-name">'+esc(name)+'</span>'
-        +'<span class="task-count">'+(count>1?'x'+count:'\u2713')+'</span>'
-        +'</div>';
+    if(keys.length===0){
+      html+='<div style="font-size:11px;color:var(--text-dim);font-style:italic;text-align:center;padding:12px 0;">No tasks completed yet today.</div>';
+    } else {
+      for(var i=0;i<keys.length;i++){
+        var name=keys[i];
+        var count=log.tasks[name]||0;
+        html+='<div class="task-item">'
+          +'<span class="task-name">'+esc(name)+'</span>'
+          +'<span class="task-count">'+(count>1?'x'+count:'\u2713')+'</span>'
+          +'</div>';
+      }
     }
     html+='</div>';
     return html;
@@ -246,6 +308,7 @@
       +statRow('Looms sold',fmtNum(d.loomsSold),'gold')
       +statRow('Lives lost',String(d.livesLost||0),'','color:#ff6666')
       +'</div></div>'
+      +buildTimeline(d)
       +buildDailyTasks(d)
       +'<div class="footer-line">Filed with the clerks of standing on '+esc(fmtDate(d.profileCreated))+'.</div>'
       +'<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;font-style:italic;">Last synced '+esc(fmtDate(d.updatedAt))+'</div>'

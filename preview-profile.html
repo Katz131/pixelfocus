@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Profile Preview — Todo of the Loom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#08080f;--surface:#12122a;--surface2:#1a1a3a;--accent:#00ff88;--accent2:#ff6b9d;--accent3:#4ecdc4;--gold:#ffd700;--flame:#ff8c3a;--flame-hot:#ffb64c;--text:#e0e0e0;--text-dim:#5a5a7e;--border:#2a2a4a}
+  body{background:radial-gradient(ellipse at 50% 10%,#15152e 0%,var(--bg) 55%);color:var(--text);font-family:'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;padding-bottom:40px}
+  .top-bar{width:100%;background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 24px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,255,136,0.12)}
+  .top-bar h1{font-family:'Press Start 2P',monospace;font-size:16px;color:var(--accent);text-shadow:0 0 10px rgba(0,255,136,0.35)}
+  .hero{text-align:center;padding:26px 20px 10px}
+  .hero-label{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:8px}
+  .layout{max-width:1080px;margin:0 auto;padding:18px 24px 40px;width:100%;display:flex;flex-direction:column;gap:18px}
+  .profile-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 32px;display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center}
+  @media(max-width:720px){.profile-card{grid-template-columns:1fr;text-align:center}}
+  .avatar-slot{width:132px;height:132px;border-radius:12px;border:2px solid var(--accent);box-shadow:0 0 18px rgba(0,255,136,0.28);background:#08080f;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .avatar-empty{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);text-align:center;padding:0 10px;line-height:1.6}
+  .identity{display:flex;flex-direction:column;gap:8px}
+  .identity-name{font-family:'Press Start 2P',monospace;font-size:20px;color:var(--text);letter-spacing:0.5px}
+  .identity-tagline{font-size:13px;color:var(--text-dim);font-style:italic}
+  .title-row{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}
+  .level-chip{background:var(--surface2);border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:10px;padding:5px 9px;border-radius:6px;letter-spacing:0.5px}
+  .title-chip{background:var(--surface2);border:1px solid var(--gold);color:var(--gold);font-family:'Press Start 2P',monospace;font-size:10px;padding:5px 9px;border-radius:6px;letter-spacing:0.5px}
+  .xp-bar{margin-top:8px;height:14px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;overflow:hidden;position:relative;max-width:420px}
+  .xp-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent3));transition:width 300ms ease}
+  .xp-text{font-size:10px;color:var(--text-dim);margin-top:4px;font-family:'Press Start 2P',monospace;letter-spacing:0.5px}
+  .streak-card{background:var(--surface);border:1px solid var(--flame);border-radius:12px;padding:22px 24px;display:flex;gap:26px;align-items:center;box-shadow:0 0 18px rgba(255,140,58,0.12)}
+  .streak-flame{font-size:72px;line-height:1;text-shadow:0 0 18px rgba(255,140,58,0.5)}
+  .streak-main{display:flex;flex-direction:column;gap:4px;flex:1}
+  .streak-number{font-family:'Press Start 2P',monospace;font-size:28px;color:var(--flame-hot)}
+  .streak-label{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase}
+  .streak-flavor{font-size:12px;color:var(--text-dim);font-style:italic;max-width:520px;line-height:1.5}
+  .streak-meta{display:flex;gap:14px;margin-top:4px;font-size:11px;color:var(--text-dim);flex-wrap:wrap}
+  .streak-meta .pill{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px 10px}
+  .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:900px){.stats-grid{grid-template-columns:1fr}}
+  .stat-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px}
+  .stat-panel h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent3);margin-bottom:12px;letter-spacing:0.5px}
+  .stat-panel.work h2{color:var(--gold)}
+  .stat-panel.game h2{color:var(--accent2)}
+  .stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px dashed var(--border)}
+  .stat-row:last-child{border-bottom:none}
+  .stat-label{font-size:11px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase}
+  .stat-value{font-family:'Press Start 2P',monospace;font-size:11px;color:var(--text);letter-spacing:0.5px}
+  .stat-value.gold{color:var(--gold)}
+  .stat-value.accent{color:var(--accent)}
+  .stat-value.pink{color:var(--accent2)}
+  .stat-value.teal{color:var(--accent3)}
+  .daily-tasks{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:18px 20px;margin-top:2px}
+  .daily-tasks h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:12px;letter-spacing:0.5px}
+  .daily-tasks-date{font-size:10px;color:var(--text-dim);margin-bottom:10px;font-family:'Press Start 2P',monospace}
+  .task-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border)}
+  .task-item:last-child{border-bottom:none}
+  .task-name{font-size:12px;color:var(--text);max-width:75%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .task-count{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);white-space:nowrap}
+  .footer-line{text-align:center;font-size:11px;color:var(--text-dim);font-style:italic;margin-top:4px}
+  .cta-bar{text-align:center;margin-top:18px;padding:16px;background:var(--surface);border:1px solid var(--accent);border-radius:10px}
+  .cta-bar a{color:var(--accent);font-family:'Press Start 2P',monospace;font-size:10px;text-decoration:none;letter-spacing:1px}
+  .nav-link{display:inline-block;font-family:'Press Start 2P',monospace;font-size:9px;text-decoration:none;padding:8px 14px;border:1px solid var(--border);border-radius:8px;letter-spacing:1px}
+  .nav-link.gold{color:var(--gold);border-color:var(--gold)}
+  .nav-link.accent{color:var(--accent)}
+  .site-nav{text-align:center;padding:14px 20px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="top-bar"><h1>TODO OF THE LOOM</h1></div>
+<div class="site-nav">
+  <a class="nav-link gold" href="#">&larr; LEADERBOARD</a>
+  <a class="nav-link accent" href="#">GET THE EXTENSION &rarr;</a>
+</div>
+<div class="hero"><div class="hero-label">CARD OF STANDING</div></div>
+<div class="layout">
+  <div class="profile-card">
+    <div class="avatar-slot"><div class="avatar-empty">NO AVATAR</div></div>
+    <div class="identity">
+      <div class="identity-name">Oh Cunning One</div>
+      <div class="identity-tagline">Weaving chaos into productivity since 2026</div>
+      <div class="title-row">
+        <span class="level-chip">LV 7</span>
+        <span class="title-chip">Apprentice Weaver</span>
+      </div>
+      <div class="xp-bar"><div class="xp-fill" style="width:62%;"></div></div>
+      <div class="xp-text">186 / 400 XP</div>
+    </div>
+  </div>
+  <div class="streak-card">
+    <div class="streak-flame">&#x1F525;</div>
+    <div class="streak-main">
+      <div class="streak-number">4</div>
+      <div class="streak-label">DAY STREAK</div>
+      <div class="streak-flavor">Getting warm. The kettle is noticing.</div>
+      <div class="streak-meta">
+        <div class="pill">Best: 6 days</div>
+        <div class="pill">XP bonus: x1.20</div>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-panel work"><h2>WORK LEDGER</h2>
+      <div class="stat-row"><span class="stat-label">Lifetime textiles</span><span class="stat-value gold">247</span></div>
+      <div class="stat-row"><span class="stat-label">Focus minutes</span><span class="stat-value accent">3h 20m</span></div>
+      <div class="stat-row"><span class="stat-label">Tasks completed</span><span class="stat-value teal">89</span></div>
+      <div class="stat-row"><span class="stat-label">Lifetime coins</span><span class="stat-value gold">$1,240</span></div>
+      <div class="stat-row"><span class="stat-label">Wallet</span><span class="stat-value gold">$380</span></div>
+    </div>
+    <div class="stat-panel"><h2>COMBOS</h2>
+      <div class="stat-row"><span class="stat-label">Current combo</span><span class="stat-value pink">3x</span></div>
+      <div class="stat-row"><span class="stat-label">All-time best combo</span><span class="stat-value gold">8x</span></div>
+    </div>
+    <div class="stat-panel game"><h2>GAME PROGRESS</h2>
+      <div class="stat-row"><span class="stat-label">Personnel</span><span class="stat-value teal">2 on roster</span></div>
+      <div class="stat-row"><span class="stat-label">Looms saved</span><span class="stat-value accent">5</span></div>
+      <div class="stat-row"><span class="stat-label">Looms sold</span><span class="stat-value gold">1</span></div>
+      <div class="stat-row"><span class="stat-label">Lives lost</span><span class="stat-value" style="color:#ff6666">3</span></div>
+    </div>
+  </div>
+  <div class="daily-tasks">
+    <h2>TODAY'S COMPLETED TASKS</h2>
+    <div class="daily-tasks-date">Apr 17, 2026</div>
+    <div class="task-item">
+      <span class="task-name">Drink water</span>
+      <span class="task-count">x4</span>
+    </div>
+    <div class="task-item">
+      <span class="task-name">Work on extension updates</span>
+      <span class="task-count">x3</span>
+    </div>
+    <div class="task-item">
+      <span class="task-name">Review pull requests</span>
+      <span class="task-count">x2</span>
+    </div>
+    <div class="task-item">
+      <span class="task-name">Take vitamin D</span>
+      <span class="task-count">&#x2713;</span>
+    </div>
+    <div class="task-item">
+      <span class="task-name">Reply to emails</span>
+      <span class="task-count">&#x2713;</span>
+    </div>
+    <div class="task-item">
+      <span class="task-name">Stretch / walk break</span>
+      <span class="task-count">x2</span>
+    </div>
+  </div>
+  <div class="footer-line">Filed with the clerks of standing on April 10, 2026.</div>
+  <div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;font-style:italic;">Last synced April 17, 2026</div>
+  <div class="cta-bar"><a href="#">GET TODO OF THE LOOM &rarr;</a></div>
+</div>
+</body>
+</html>
