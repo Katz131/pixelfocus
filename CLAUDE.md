@@ -17,3 +17,10 @@ Example: `"version": "3.21.12"` → `"version": "3.21.13"` and update descriptio
 - Do NOT proactively edit bureauLevel or incineratorLevel descriptions
 - Profile page should ALWAYS be accessible (never locked out)
 - Grace period (5 min after focus session) bypasses ALL lockout including priorities
+
+## Communication Preferences
+
+- When giving numbered steps/instructions, always format as a proper numbered list so the user can copy-paste it directly (including the numbers) to send to others
+- Always tell the user the new version number when bumping
+- The user often relays instructions to another user (Giulia) who cannot code — keep ELI5 instructions simple and copy-paste ready
+- User prefers military/24-hour time (setting available in extension)

@@ -251,11 +251,91 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <button id="tlPrev" style="background:none;border:1px solid #4ecdc4;color:#4ecdc4;font-family:'Press Start 2P',monospace;font-size:8px;padding:2px 6px;border-radius:4px;cursor:pointer;">&lt;</button>
       <span id="tlWindowLabel" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;min-width:70px;text-align:center;"></span>
       <button id="tlNext" style="background:none;border:1px solid #4ecdc4;color:#4ecdc4;font-family:'Press Start 2P',monospace;font-size:8px;padding:2px 6px;border-radius:4px;cursor:pointer;">&gt;</button>
+      <button id="addBlockedTimeBtn" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:8px;padding:2px 6px;border-radius:4px;cursor:pointer;margin-left:4px;" title="Block out time you can't work — appointments, errands, commitments. Shows on timeline so you can plan around it.">&#x1F6AB;</button>
     </div>
   </div>
   <div id="focusTimelineBar" style="position:relative;height:24px;background:#1a1a3a;border:1px solid #2a2a4a;border-radius:5px;overflow:hidden;margin-bottom:4px;"></div>
   <div id="focusTimelineLabels" style="display:flex;justify-content:space-between;font-family:'Press Start 2P',monospace;font-size:6px;color:#5a5a7e;padding:0 2px;"></div>
   <div id="focusTimelineSummary" style="font-size:10px;color:#5a5a7e;text-align:center;margin-top:4px;font-family:'Courier New',monospace;">No focus sessions yet today.</div>
+</div>
+
+<!-- v3.21.34: Do Now duration picker modal -->
+<div id="doNowModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#12122a;border:2px solid #00ff88;border-radius:14px;max-width:380px;width:100%;box-shadow:0 0 30px rgba(0,255,136,0.25);">
+    <div style="padding:14px 18px;border-bottom:1px solid rgba(0,255,136,0.3);display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#00ff88;letter-spacing:1px;">DO NOW</span>
+      <button id="doNowCloseBtn" style="background:none;border:none;color:#00ff88;font-size:18px;cursor:pointer;padding:0 4px;font-family:monospace;">&times;</button>
+    </div>
+    <div style="padding:14px 18px;">
+      <div id="doNowTaskName" style="font-family:'Courier New',monospace;font-size:12px;color:#e0e0e0;margin-bottom:12px;word-break:break-word;"></div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:#5a5a7e;margin-bottom:8px;">How long will this take?</div>
+      <div id="doNowDurBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+      <div id="doNowConflict" style="display:none;margin-top:12px;padding:10px;background:rgba(255,107,107,0.15);border:1px solid #ff6b6b;border-radius:6px;">
+        <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ff6b6b;margin-bottom:6px;">&#9888; CONFLICT</div>
+        <div id="doNowConflictText" style="font-family:'Courier New',monospace;font-size:11px;color:#ffd5d5;line-height:1.5;"></div>
+        <button id="doNowConflictProceed" style="margin-top:8px;background:rgba(255,107,107,0.2);color:#ff6b6b;border:1px solid #ff6b6b;border-radius:4px;padding:6px 12px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;">PROCEED ANYWAY</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- v3.21.34: Do Now active banner (shows in timeline area when a task is being done) -->
+<style>
+  #doNowBanner { transition: opacity 0.3s; }
+  #doNowBanner .do-now-cancel { background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer; }
+  #doNowBanner .do-now-done { background:#00ff88;color:#08080f;border:none;font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer; }
+  .task-donow-btn { background:rgba(0,255,136,0.12);color:#00ff88;border:1px solid rgba(0,255,136,0.4);border-radius:4px;padding:3px 5px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;white-space:nowrap; }
+  .task-donow-btn:hover { background:rgba(0,255,136,0.25); }
+</style>
+
+<!-- v3.21.38: Pre-block task picker modal (shown when starting timer near a blocked time) -->
+<div id="preBlockPickerModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#12122a;border:2px solid #ff8c3a;border-radius:14px;max-width:400px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 0 30px rgba(255,140,58,0.25);">
+    <div style="padding:14px 18px;border-bottom:1px solid rgba(255,140,58,0.3);display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ff8c3a;letter-spacing:1px;">&#9200; LIMITED TIME</span>
+      <button id="preBlockPickerCloseBtn" style="background:none;border:none;color:#ff8c3a;font-size:18px;cursor:pointer;padding:0 4px;font-family:monospace;">&times;</button>
+    </div>
+    <div style="padding:14px 18px;">
+      <div id="preBlockPickerAlert" style="font-family:'Courier New',monospace;font-size:11px;color:#e0e0e0;line-height:1.5;margin-bottom:14px;"></div>
+      <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ff8c3a;margin-bottom:8px;letter-spacing:1px;">WHAT WILL YOU WORK ON?</div>
+      <div id="preBlockPickerList" style="max-height:200px;overflow-y:auto;margin-bottom:10px;"></div>
+      <button id="preBlockPickerSkip" style="width:100%;background:none;border:1px solid #5a5a7e;color:#5a5a7e;border-radius:4px;padding:8px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;margin-bottom:6px;">SKIP — JUST START THE TIMER</button>
+    </div>
+    <div id="preBlockPickerDurStep" style="display:none;padding:14px 18px;border-top:1px solid rgba(255,140,58,0.2);">
+      <div id="preBlockPickerTaskName" style="font-family:'Courier New',monospace;font-size:12px;color:#ffe0b2;margin-bottom:10px;word-break:break-word;"></div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:#5a5a7e;margin-bottom:8px;">How long will this take?</div>
+      <div id="preBlockPickerDurBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- v3.21.30: Blocked-out time wizard modal -->
+<div id="blockedTimeModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#12122a;border:2px solid #ff6b6b;border-radius:14px;max-width:400px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 0 30px rgba(255,107,107,0.3);">
+    <div style="padding:14px 18px;border-bottom:1px solid rgba(255,107,107,0.3);display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ff6b6b;letter-spacing:1px;">BLOCK OUT TIME</span>
+      <button id="blockedTimeCloseBtn" style="background:none;border:none;color:#ff6b6b;font-size:18px;cursor:pointer;padding:0 4px;font-family:monospace;">&times;</button>
+    </div>
+    <div id="btWizardBody" style="padding:14px 18px;">
+      <!-- Steps rendered dynamically by JS -->
+    </div>
+    <div id="btWizardFooter" style="padding:10px 18px;border-top:1px solid rgba(255,107,107,0.15);display:flex;justify-content:space-between;align-items:center;">
+      <button id="btUndoBtn" style="display:none;background:none;border:1px solid #5a5a7e;color:#5a5a7e;font-family:'Press Start 2P',monospace;font-size:8px;padding:5px 10px;border-radius:4px;cursor:pointer;">&#8630; UNDO</button>
+      <div id="btStepLabel" style="font-family:'Courier New',monospace;font-size:10px;color:#5a5a7e;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- v3.21.30: Pre-block alert modal -->
+<div id="preBlockAlertModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#12122a;border:2px solid #ff8c3a;border-radius:14px;max-width:360px;width:100%;box-shadow:0 0 30px rgba(255,140,58,0.3);">
+    <div style="padding:18px;text-align:center;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:11px;color:#ff8c3a;margin-bottom:12px;">&#9200; HEADS UP</div>
+      <div id="preBlockAlertText" style="font-family:'Courier New',monospace;font-size:12px;color:#e0e0e0;line-height:1.6;margin-bottom:16px;"></div>
+      <button id="preBlockSprintBtn" style="width:100%;background:linear-gradient(135deg,#ff8c3a,#ffb64c);color:#08080f;border:none;border-radius:6px;padding:12px;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:0.5px;margin-bottom:8px;">&#9889; START 10 MIN SPRINT</button>
+      <button id="preBlockDismissBtn" style="width:100%;background:none;border:1px solid #5a5a7e;color:#5a5a7e;border-radius:6px;padding:8px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;">DISMISS</button>
+    </div>
+  </div>
 </div>
 
 <div class="xp-section">
@@ -284,6 +364,10 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </div>
 </div>
 
+<div id="todayFocusBanner" style="background:linear-gradient(135deg,#1a1a3a,#12122a);border:1px solid #4ecdc4;border-radius:8px;padding:10px 14px;margin:0 0 8px;display:flex;align-items:center;justify-content:center;gap:12px;" title="Total focus time clocked today from completed sessions.">
+  <span style="font-family:'Press Start 2P',monospace;font-size:8px;color:#4ecdc4;letter-spacing:1px;">TODAY'S FOCUS TIME</span>
+  <span id="todayFocusTime" style="font-family:'Press Start 2P',monospace;font-size:16px;color:#fff;text-shadow:0 0 10px rgba(78,205,196,0.5);">0m</span>
+</div>
 <div class="stats-row">
   <div class="stat" title="Textiles produced today (one per 10-min focus session)."><div class="stat-val" id="todayBlocks">0</div><div class="stat-label">Textiles</div></div>
   <div class="stat" title="XP earned today."><div class="stat-val xp-val" id="todayXPDisplay">0</div><div class="stat-label">XP Today</div></div>
@@ -673,6 +757,13 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:4px;">
         <input type="checkbox" id="dailyRemindersToggle" checked style="width:16px;height:16px;accent-color:#ffb43c;cursor:pointer;">
         <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Show daily reminders pop-up</span>
+      </label>
+    </div>
+    <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
+      <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--accent3);letter-spacing:1px;margin-bottom:6px;">TIME FORMAT</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:4px;">
+        <input type="checkbox" id="use24HourToggle" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Use 24-hour (military) time</span>
       </label>
     </div>
     <div style="padding:10px 18px 16px;font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);font-style:italic;border-top:1px solid rgba(0,255,136,0.15);">Tip: keep the downloaded JSON file somewhere safe. It is a complete snapshot you can re-import later if the browser ever clears the extension storage.</div>

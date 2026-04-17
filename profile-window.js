@@ -254,6 +254,19 @@
       bonusPill.title = 'Your current streak grants a x' + mult.toFixed(2) + ' XP multiplier on every session. +5% per day, capped at +50% at 10 days.';
     }
 
+    // Today's focus time banner (v3.21.33)
+    var _pfTodayEl = document.getElementById('profileTodayFocusTime');
+    if (_pfTodayEl) {
+      var _pfToday = new Date().toISOString().slice(0, 10);
+      var _pfSessions = (state.dailySessionLog && state.dailySessionLog.date === _pfToday)
+        ? (state.dailySessionLog.sessions || []) : [];
+      var _pfMin = 0;
+      for (var _psi = 0; _psi < _pfSessions.length; _psi++) _pfMin += (_pfSessions[_psi].min || 0);
+      var _pfH = Math.floor(_pfMin / 60);
+      var _pfM = _pfMin % 60;
+      _pfTodayEl.textContent = _pfH > 0 ? _pfH + 'h ' + _pfM + 'm' : _pfMin + 'm';
+    }
+
     // Stats — Work Ledger
     setText('stLifetimeBlocks', fmtNum(state.totalLifetimeBlocks || 0));
     setText('stFocusMins', fmtMinutes(state.lifetimeFocusMinutes || 0));

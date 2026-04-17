@@ -721,6 +721,14 @@ try {
     // v3.19.15: lifetime loom-sale stats (auction house)
     loomsSold: 0,
     coinsFromLoomSales: 0,
+    // v3.21.34: Do Now tracking
+    doNowTask: null, // { taskId, text, startMs, durationMin, endMs } or null
+    taskDurations: {}, // { 'normalized task text': minutes } — remembered for recurring
+    // v3.21.31: Time format
+    use24Hour: false,
+    // v3.21.30: Blocked-out times (appointments, errands, etc.)
+    blockedTimes: [], // [{ id, startMs, endMs, prepMs, label, createdAt }]
+    blockedTimeAlerts: {}, // { blockId: true } — tracks which alerts have fired today
     // v3.21.16: Daily session timeline for public profile
     dailySessionLog: { date: '', sessions: [] }, // { date:'YYYY-MM-DD', sessions:[{start:ms,end:ms,min:N}] }
     // v3.21.15: Cold Turkey integration (off by default)
@@ -2381,8 +2389,9 @@ try {
     }
   }
 
-  // ============== FOCUS TIMELINE (6-hour window) ==============
-  var _tlWindowStart = -1; // -1 = auto (current 6h window)
+  // ============== FOCUS TIMELINE (6-hour sliding window) ==============
+  // Default: 2 hours before now, 4 hours after. Nav shifts by 1 hour.
+  var _tlOffset = 0; // manual offset in hours from default position
 
   function renderFocusTimeline() {
     var bar = document.getElementById('focusTimelineBar');
@@ -2391,16 +2400,18 @@ try {
     var winLabel = document.getElementById('tlWindowLabel');
     if (!bar) return;
 
-    // Determine current 6-hour window
+    // Sliding window: 2h before now + 4h after, shifted by _tlOffset
     var now = new Date();
     var currentHour = now.getHours();
-    if (_tlWindowStart < 0) _tlWindowStart = Math.floor(currentHour / 6) * 6;
-    var wStart = _tlWindowStart; // 0, 6, 12, or 18
+    var wStart = currentHour - 2 + _tlOffset;
     var wEnd = wStart + 6;
+    // Clamp to 0-24 range for display, but allow ms math to handle it
+    var wStartClamped = ((wStart % 24) + 24) % 24;
 
     // Format hour labels
     function fmtHr(h) {
-      h = h % 24;
+      h = ((h % 24) + 24) % 24;
+      if (state.use24Hour) return (h < 10 ? '0' : '') + h + ':00';
       if (h === 0) return '12AM';
       if (h === 12) return '12PM';
       return h < 12 ? h + 'AM' : (h - 12) + 'PM';
@@ -2466,6 +2477,9 @@ try {
       bar.appendChild(block);
     }
 
+    // Blocked-out time zones (v3.21.30)
+    _renderBlockedZones(bar, windowStartMs, windowEndMs, windowMs);
+
     // Now marker (if in this window)
     var nowMs = now.getTime();
     if (nowMs >= windowStartMs && nowMs < windowEndMs) {
@@ -2489,21 +2503,609 @@ try {
     }
   }
 
-  // Wire timeline nav buttons
+  // Wire timeline nav buttons — shift 1 hour at a time
   (function() {
     var prev = document.getElementById('tlPrev');
     var next = document.getElementById('tlNext');
     if (prev) prev.addEventListener('click', function() {
-      if (_tlWindowStart <= 0) _tlWindowStart = 18;
-      else _tlWindowStart -= 6;
+      _tlOffset--;
       renderFocusTimeline();
     });
     if (next) next.addEventListener('click', function() {
-      if (_tlWindowStart >= 18) _tlWindowStart = 0;
-      else _tlWindowStart += 6;
+      _tlOffset++;
       renderFocusTimeline();
     });
   })();
+
+  // ===== Do Now System (v3.21.34) =====
+  // "Do Now" lets you commit to doing a task right now with a time estimate.
+  // Recurring tasks remember how long they take. Conflicts with blocked-out
+  // times are detected and flagged.
+
+  var _doNowPending = null; // { taskId, text, recurring }
+
+  function _normalizeText(t) { return (t || '').trim().toLowerCase(); }
+
+  function startDoNow(taskId, taskText, isRecurring) {
+    _doNowPending = { taskId: taskId, text: taskText, recurring: isRecurring };
+    var modal = document.getElementById('doNowModal');
+    var nameEl = document.getElementById('doNowTaskName');
+    var conflict = document.getElementById('doNowConflict');
+    if (!modal) return;
+    if (nameEl) nameEl.textContent = '\u201C' + taskText + '\u201D';
+    if (conflict) conflict.style.display = 'none';
+
+    // Check if we remember the duration for this recurring task
+    var remembered = null;
+    if (isRecurring && state.taskDurations) {
+      remembered = state.taskDurations[_normalizeText(taskText)];
+    }
+
+    // Build duration buttons
+    var btnContainer = document.getElementById('doNowDurBtns');
+    if (btnContainer) {
+      var durOpts = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+      var html = '';
+      for (var i = 0; i < durOpts.length; i++) {
+        var d = durOpts[i];
+        var label = d < 60 ? d + 'min' : (d === 60 ? '1hr' : (d === 90 ? '1.5hr' : '2hr'));
+        var isRemembered = remembered === d;
+        html += '<button class="donow-dur-btn" data-dur="' + d + '" style="background:' + (isRemembered ? '#00ff88' : '#1a1a3a') + ';color:' + (isRemembered ? '#08080f' : '#00ff88') + ';border:1px solid #00ff88;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + label + (isRemembered ? ' \u2605' : '') + '</button>';
+      }
+      btnContainer.innerHTML = html;
+
+      var btns = btnContainer.querySelectorAll('.donow-dur-btn');
+      for (var b = 0; b < btns.length; b++) {
+        btns[b].addEventListener('click', function() {
+          var dur = parseInt(this.getAttribute('data-dur'), 10);
+          _doNowPickedDuration(dur);
+        });
+      }
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  function _doNowPickedDuration(durMin) {
+    if (!_doNowPending) return;
+    var now = Date.now();
+    var endMs = now + (durMin * 60000);
+
+    // Check for conflicts with blocked-out times
+    var conflicts = [];
+    if (state.blockedTimes && state.blockedTimes.length) {
+      for (var i = 0; i < state.blockedTimes.length; i++) {
+        var bt = state.blockedTimes[i];
+        if (bt.endMs <= now || bt.startMs >= endMs) continue; // no overlap
+        var overlapStart = Math.max(now, bt.startMs);
+        var overlapEnd = Math.min(endMs, bt.endMs);
+        var overlapMin = Math.round((overlapEnd - overlapStart) / 60000);
+        if (overlapMin > 0) {
+          conflicts.push({ label: bt.label, overlapMin: overlapMin });
+        }
+      }
+    }
+
+    if (conflicts.length > 0) {
+      var conflictEl = document.getElementById('doNowConflict');
+      var conflictText = document.getElementById('doNowConflictText');
+      var proceedBtn = document.getElementById('doNowConflictProceed');
+      if (conflictEl && conflictText) {
+        var msg = '';
+        for (var c = 0; c < conflicts.length; c++) {
+          msg += 'Overlaps <b>' + conflicts[c].label + '</b> by <b>' + conflicts[c].overlapMin + ' min</b>.<br>';
+        }
+        msg += '<br>Are you sure you want to proceed?';
+        conflictText.innerHTML = msg;
+        conflictEl.style.display = 'block';
+        if (proceedBtn) {
+          proceedBtn.onclick = function() {
+            _commitDoNow(durMin);
+          };
+        }
+      }
+      return;
+    }
+
+    _commitDoNow(durMin);
+  }
+
+  function _commitDoNow(durMin) {
+    if (!_doNowPending) return;
+    var now = Date.now();
+
+    // Remember duration for recurring tasks
+    if (_doNowPending.recurring && durMin > 0) {
+      if (!state.taskDurations) state.taskDurations = {};
+      state.taskDurations[_normalizeText(_doNowPending.text)] = durMin;
+    }
+
+    state.doNowTask = {
+      taskId: _doNowPending.taskId,
+      text: _doNowPending.text,
+      startMs: now,
+      durationMin: durMin,
+      endMs: now + (durMin * 60000)
+    };
+    save();
+
+    var modal = document.getElementById('doNowModal');
+    if (modal) modal.style.display = 'none';
+    _doNowPending = null;
+
+    notify('\u26A1 DO NOW: ' + state.doNowTask.text + ' (' + durMin + 'min)', '#00ff88');
+    render();
+  }
+
+  function cancelDoNow() {
+    state.doNowTask = null;
+    save();
+    render();
+  }
+
+  function completeDoNow() {
+    if (!state.doNowTask) return;
+    notify('\u2705 Done: ' + state.doNowTask.text, '#00ff88');
+    state.doNowTask = null;
+    save();
+    render();
+  }
+
+  function renderDoNowBanner() {
+    var existing = document.getElementById('doNowBanner');
+    if (existing) existing.remove();
+    if (!state.doNowTask) return;
+
+    var dn = state.doNowTask;
+    var now = Date.now();
+    var remainMs = dn.endMs - now;
+    var remainMin = Math.max(0, Math.ceil(remainMs / 60000));
+    var overdue = remainMs < 0;
+    var overdueMin = overdue ? Math.abs(Math.floor(remainMs / 60000)) : 0;
+
+    var banner = document.createElement('div');
+    banner.id = 'doNowBanner';
+    banner.style.cssText = 'background:' + (overdue ? 'linear-gradient(135deg,#3a1a1a,#2a1212)' : 'linear-gradient(135deg,#1a3a2a,#122a1a)') + ';border:1px solid ' + (overdue ? '#ff6b6b' : '#00ff88') + ';border-radius:8px;padding:8px 12px;margin:0 0 8px;display:flex;align-items:center;gap:8px;';
+    banner.title = 'You committed to doing this task right now.';
+
+    var timeText = overdue
+      ? '<span style="color:#ff6b6b;">' + overdueMin + 'min OVER</span>'
+      : '<span style="color:#00ff88;">' + remainMin + 'min left</span>';
+
+    banner.innerHTML = '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:' + (overdue ? '#ff6b6b' : '#00ff88') + ';letter-spacing:0.5px;">\u26A1 DO NOW</span>'
+      + '<span style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(dn.text) + '</span>'
+      + timeText
+      + ' <button class="do-now-done">\u2713 DONE</button>'
+      + ' <button class="do-now-cancel">\u2717</button>';
+
+    var timeline = document.getElementById('focusTimelinePanel');
+    if (timeline && timeline.parentNode) {
+      timeline.parentNode.insertBefore(banner, timeline);
+    }
+
+    banner.querySelector('.do-now-done').addEventListener('click', completeDoNow);
+    banner.querySelector('.do-now-cancel').addEventListener('click', function() {
+      if (confirm('Cancel this Do Now task?')) cancelDoNow();
+    });
+  }
+
+  // Auto-expire do now tasks that are way past (30 min overdue)
+  function checkDoNowExpiry() {
+    if (!state.doNowTask) return;
+    var over = Date.now() - state.doNowTask.endMs;
+    if (over > 30 * 60000) {
+      state.doNowTask = null;
+      save();
+    }
+  }
+
+  // Refresh do now banner every 30 seconds
+  setInterval(function() { renderDoNowBanner(); checkDoNowExpiry(); }, 30000);
+
+  // Wire modal close
+  (function() {
+    var closeBtn = document.getElementById('doNowCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', function() {
+      var modal = document.getElementById('doNowModal');
+      if (modal) modal.style.display = 'none';
+      _doNowPending = null;
+    });
+    var modal = document.getElementById('doNowModal');
+    if (modal) modal.addEventListener('click', function(e) {
+      if (e.target === modal) { modal.style.display = 'none'; _doNowPending = null; }
+    });
+  })();
+
+  // ===== Blocked-Out Time System (v3.21.30) =====
+  // Wizard steps: 1) pick hour → 2) pick minute offset → 3) prep time →
+  // 4) duration → 5) optional extra minutes on 1h+ durations → done.
+  // Each step has UNDO to go back.
+
+  var _btWizard = { step: 0, hour: 0, min: 0, prepMin: 0, durMin: 0, extraMin: 0 };
+
+  function openBlockedTimeWizard() {
+    _btWizard = { step: 0, hour: 0, min: 0, prepMin: 0, durMin: 0, extraMin: 0 };
+    var modal = document.getElementById('blockedTimeModal');
+    if (modal) modal.style.display = 'flex';
+    _renderBTStep();
+  }
+  function closeBlockedTimeWizard() {
+    var modal = document.getElementById('blockedTimeModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function _btStepLabel() {
+    var labels = ['Pick hour', 'Pick minutes past', 'Prep + travel time', 'How long is it?', 'Extra minutes?'];
+    return labels[_btWizard.step] || '';
+  }
+
+  function _fmtHrFull(h) {
+    h = h % 24;
+    if (state.use24Hour) return (h < 10 ? '0' : '') + h + ':00';
+    if (h === 0) return '12:00 AM';
+    if (h === 12) return '12:00 PM';
+    return h < 12 ? h + ':00 AM' : (h - 12) + ':00 PM';
+  }
+  function _fmtTime(h, m) {
+    h = h % 24;
+    if (state.use24Hour) return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    var ampm = h < 12 ? 'AM' : 'PM';
+    var dh = h % 12; if (dh === 0) dh = 12;
+    return dh + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+  }
+
+  function _renderBTStep() {
+    var body = document.getElementById('btWizardBody');
+    var footer = document.getElementById('btStepLabel');
+    var undoBtn = document.getElementById('btUndoBtn');
+    if (!body) return;
+    if (footer) footer.textContent = 'Step ' + (_btWizard.step + 1) + '/5 — ' + _btStepLabel();
+    if (undoBtn) undoBtn.style.display = _btWizard.step > 0 ? 'inline-block' : 'none';
+
+    var html = '';
+    if (_btWizard.step === 0) {
+      // Step 1: Pick hour
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">What hour does it start?</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+      for (var h = 0; h < 24; h++) {
+        var label = state.use24Hour ? (h < 10 ? '0' : '') + h + ':00' : _fmtHrFull(h).replace(':00 ', '').replace('AM', 'a').replace('PM', 'p');
+        html += '<button class="bt-pick" data-val="' + h + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 5px;border-radius:4px;cursor:pointer;min-width:38px;text-align:center;">' + label + '</button>';
+      }
+      html += '</div>';
+    } else if (_btWizard.step === 1) {
+      // Step 2: Minute offset
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Starting at <span style="color:#ff6b6b;font-weight:bold;">' + _fmtHrFull(_btWizard.hour) + '</span></div>';
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">How many minutes past the hour?</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+      for (var m = 0; m < 60; m += 5) {
+        var lbl = m === 0 ? ':00' : ':' + (m < 10 ? '0' : '') + m;
+        html += '<button class="bt-pick" data-val="' + m + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + lbl + '</button>';
+      }
+      html += '</div>';
+    } else if (_btWizard.step === 2) {
+      // Step 3: Prep + travel time
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Event at <span style="color:#ff6b6b;font-weight:bold;">' + _fmtTime(_btWizard.hour, _btWizard.min) + '</span></div>';
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">How long to prepare + get there? (blocked before start)</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+      var prepOpts = [0, 5, 10, 15, 20, 30, 45, 60, 90];
+      for (var p = 0; p < prepOpts.length; p++) {
+        var v = prepOpts[p];
+        var txt = v === 0 ? 'NONE' : v < 60 ? v + 'min' : (v / 60) + 'h';
+        html += '<button class="bt-pick" data-val="' + v + '" style="background:#1a1a3a;border:1px solid #ffb64c;color:#ffb64c;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + txt + '</button>';
+      }
+      html += '</div>';
+    } else if (_btWizard.step === 3) {
+      // Step 4: Duration
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Event at <span style="color:#ff6b6b;font-weight:bold;">' + _fmtTime(_btWizard.hour, _btWizard.min) + '</span>' + (_btWizard.prepMin > 0 ? ' (prep: ' + _btWizard.prepMin + 'min before)' : '') + '</div>';
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">How long is the event itself?</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+      var durOpts = [
+        { v: 5, l: '5min' }, { v: 10, l: '10min' }, { v: 15, l: '15min' },
+        { v: 20, l: '20min' }, { v: 30, l: '30min' }, { v: 45, l: '45min' },
+        { v: 60, l: '1hr' }, { v: 120, l: '2hr' }
+      ];
+      for (var d = 0; d < durOpts.length; d++) {
+        html += '<button class="bt-pick" data-val="' + durOpts[d].v + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + durOpts[d].l + '</button>';
+      }
+      html += '</div>';
+    } else if (_btWizard.step === 4) {
+      // Step 5: Extra minutes (only for 1h+ durations)
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Duration: <span style="color:#ff6b6b;font-weight:bold;">' + _btWizard.durMin + ' min</span></div>';
+      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">Add extra minutes? (e.g. 1hr + 15min)</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+      var extraOpts = [0, 5, 10, 15, 20, 25, 30, 45];
+      for (var x = 0; x < extraOpts.length; x++) {
+        var ex = extraOpts[x];
+        var etxt = ex === 0 ? 'SKIP' : '+' + ex + 'min';
+        html += '<button class="bt-pick" data-val="' + ex + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + etxt + '</button>';
+      }
+      html += '</div>';
+    }
+    body.innerHTML = html;
+
+    // Wire pick buttons
+    var picks = body.querySelectorAll('.bt-pick');
+    for (var i = 0; i < picks.length; i++) {
+      picks[i].addEventListener('click', function() {
+        var val = parseInt(this.getAttribute('data-val'), 10);
+        _btAdvance(val);
+      });
+    }
+  }
+
+  function _btAdvance(val) {
+    if (_btWizard.step === 0) { _btWizard.hour = val; _btWizard.step = 1; }
+    else if (_btWizard.step === 1) { _btWizard.min = val; _btWizard.step = 2; }
+    else if (_btWizard.step === 2) { _btWizard.prepMin = val; _btWizard.step = 3; }
+    else if (_btWizard.step === 3) {
+      _btWizard.durMin = val;
+      // Only show extra-minutes step for durations >= 60
+      if (val >= 60) { _btWizard.step = 4; }
+      else { _btWizard.extraMin = 0; _finishBlockedTime(); return; }
+    }
+    else if (_btWizard.step === 4) {
+      _btWizard.extraMin = val;
+      _finishBlockedTime();
+      return;
+    }
+    _renderBTStep();
+  }
+
+  function _btUndo() {
+    if (_btWizard.step <= 0) return;
+    _btWizard.step--;
+    _renderBTStep();
+  }
+
+  function _finishBlockedTime() {
+    var now = new Date();
+    var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    var eventStartMs = dayStart + (_btWizard.hour * 3600000) + (_btWizard.min * 60000);
+    var totalDurMin = _btWizard.durMin + _btWizard.extraMin;
+    var eventEndMs = eventStartMs + (totalDurMin * 60000);
+    var prepStartMs = eventStartMs - (_btWizard.prepMin * 60000);
+
+    var block = {
+      id: 'bt_' + Date.now(),
+      startMs: prepStartMs,
+      endMs: eventEndMs,
+      eventStartMs: eventStartMs,
+      prepMin: _btWizard.prepMin,
+      durationMin: totalDurMin,
+      label: _fmtTime(_btWizard.hour, _btWizard.min) + ' (' + totalDurMin + 'min)',
+      createdAt: Date.now()
+    };
+
+    if (!state.blockedTimes) state.blockedTimes = [];
+    state.blockedTimes.push(block);
+    save();
+    closeBlockedTimeWizard();
+    renderFocusTimeline();
+    notify('Blocked out ' + block.label + (_btWizard.prepMin > 0 ? ' + ' + _btWizard.prepMin + 'min prep' : ''), '#ff6b6b');
+  }
+
+  function removeBlockedTime(id) {
+    if (!state.blockedTimes) return;
+    state.blockedTimes = state.blockedTimes.filter(function(b) { return b.id !== id; });
+    save();
+    renderFocusTimeline();
+  }
+
+  // Wire wizard open/close/undo
+  (function() {
+    var openBtn = document.getElementById('addBlockedTimeBtn');
+    if (openBtn) openBtn.addEventListener('click', function() {
+      try { SFX.click && SFX.click(); } catch (_) {}
+      openBlockedTimeWizard();
+    });
+    var closeBtn = document.getElementById('blockedTimeCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', closeBlockedTimeWizard);
+    var modal = document.getElementById('blockedTimeModal');
+    if (modal) modal.addEventListener('click', function(e) {
+      if (e.target === modal) closeBlockedTimeWizard();
+    });
+    var undoBtn = document.getElementById('btUndoBtn');
+    if (undoBtn) undoBtn.addEventListener('click', function() {
+      try { SFX.click && SFX.click(); } catch (_) {}
+      _btUndo();
+    });
+  })();
+
+  // Render blocked-out zones on the timeline (called from renderFocusTimeline)
+  function _renderBlockedZones(bar, windowStartMs, windowEndMs, windowMs) {
+    if (!state.blockedTimes || !state.blockedTimes.length) return;
+    var now = new Date();
+    var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    for (var i = 0; i < state.blockedTimes.length; i++) {
+      var bt = state.blockedTimes[i];
+      var bStart = Math.max(bt.startMs, windowStartMs);
+      var bEnd = Math.min(bt.endMs, windowEndMs);
+      if (bStart >= bEnd) continue;
+
+      var leftPct = ((bStart - windowStartMs) / windowMs) * 100;
+      var widthPct = ((bEnd - bStart) / windowMs) * 100;
+      if (widthPct < 0.5) widthPct = 0.5;
+
+      // Prep zone (striped) vs event zone (solid)
+      var prepEndMs = bt.eventStartMs || bt.startMs;
+      var hasPrepInWindow = bt.prepMin > 0 && bt.startMs < prepEndMs && bStart < prepEndMs;
+
+      if (hasPrepInWindow) {
+        var prepStart = Math.max(bt.startMs, windowStartMs);
+        var prepEnd = Math.min(prepEndMs, windowEndMs);
+        if (prepStart < prepEnd) {
+          var pLeft = ((prepStart - windowStartMs) / windowMs) * 100;
+          var pWidth = ((prepEnd - prepStart) / windowMs) * 100;
+          var prepEl = document.createElement('div');
+          prepEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;left:' + pLeft + '%;width:' + pWidth + '%;z-index:1;opacity:0.6;background:repeating-linear-gradient(45deg,#ff6b6b22,#ff6b6b22 3px,#ff6b6b44 3px,#ff6b6b44 6px);border:1px dashed #ff6b6b55;';
+          prepEl.title = 'Prep/travel (' + bt.prepMin + 'min)';
+          bar.appendChild(prepEl);
+        }
+      }
+
+      // Event zone
+      var evStart = Math.max(prepEndMs, windowStartMs);
+      var evEnd = Math.min(bt.endMs, windowEndMs);
+      if (evStart < evEnd) {
+        var eLeft = ((evStart - windowStartMs) / windowMs) * 100;
+        var eWidth = ((evEnd - evStart) / windowMs) * 100;
+        var evEl = document.createElement('div');
+        evEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;background:linear-gradient(180deg,#ff6b6b,#cc4444);opacity:0.7;left:' + eLeft + '%;width:' + eWidth + '%;z-index:1;cursor:pointer;';
+        evEl.title = bt.label + ' — click to remove';
+        evEl.setAttribute('data-bt-id', bt.id);
+        evEl.addEventListener('click', function() {
+          var bid = this.getAttribute('data-bt-id');
+          if (confirm('Remove this blocked time?')) removeBlockedTime(bid);
+        });
+        bar.appendChild(evEl);
+      }
+    }
+  }
+
+  // Pre-block alert system: fires 1h15m before a blocked time
+  function checkPreBlockAlerts() {
+    if (!state.blockedTimes || !state.blockedTimes.length) return;
+    var now = Date.now();
+    var alertLeadMs = 75 * 60 * 1000; // 1 hour 15 minutes
+    if (!state.blockedTimeAlerts) state.blockedTimeAlerts = {};
+
+    for (var i = 0; i < state.blockedTimes.length; i++) {
+      var bt = state.blockedTimes[i];
+      var alertTime = bt.startMs - alertLeadMs;
+      // Fire if we're within the alert window and haven't fired yet
+      if (now >= alertTime && now < bt.startMs && !state.blockedTimeAlerts[bt.id]) {
+        state.blockedTimeAlerts[bt.id] = true;
+        save();
+        _showPreBlockAlert(bt);
+        return; // one at a time
+      }
+    }
+  }
+
+  // Shared visual timeline for blocked-time alerts
+  function _buildBlockTimeline(bt) {
+    var now = Date.now();
+    var nowDate = new Date(now);
+    var nowStr = _fmtTime(nowDate.getHours(), nowDate.getMinutes());
+    var prepDate = new Date(bt.startMs);
+    var prepStr = _fmtTime(prepDate.getHours(), prepDate.getMinutes());
+    var eventDate = new Date(bt.eventStartMs || bt.startMs);
+    var eventStr = _fmtTime(eventDate.getHours(), eventDate.getMinutes());
+    var endDate = new Date(bt.endMs);
+    var endStr = _fmtTime(endDate.getHours(), endDate.getMinutes());
+    var minsUntilPrep = Math.max(0, Math.round((bt.startMs - now) / 60000));
+    var minsUntilEvent = Math.max(0, Math.round(((bt.eventStartMs || bt.startMs) - now) / 60000));
+    var prepMin = bt.prepMin || 0;
+    var durMin = bt.durationMin || Math.round((bt.endMs - (bt.eventStartMs || bt.startMs)) / 60000);
+
+    // Big prominent "get ready by" time
+    var headline = '';
+    if (prepMin > 0) {
+      headline = '<div style="text-align:center;margin-bottom:12px;">'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#5a5a7e;margin-bottom:4px;">MUST START GETTING READY BY</div>'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:22px;color:#ff8c3a;text-shadow:0 0 18px rgba(255,140,58,0.6);">' + prepStr + '</div>'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ff8c3a;margin-top:4px;">' + minsUntilPrep + ' min from now</div>'
+        + '</div>';
+    } else {
+      headline = '<div style="text-align:center;margin-bottom:12px;">'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#5a5a7e;margin-bottom:4px;">COMMITMENT STARTS AT</div>'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:22px;color:#ff8c3a;text-shadow:0 0 18px rgba(255,140,58,0.6);">' + eventStr + '</div>'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ff8c3a;margin-top:4px;">' + minsUntilEvent + ' min from now</div>'
+        + '</div>';
+    }
+
+    // Visual step-by-step timeline
+    var steps = '';
+    var stepStyle = 'display:flex;align-items:center;gap:8px;padding:4px 0;';
+    var timeStyle = 'font-family:\'Press Start 2P\',monospace;font-size:9px;min-width:65px;text-align:right;';
+    var dotActive = 'width:10px;height:10px;border-radius:50%;flex-shrink:0;';
+    var labelStyle = 'font-size:11px;';
+    var lineStyle = 'margin-left:36px;border-left:2px dashed #3a3a5a;height:12px;';
+
+    // NOW
+    steps += '<div style="' + stepStyle + '">'
+      + '<span style="' + timeStyle + 'color:#4ecdc4;">' + nowStr + '</span>'
+      + '<span style="' + dotActive + 'background:#4ecdc4;box-shadow:0 0 8px rgba(78,205,196,0.5);"></span>'
+      + '<span style="' + labelStyle + 'color:#4ecdc4;font-weight:bold;">NOW</span>'
+      + '</div>';
+
+    if (prepMin > 0) {
+      // Line
+      steps += '<div style="' + lineStyle + '"></div>';
+      // GET READY
+      steps += '<div style="' + stepStyle + '">'
+        + '<span style="' + timeStyle + 'color:#ff8c3a;">' + prepStr + '</span>'
+        + '<span style="' + dotActive + 'background:#ff8c3a;box-shadow:0 0 8px rgba(255,140,58,0.5);"></span>'
+        + '<span style="' + labelStyle + 'color:#ff8c3a;font-weight:bold;">GET READY (' + prepMin + ' min prep)</span>'
+        + '</div>';
+    }
+
+    // Line
+    steps += '<div style="' + lineStyle + '"></div>';
+    // EVENT START
+    steps += '<div style="' + stepStyle + '">'
+      + '<span style="' + timeStyle + 'color:#ff6b6b;">' + eventStr + '</span>'
+      + '<span style="' + dotActive + 'background:#ff6b6b;"></span>'
+      + '<span style="' + labelStyle + 'color:#ff6b6b;">' + (bt.label || 'Commitment') + ' starts</span>'
+      + '</div>';
+
+    // Line
+    steps += '<div style="' + lineStyle + '"></div>';
+    // EVENT END
+    steps += '<div style="' + stepStyle + '">'
+      + '<span style="' + timeStyle + 'color:#5a5a7e;">' + endStr + '</span>'
+      + '<span style="' + dotActive + 'background:#5a5a7e;border:1px solid #3a3a5a;"></span>'
+      + '<span style="' + labelStyle + 'color:#5a5a7e;">Ends (' + durMin + ' min)</span>'
+      + '</div>';
+
+    return headline + '<div style="background:rgba(255,140,58,0.05);border:1px solid rgba(255,140,58,0.15);border-radius:8px;padding:8px 12px;margin-bottom:8px;">' + steps + '</div>';
+  }
+
+  function _showPreBlockAlert(bt) {
+    var modal = document.getElementById('preBlockAlertModal');
+    var textEl = document.getElementById('preBlockAlertText');
+    if (!modal || !textEl) return;
+
+    textEl.innerHTML = _buildBlockTimeline(bt) + '<br>Not much runway left \u2014 grab a quick 10-minute sprint and knock out something that needs doing before time runs out.';
+    modal.style.display = 'flex';
+  }
+
+  // Wire pre-block alert buttons
+  (function() {
+    var sprintBtn = document.getElementById('preBlockSprintBtn');
+    var dismissBtn = document.getElementById('preBlockDismissBtn');
+    var modal = document.getElementById('preBlockAlertModal');
+    if (sprintBtn) sprintBtn.addEventListener('click', function() {
+      if (modal) modal.style.display = 'none';
+      // Set timer to 10 minutes and let user start manually
+      var timerInput = document.getElementById('timerMinutes');
+      if (timerInput) {
+        timerInput.value = '10';
+        timerInput.dispatchEvent(new Event('change'));
+      }
+      notify('Timer set to 10 min — hit START when ready!', '#ff8c3a');
+    });
+    if (dismissBtn) dismissBtn.addEventListener('click', function() {
+      if (modal) modal.style.display = 'none';
+    });
+    if (modal) modal.addEventListener('click', function(e) {
+      if (e.target === modal) modal.style.display = 'none';
+    });
+  })();
+
+  // Prune old blocked times (past end) on load
+  function pruneOldBlockedTimes() {
+    if (!state.blockedTimes || !state.blockedTimes.length) return;
+    var now = Date.now();
+    var before = state.blockedTimes.length;
+    state.blockedTimes = state.blockedTimes.filter(function(bt) { return bt.endMs > now; });
+    if (state.blockedTimes.length !== before) save();
+  }
+
+  // Check pre-block alerts every 60 seconds
+  setInterval(checkPreBlockAlerts, 60000);
+  setTimeout(function() { pruneOldBlockedTimes(); checkPreBlockAlerts(); }, 2500);
 
   // ============== RENDER ==============
   function render() {
@@ -2524,6 +3126,7 @@ try {
     renderTodayTasks();
     renderDailyReminders();
     renderFocusTimeline();
+    renderDoNowBanner();
     refreshTrackerBriefBadge();
     attachHoverSounds();
   }
@@ -2686,6 +3289,19 @@ try {
     $('lifetimeTime').textContent = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 
     $('todayXPDisplay').textContent = state.todayXP;
+
+    // Today's focus time banner (v3.21.33)
+    var todayFocusEl = $('todayFocusTime');
+    if (todayFocusEl) {
+      var _today = todayStr();
+      var _sessions = (state.dailySessionLog && state.dailySessionLog.date === _today)
+        ? (state.dailySessionLog.sessions || []) : [];
+      var _tMin = 0;
+      for (var _si = 0; _si < _sessions.length; _si++) _tMin += (_sessions[_si].min || 0);
+      var _tH = Math.floor(_tMin / 60);
+      var _tM = _tMin % 60;
+      todayFocusEl.textContent = _tH > 0 ? _tH + 'h ' + _tM + 'm' : _tM + 'm';
+    }
   }
 
   // ============== SESSION DURATION PICKER ==============
@@ -3808,6 +4424,7 @@ try {
         ${blocksHtml}
         ${!task.completed ? `<button class="task-select-btn" title="Pin this task as your current focus target. While it's pinned, every textile earned from a completed focus session gets credited to THIS task (the little dots next to the task name track how many sessions you've finished while it was pinned). Pinned tasks never get flagged as aging, since they're being actively worked on. Click FOCUS again on the same task to unpin it. Only one task can be pinned at a time &mdash; picking a new one swaps the pin.">FOCUS</button>` : ''}
         ${!task.completed ? `<button class="task-today-btn" title="Send to Today&rsquo;s Tasks.">\u2192TODAY</button>` : ''}
+        ${!task.completed ? `<button class="task-donow-btn" title="Do this task right now. Set a time estimate and commit.">DO NOW</button>` : ''}
         ${recurBtn}
         <span class="task-delete" title="Delete this task. Cannot be undone.">\u00d7</span>
       `;
@@ -3849,6 +4466,12 @@ try {
         notify('\u21BB \u201C' + task.text + '\u201D will now recur daily.', '#00ff88');
         save();
         render();
+      });
+      var doNowBtn2 = item.querySelector('.task-donow-btn');
+      if (doNowBtn2) doNowBtn2.addEventListener('click', (e) => {
+        e.stopPropagation();
+        var isRec = task.recurring || isRecurringText(task.text);
+        startDoNow(task.id, task.text, isRec);
       });
       item.querySelector('.task-delete').addEventListener('click', (e) => { e.stopPropagation(); deleteTask(task.id); });
 
@@ -4199,6 +4822,133 @@ try {
     armTimerTick();
   }
 
+  // v3.21.38: Check if near a blocked time and show task picker
+  function _isNearBlockedTime() {
+    if (!state.blockedTimes || !state.blockedTimes.length) return null;
+    var now = Date.now();
+    var alertLeadMs = 75 * 60 * 1000; // 1h15m
+    for (var i = 0; i < state.blockedTimes.length; i++) {
+      var bt = state.blockedTimes[i];
+      if (now >= (bt.startMs - alertLeadMs) && now < bt.startMs) {
+        return bt;
+      }
+    }
+    return null;
+  }
+
+  var _preBlockPickerCallback = null; // function to call after picker resolves
+
+  function _showPreBlockPicker(nearBlock, onDone) {
+    var modal = document.getElementById('preBlockPickerModal');
+    var alertEl = document.getElementById('preBlockPickerAlert');
+    var listEl = document.getElementById('preBlockPickerList');
+    var durStep = document.getElementById('preBlockPickerDurStep');
+    if (!modal) { onDone(); return; }
+
+    _preBlockPickerCallback = onDone;
+    if (durStep) durStep.style.display = 'none';
+
+    // Alert text with time until block
+    if (alertEl) {
+      alertEl.innerHTML = _buildBlockTimeline(nearBlock) + '<br>Limited runway \u2014 what will you work on?';
+    }
+
+    // Build task list from today's tasks
+    if (listEl) {
+      listEl.innerHTML = '';
+      var todayTasks = Array.isArray(state.todayTasks) ? state.todayTasks : [];
+      // Also include priority tasks
+      var priTasks = (Array.isArray(state.priorities) ? state.priorities : []).filter(function(p) { return !p.completedDate; });
+
+      var allPickable = [];
+      todayTasks.forEach(function(t) { allPickable.push({ id: t.id, text: t.text, type: 'today', recurring: !!t.sourceType }); });
+      priTasks.forEach(function(p) { allPickable.push({ id: p.id, text: p.text, type: 'priority', recurring: !!(p.recurrence && p.recurrence !== 'none') }); });
+
+      if (allPickable.length === 0) {
+        listEl.innerHTML = '<div style="padding:8px;color:#886655;font-size:11px;font-style:italic;">No tasks available. Add tasks to Today\'s Tasks or High Priority first.</div>';
+      } else {
+        allPickable.forEach(function(task) {
+          var row = document.createElement('button');
+          row.type = 'button';
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:rgba(255,140,58,0.06);border:1px solid rgba(255,140,58,0.25);border-radius:6px;padding:8px 10px;margin-bottom:4px;cursor:pointer;color:#ffe0b2;font-size:11px;font-family:"Courier New",monospace;';
+          var badge = document.createElement('span');
+          badge.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:' + (task.type === 'priority' ? '#ff6b6b' : '#ffb43c') + ';border:1px solid;border-radius:3px;padding:1px 4px;white-space:nowrap;';
+          badge.textContent = task.type === 'priority' ? 'PRI' : 'TODAY';
+          row.appendChild(badge);
+          var txt = document.createElement('span');
+          txt.style.cssText = 'flex:1;';
+          txt.textContent = task.text;
+          row.appendChild(txt);
+          row.addEventListener('click', function() {
+            _preBlockPickerShowDuration(task, nearBlock);
+          });
+          listEl.appendChild(row);
+        });
+      }
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  function _preBlockPickerShowDuration(task, nearBlock) {
+    var durStep = document.getElementById('preBlockPickerDurStep');
+    var nameEl = document.getElementById('preBlockPickerTaskName');
+    var btnsEl = document.getElementById('preBlockPickerDurBtns');
+    if (!durStep || !btnsEl) return;
+
+    if (nameEl) nameEl.textContent = '\u201C' + task.text + '\u201D';
+
+    var remembered = null;
+    if (task.recurring && state.taskDurations) {
+      remembered = state.taskDurations[_normalizeText(task.text)];
+    }
+
+    var durOpts = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+    var html = '';
+    for (var i = 0; i < durOpts.length; i++) {
+      var d = durOpts[i];
+      var label = d < 60 ? d + 'min' : (d === 60 ? '1hr' : (d === 90 ? '1.5hr' : '2hr'));
+      var isRem = remembered === d;
+      html += '<button class="pbp-dur-btn" data-dur="' + d + '" style="background:' + (isRem ? '#ff8c3a' : '#1a1a3a') + ';color:' + (isRem ? '#08080f' : '#ff8c3a') + ';border:1px solid #ff8c3a;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + label + (isRem ? ' \u2605' : '') + '</button>';
+    }
+    btnsEl.innerHTML = html;
+
+    var btns = btnsEl.querySelectorAll('.pbp-dur-btn');
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].addEventListener('click', function() {
+        var dur = parseInt(this.getAttribute('data-dur'), 10);
+        // Remember for recurring
+        if (task.recurring && dur > 0) {
+          if (!state.taskDurations) state.taskDurations = {};
+          state.taskDurations[_normalizeText(task.text)] = dur;
+        }
+        // Commit as Do Now
+        _doNowPending = { taskId: task.id, text: task.text, recurring: task.recurring };
+        _commitDoNow(dur);
+        // Close picker and proceed with timer
+        var modal = document.getElementById('preBlockPickerModal');
+        if (modal) modal.style.display = 'none';
+        if (_preBlockPickerCallback) { _preBlockPickerCallback(); _preBlockPickerCallback = null; }
+      });
+    }
+
+    durStep.style.display = 'block';
+  }
+
+  // Wire pre-block picker close/skip
+  (function() {
+    var closeBtn = document.getElementById('preBlockPickerCloseBtn');
+    var skipBtn = document.getElementById('preBlockPickerSkip');
+    var modal = document.getElementById('preBlockPickerModal');
+    function dismiss() {
+      if (modal) modal.style.display = 'none';
+      if (_preBlockPickerCallback) { _preBlockPickerCallback(); _preBlockPickerCallback = null; }
+    }
+    if (closeBtn) closeBtn.addEventListener('click', dismiss);
+    if (skipBtn) skipBtn.addEventListener('click', dismiss);
+    if (modal) modal.addEventListener('click', function(e) { if (e.target === modal) dismiss(); });
+  })();
+
   function startTimer() {
     // Abort an in-progress pre-start countdown — user tapped START again
     // during the grace period, they want out.
@@ -4232,8 +4982,24 @@ try {
       beginActualSession();
       return;
     }
-    // Fresh start from idle (or mid-session after a reset) — run the
-    // 15-second "get ready" countdown, THEN start the real session.
+    // Fresh start from idle (or mid-session after a reset).
+    // v3.21.38: If near a blocked time, show task picker first.
+    var _nearBlock = _isNearBlockedTime();
+    if (_nearBlock && !state._preBlockPickerShown) {
+      state._preBlockPickerShown = true; // prevent re-triggering on the same START
+      _showPreBlockPicker(_nearBlock, function() {
+        // After picker resolves (task picked or skipped), actually start
+        state._preBlockPickerShown = false;
+        _actuallyStartTimer();
+      });
+      return;
+    }
+    state._preBlockPickerShown = false;
+    _actuallyStartTimer();
+  }
+
+  function _actuallyStartTimer() {
+    // Run the 15-second "get ready" countdown, THEN start the real session.
     cancelPreStartCountdown();
     countdownRemaining = COUNTDOWN_SECONDS;
     state.timerState = 'countdown';
@@ -5395,6 +6161,17 @@ try {
       });
       row.appendChild(todayBtn);
 
+      var doNowPBtn = document.createElement('button');
+      doNowPBtn.type = 'button';
+      doNowPBtn.textContent = 'DO NOW';
+      doNowPBtn.title = 'Do this task right now. Set a time estimate and commit.';
+      doNowPBtn.className = 'task-donow-btn';
+      doNowPBtn.addEventListener('click', function() {
+        var isRec = p.recurrence && p.recurrence !== 'none';
+        startDoNow(p.id, p.text, isRec);
+      });
+      row.appendChild(doNowPBtn);
+
       var gearBtn = document.createElement('button');
       gearBtn.type = 'button';
       gearBtn.textContent = '\u2699';
@@ -5960,18 +6737,27 @@ try {
     if (inputEl) setTimeout(function() { inputEl.focus(); }, 100);
   }
 
+  var _incrDragIdx = null; // index being dragged
+
   function _renderPendingStages() {
     var stagesEl = document.getElementById('incrementalizeStages');
     if (!stagesEl) return;
     stagesEl.innerHTML = '';
-    var circled = ['\u2776','\u2777','\u2778','\u2779','\u277A','\u277B','\u277C','\u277D','\u277E'];
     _incrementalizePendingStages.forEach(function(s, idx) {
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;background:rgba(255,180,60,0.08);border:1px solid rgba(184,115,26,0.3);border-radius:4px;';
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;background:rgba(255,180,60,0.08);border:1px solid rgba(184,115,26,0.3);border-radius:4px;cursor:grab;transition:opacity 0.15s;';
+      row.draggable = true;
+      row.dataset.idx = idx;
+
+      // Drag handle
+      var handle = document.createElement('span');
+      handle.textContent = '\u2630';
+      handle.style.cssText = 'color:#886655;font-size:11px;cursor:grab;user-select:none;padding:0 2px;';
+      row.appendChild(handle);
 
       var num = document.createElement('span');
-      num.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:#ffb43c;min-width:18px;';
-      num.textContent = circled[idx] || '\u25CF';
+      num.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:9px;color:#ffb43c;min-width:22px;text-align:center;';
+      num.textContent = '#' + (idx + 1);
       row.appendChild(num);
 
       var txt = document.createElement('span');
@@ -5989,8 +6775,64 @@ try {
       });
       row.appendChild(removeBtn);
 
+      // Drag events
+      row.addEventListener('dragstart', function(e) {
+        _incrDragIdx = idx;
+        row.style.opacity = '0.4';
+        try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch (_) {}
+      });
+      row.addEventListener('dragend', function() {
+        _incrDragIdx = null;
+        row.style.opacity = '1';
+        // Clear drop indicators
+        var rows = stagesEl.querySelectorAll('[data-idx]');
+        for (var r = 0; r < rows.length; r++) {
+          rows[r].style.borderTop = '';
+          rows[r].style.borderBottom = '';
+        }
+      });
+      row.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (_incrDragIdx === null || _incrDragIdx === idx) return;
+        var rect = row.getBoundingClientRect();
+        var midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          row.style.borderTop = '2px solid #ffb43c';
+          row.style.borderBottom = '';
+        } else {
+          row.style.borderBottom = '2px solid #ffb43c';
+          row.style.borderTop = '';
+        }
+      });
+      row.addEventListener('dragleave', function() {
+        row.style.borderTop = '';
+        row.style.borderBottom = '';
+      });
+      row.addEventListener('drop', function(e) {
+        e.preventDefault();
+        row.style.borderTop = '';
+        row.style.borderBottom = '';
+        if (_incrDragIdx === null || _incrDragIdx === idx) return;
+        var rect = row.getBoundingClientRect();
+        var midY = rect.top + rect.height / 2;
+        var targetIdx = e.clientY < midY ? idx : idx + 1;
+        // Move the dragged item
+        var item = _incrementalizePendingStages.splice(_incrDragIdx, 1)[0];
+        if (targetIdx > _incrDragIdx) targetIdx--;
+        _incrementalizePendingStages.splice(targetIdx, 0, item);
+        _incrDragIdx = null;
+        _renderPendingStages();
+      });
+
       stagesEl.appendChild(row);
     });
+
+    // Update input placeholder with next number
+    var inputEl = document.getElementById('incrementalizeInput');
+    if (inputEl) {
+      var nextNum = _incrementalizePendingStages.length + 1;
+      inputEl.placeholder = 'Stage #' + nextNum + ' — e.g. Find the URL first...';
+    }
   }
 
   function _applyAqueductsToTodayTask(taskId, stages) {
@@ -6188,6 +7030,14 @@ try {
         row.appendChild(srcBadge);
       }
 
+      // v3.21.34: Do Now button on today tasks
+      var doNowTBtn = document.createElement('button');
+      doNowTBtn.type = 'button'; doNowTBtn.textContent = 'DO NOW';
+      doNowTBtn.title = 'Do this task right now. Set a time estimate and commit.';
+      doNowTBtn.className = 'task-donow-btn';
+      doNowTBtn.addEventListener('click', function() { startDoNow(t.id, t.text, !!t.sourceType); });
+      row.appendChild(doNowTBtn);
+
       // Manual incrementalize button (add aqueducts any time)
       var aqBtn = document.createElement('button');
       aqBtn.type = 'button'; aqBtn.textContent = '\u2B62';
@@ -6217,51 +7067,108 @@ try {
 
       listEl.appendChild(row);
 
-      // -- Aqueduct stages (rendered under the main task) --
+      // -- Aqueduct stages: compact view (show only current stage + expand toggle) --
       if (t.aqueducts.length > 0) {
-        var aqWrap = document.createElement('div');
-        aqWrap.style.cssText = 'margin:0 0 4px 16px;padding:4px 0 6px;border-left:2px solid #8b5e1a;border-bottom:1px solid rgba(184,115,26,0.3);';
+        var completedAqCount = t.aqueducts.filter(function(a) { return a.done; }).length;
+        var nextAq = null;
+        var nextAqIdx = -1;
+        for (var _ai = 0; _ai < t.aqueducts.length; _ai++) {
+          if (!t.aqueducts[_ai].done) { nextAq = t.aqueducts[_ai]; nextAqIdx = _ai; break; }
+        }
 
-        var circled = ['\u2776','\u2777','\u2778','\u2779','\u277A','\u277B','\u277C','\u277D','\u277E'];
+        var aqContainer = document.createElement('div');
+        aqContainer.style.cssText = 'margin:0 0 4px 12px;border-left:2px solid #8b5e1a;border-bottom:1px solid rgba(184,115,26,0.3);';
+
+        // Current stage row (always visible)
+        if (nextAq) {
+          var currentRow = document.createElement('div');
+          currentRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(255,180,60,0.06);';
+
+          var stepLabel = document.createElement('span');
+          stepLabel.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#ffb43c;white-space:nowrap;';
+          stepLabel.textContent = 'STEP ' + (nextAqIdx + 1) + '/' + t.aqueducts.length;
+          currentRow.appendChild(stepLabel);
+
+          var currentTxt = document.createElement('span');
+          currentTxt.style.cssText = 'flex:1;color:#ffe0b2;font-size:12px;font-weight:bold;';
+          currentTxt.textContent = nextAq.text;
+          currentRow.appendChild(currentTxt);
+
+          var currentDone = document.createElement('button');
+          currentDone.type = 'button'; currentDone.textContent = '\u2713';
+          currentDone.title = 'Complete step ' + (nextAqIdx + 1) + ' and advance to the next.';
+          currentDone.style.cssText = 'background:#2a4a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:3px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;';
+          (function(aqId) {
+            currentDone.addEventListener('click', function() { completeAqueduct(t.id, aqId); });
+          })(nextAq.id);
+          currentRow.appendChild(currentDone);
+
+          aqContainer.appendChild(currentRow);
+        } else {
+          // All done
+          var allDoneRow = document.createElement('div');
+          allDoneRow.style.cssText = 'padding:5px 8px;font-family:"Press Start 2P",monospace;font-size:7px;color:#4a8a4a;';
+          allDoneRow.textContent = '\u2713 ALL ' + t.aqueducts.length + ' STAGES COMPLETE';
+          aqContainer.appendChild(allDoneRow);
+        }
+
+        // Progress bar
+        var progWrap = document.createElement('div');
+        progWrap.style.cssText = 'height:3px;background:#1a0f00;margin:0 8px;border-radius:2px;overflow:hidden;';
+        var progFill = document.createElement('div');
+        var progPct = t.aqueducts.length > 0 ? (completedAqCount / t.aqueducts.length) * 100 : 0;
+        progFill.style.cssText = 'height:100%;background:linear-gradient(90deg,#ffb43c,#ff8c3a);width:' + progPct + '%;border-radius:2px;transition:width 0.3s;';
+        progWrap.appendChild(progFill);
+        aqContainer.appendChild(progWrap);
+
+        // Expand toggle (collapsed by default)
+        var expandRow = document.createElement('div');
+        expandRow.style.cssText = 'padding:3px 8px;';
+        var expandBtn = document.createElement('button');
+        expandBtn.type = 'button';
+        expandBtn.style.cssText = 'background:none;border:none;color:#886655;font-family:"Press Start 2P",monospace;font-size:6px;cursor:pointer;padding:2px 0;letter-spacing:0.5px;';
+        expandBtn.textContent = '\u25B6 VIEW ALL STAGES (' + completedAqCount + '/' + t.aqueducts.length + ')';
+        expandBtn.title = 'Expand to see all aqueduct stages.';
+
+        var expandPanel = document.createElement('div');
+        expandPanel.style.cssText = 'display:none;padding:4px 0;';
+
         t.aqueducts.forEach(function(aq, aqIdx) {
           var aqRow = document.createElement('div');
-          aqRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;';
+          aqRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 8px;opacity:' + (aq.done ? '0.5' : '1') + ';';
 
           var numEl = document.createElement('span');
-          numEl.style.cssText = 'font-size:11px;color:' + (aq.done ? '#4a8a4a' : '#ffb43c') + ';min-width:16px;';
-          numEl.textContent = circled[aqIdx] || '\u25CF';
+          numEl.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:' + (aq.done ? '#4a8a4a' : (aqIdx === nextAqIdx ? '#fff' : '#ffb43c')) + ';min-width:20px;text-align:center;';
+          numEl.textContent = '#' + (aqIdx + 1);
           aqRow.appendChild(numEl);
 
           var aqTxt = document.createElement('span');
-          aqTxt.style.cssText = 'flex:1;font-size:11px;color:' + (aq.done ? '#4a8a4a' : '#ffe0b2') + ';' +
-            (aq.done ? 'text-decoration:line-through;opacity:0.6;' : '');
+          aqTxt.style.cssText = 'flex:1;font-size:10px;color:' + (aq.done ? '#4a8a4a' : '#ffe0b2') + ';' +
+            (aq.done ? 'text-decoration:line-through;' : '') +
+            (aqIdx === nextAqIdx ? 'font-weight:bold;color:#fff;' : '');
           aqTxt.textContent = aq.text;
           aqRow.appendChild(aqTxt);
 
-          if (!aq.done) {
-            var aqDone = document.createElement('button');
-            aqDone.type = 'button'; aqDone.textContent = '\u2713';
-            aqDone.title = 'Complete this aqueduct stage.';
-            aqDone.style.cssText = 'background:#2a4a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:3px;padding:2px 6px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;';
-            aqDone.addEventListener('click', function() { completeAqueduct(t.id, aq.id); });
-            aqRow.appendChild(aqDone);
-          } else {
-            var aqCheck = document.createElement('span');
-            aqCheck.textContent = '\u2713';
-            aqCheck.style.cssText = 'color:#4a8a4a;font-size:12px;';
-            aqRow.appendChild(aqCheck);
-          }
+          var statusEl = document.createElement('span');
+          statusEl.style.cssText = 'font-size:10px;';
+          if (aq.done) { statusEl.textContent = '\u2713'; statusEl.style.color = '#4a8a4a'; }
+          else if (aqIdx === nextAqIdx) { statusEl.textContent = '\u25C0 NOW'; statusEl.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#ffb43c;'; }
+          aqRow.appendChild(statusEl);
 
-          aqWrap.appendChild(aqRow);
+          expandPanel.appendChild(aqRow);
         });
 
-        // Label
-        var aqLabel = document.createElement('div');
-        aqLabel.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#886655;padding:2px 8px;letter-spacing:1px;';
-        aqLabel.textContent = 'AQUEDUCT STAGES \u2B62 ' + t.text.substring(0, 20) + (t.text.length > 20 ? '...' : '');
-        aqWrap.insertBefore(aqLabel, aqWrap.firstChild);
+        expandBtn.addEventListener('click', function() {
+          var showing = expandPanel.style.display !== 'none';
+          expandPanel.style.display = showing ? 'none' : 'block';
+          expandBtn.textContent = (showing ? '\u25B6' : '\u25BC') + ' VIEW ALL STAGES (' + completedAqCount + '/' + t.aqueducts.length + ')';
+        });
 
-        listEl.appendChild(aqWrap);
+        expandRow.appendChild(expandBtn);
+        aqContainer.appendChild(expandRow);
+        aqContainer.appendChild(expandPanel);
+
+        listEl.appendChild(aqContainer);
       }
     });
   }
@@ -7410,6 +8317,17 @@ try {
         });
       }
 
+      // v3.21.31: 24-hour time toggle
+      var use24HourToggle = $('use24HourToggle');
+      if (use24HourToggle) {
+        use24HourToggle.checked = !!state.use24Hour;
+        use24HourToggle.addEventListener('change', function() {
+          state.use24Hour = use24HourToggle.checked;
+          save();
+          renderFocusTimeline();
+        });
+      }
+
       function openSettingsModal() {
         if (!settingsModal) return;
         settingsModal.style.display = 'flex';
@@ -7420,6 +8338,7 @@ try {
         if (coldTurkeyDailyToggle) coldTurkeyDailyToggle.checked = !!state.coldTurkeyDailyPrompt;
         if (coldTurkeyBlockNameInput) coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
         if (dailyRemindersToggle) dailyRemindersToggle.checked = state.dailyRemindersEnabled !== false;
+        if (use24HourToggle) use24HourToggle.checked = !!state.use24Hour;
       }
       function closeSettingsModal() {
         if (!settingsModal) return;
