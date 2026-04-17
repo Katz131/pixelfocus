@@ -305,9 +305,58 @@
       footer.title = 'Date your profile card was first stamped by the factory. Purely narrative.';
     }
 
+    // v3.21.19: Daily completed tasks
+    renderDailyTasks(state);
+
     // Sync to Firestore + show link
     updateProfileLinkBar(state);
     syncProfile(state);
+  }
+
+  function renderDailyTasks(state) {
+    var panel = document.getElementById('dailyTasksPanel');
+    var dateEl = document.getElementById('dailyTasksDate');
+    var listEl = document.getElementById('dailyTasksList');
+    if (!panel || !listEl) return;
+
+    var log = state.dailyTaskLog;
+    var today = new Date().toISOString().slice(0, 10);
+    var dateLabel = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+    if (log && log.date) {
+      try {
+        var parts = log.date.split('-');
+        if (parts.length === 3) {
+          var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          dateLabel = dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+      } catch (_) {}
+    }
+
+    if (dateEl) dateEl.textContent = dateLabel;
+
+    var keys = [];
+    if (log && log.tasks && typeof log.tasks === 'object') {
+      keys = Object.keys(log.tasks);
+      keys.sort(function(a, b) { return (log.tasks[b] || 0) - (log.tasks[a] || 0); });
+    }
+
+    if (keys.length === 0) {
+      listEl.innerHTML = '<div style="font-size:11px;color:var(--text-dim);font-style:italic;text-align:center;padding:12px 0;">No tasks completed yet today.</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < keys.length; i++) {
+      var name = keys[i];
+      var count = log.tasks[name] || 0;
+      var countStr = count > 1 ? 'x' + count : '\u2713';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(78,205,196,0.1);">'
+        + '<span style="font-size:12px;color:var(--text);">' + escHtml(name) + '</span>'
+        + '<span style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#4ecdc4;">' + countStr + '</span>'
+        + '</div>';
+    }
+    listEl.innerHTML = html;
   }
 
   function setText(id, txt) {

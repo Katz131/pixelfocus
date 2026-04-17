@@ -339,6 +339,20 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   <div id="priorityList" style="max-height:120px;overflow-y:auto;"></div>
 </div>
 
+<!-- v3.21.20: Today's Tasks — no locks, just a prominent daily list -->
+<div id="todayTasksSection" style="margin:0 10px 8px;background:linear-gradient(180deg,#2a1a00,#1a0f00);border:1px solid #b8731a;border-radius:6px;padding:8px;box-shadow:0 0 10px rgba(255,165,0,0.12) inset;" title="Today's tasks — a simple daily checklist. No pop-ups, no locks. Just what you want to get done today.">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffb43c;letter-spacing:1px;text-shadow:0 0 6px rgba(255,180,60,0.5);">&#9733; TODAY'S TASKS</span>
+    <span class="tip" data-tip="A simple daily task list — no pop-ups, no locks. Add what you want to get done today. Completed tasks count toward your daily log. Recurring tasks auto-replenish each day.">?</span>
+    <span id="todayTasksCount" style="margin-left:auto;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffe0b2;background:#8b5e1a;padding:2px 6px;border-radius:8px;">0</span>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">
+    <input type="text" id="todayTaskInput" placeholder="Add today's task..." style="flex:1;background:#1a0f00;border:1px solid #b8731a;border-radius:4px;padding:6px 10px;color:#ffe0b2;font-size:12px;outline:none;" />
+    <button type="button" id="addTodayTaskBtn" style="background:#8b5e1a;color:#fff;border:1px solid #ffb43c;border-radius:4px;padding:0 12px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;" title="Add this task.">+</button>
+  </div>
+  <div id="todayTasksList" style="max-height:200px;overflow-y:auto;"></div>
+</div>
+
 <div style="margin:0 10px 8px;background:var(--surface);border-radius:0 0 8px 8px;border:1px solid var(--border);border-top:none;">
   <div style="display:flex;padding:8px;gap:6px;border-bottom:1px solid var(--border);">
     <input type="text" id="taskInput" placeholder="Add a new task..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;" title="Type a task name and press Enter (or click +) to add it to the active project." />

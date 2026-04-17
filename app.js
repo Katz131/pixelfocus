@@ -645,6 +645,8 @@ try {
     // popup opens, if there are any uncompleted entries here, a blocking modal
     // appears listing them. Persists across days until completed or removed.
     priorityTasks: [],
+    // v3.21.20: Today's Tasks — simple daily list, no locks, orange section
+    todayTasks: [],
     selectedTaskId: null,
     blocks: 0,
     totalLifetimeBlocks: 0,
@@ -2513,6 +2515,7 @@ try {
     renderProfileAvatar();
     renderRatiocinatoryBtn();
     renderGameLockout();
+    renderTodayTasks();
     renderFocusTimeline();
     refreshTrackerBriefBadge();
     attachHoverSounds();
@@ -5352,6 +5355,21 @@ try {
         row.appendChild(badge);
       }
 
+      // v3.21.21: "→TODAY" button to send to Today's Tasks
+      var todayBtn = document.createElement('button');
+      todayBtn.type = 'button';
+      var alreadyInToday = isInTodayTasks(p.id);
+      todayBtn.textContent = alreadyInToday ? '\u2605' : '\u2192TODAY';
+      todayBtn.title = alreadyInToday ? 'Already in Today\'s Tasks.' : 'Add to Today\'s Tasks.';
+      todayBtn.disabled = alreadyInToday;
+      todayBtn.style.cssText = 'background:' + (alreadyInToday ? 'transparent' : 'rgba(255,180,60,0.15)') + ';color:#ffb43c;border:1px solid #8b5e1a;border-radius:4px;padding:3px 6px;font-family:"Press Start 2P",monospace;font-size:7px;cursor:' + (alreadyInToday ? 'default' : 'pointer') + ';opacity:' + (alreadyInToday ? '0.5' : '1') + ';';
+      todayBtn.addEventListener('click', function() {
+        if (!isInTodayTasks(p.id)) {
+          addTodayTask(p.text, p.id, 'priority');
+        }
+      });
+      row.appendChild(todayBtn);
+
       var gearBtn = document.createElement('button');
       gearBtn.type = 'button';
       gearBtn.textContent = '\u2699';
@@ -5465,6 +5483,176 @@ try {
   function maybeShowPriorityModal() {
     if (getActivePriorityTasks().length > 0) showPriorityModal();
   }
+
+  // ============== TODAY'S TASKS (v3.21.21) ==============
+  // Simple orange daily task list — no locks, no modals, no recurrence.
+  // Add tasks directly, or use "→ TODAY" buttons on priority/normal tasks
+  // to copy them here. Completing a linked task also marks the source done.
+
+  function addTodayTask(text, sourceId, sourceType) {
+    if (!Array.isArray(state.todayTasks)) state.todayTasks = [];
+    // Prevent duplicates of the same source task
+    if (sourceId) {
+      for (var d = 0; d < state.todayTasks.length; d++) {
+        if (state.todayTasks[d].sourceId === sourceId) return; // already in today
+      }
+    }
+    state.todayTasks.push({
+      id: 'td' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      text: text,
+      createdAt: Date.now(),
+      sourceId: sourceId || null,   // id of the original task (priority or project)
+      sourceType: sourceType || null // 'priority' or 'project'
+    });
+    save();
+    renderTodayTasks();
+    renderPriorities();
+    try { SFX.addTask && SFX.addTask(); } catch (_) {}
+  }
+
+  function addTodayTaskFromInput() {
+    var inputEl = document.getElementById('todayTaskInput');
+    if (!inputEl) return;
+    var text = (inputEl.value || '').trim();
+    if (!text) return;
+    addTodayTask(text, null, null);
+    inputEl.value = '';
+  }
+
+  function completeTodayTask(id) {
+    if (!Array.isArray(state.todayTasks)) return;
+    var task = null;
+    for (var f = 0; f < state.todayTasks.length; f++) {
+      if (state.todayTasks[f].id === id) { task = state.todayTasks[f]; break; }
+    }
+    if (!task) return;
+    var completedText = task.text || '';
+
+    // If linked to a source, mark the source done too
+    if (task.sourceId && task.sourceType === 'priority') {
+      completePriority(task.sourceId);
+    }
+
+    // Remove from today list
+    state.todayTasks = state.todayTasks.filter(function(t) { return t.id !== id; });
+
+    // Credit completion (skip if source priority already credited it)
+    if (task.sourceType !== 'priority') {
+      state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
+      logDailyTaskCompletion(completedText);
+      if (!state.dustPixels) state.dustPixels = [];
+      var palette = state.unlockedColors || ['#00ff88'];
+      var dustColor = palette[Math.floor(Math.random() * palette.length)];
+      state.dustPixels.push({
+        x: Math.random(), y: Math.random(), color: dustColor, d: todayStr()
+      });
+      state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+      var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
+      if (state.dustPixels.length > dustCap) {
+        state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
+      }
+    }
+    save();
+    renderTodayTasks();
+    renderDustbin();
+    try { SFX.completeTask && SFX.completeTask(); } catch (_) {}
+  }
+
+  function removeTodayTask(id) {
+    if (!Array.isArray(state.todayTasks)) return;
+    state.todayTasks = state.todayTasks.filter(function(t) { return t.id !== id; });
+    save();
+    renderTodayTasks();
+    renderPriorities();
+  }
+
+  function isInTodayTasks(sourceId) {
+    if (!sourceId || !Array.isArray(state.todayTasks)) return false;
+    for (var i = 0; i < state.todayTasks.length; i++) {
+      if (state.todayTasks[i].sourceId === sourceId) return true;
+    }
+    return false;
+  }
+
+  // Clean up today tasks whose source was completed/removed elsewhere
+  function pruneOrphanedTodayTasks() {
+    if (!Array.isArray(state.todayTasks)) return;
+    var changed = false;
+    state.todayTasks = state.todayTasks.filter(function(t) {
+      if (!t.sourceId) return true; // manually added, keep
+      if (t.sourceType === 'priority') {
+        // Keep only if source still exists and is due today
+        var found = false;
+        var active = getActivePriorityTasks();
+        for (var i = 0; i < active.length; i++) {
+          if (active[i].id === t.sourceId) { found = true; break; }
+        }
+        if (!found) { changed = true; return false; }
+      }
+      return true;
+    });
+    if (changed) save();
+  }
+
+  function renderTodayTasks() {
+    pruneOrphanedTodayTasks();
+    var listEl = document.getElementById('todayTasksList');
+    var countEl = document.getElementById('todayTasksCount');
+    if (!listEl) return;
+    var tasks = Array.isArray(state.todayTasks) ? state.todayTasks : [];
+    if (countEl) countEl.textContent = String(tasks.length);
+    listEl.innerHTML = '';
+    if (tasks.length === 0) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'padding:8px;text-align:center;color:#886655;font-size:11px;font-style:italic;';
+      empty.textContent = 'No tasks for today. Add one above, or use \u2192TODAY on other tasks.';
+      listEl.appendChild(empty);
+      return;
+    }
+    tasks.forEach(function(t) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid rgba(184,115,26,0.3);';
+
+      var txt = document.createElement('div');
+      txt.style.cssText = 'flex:1;color:#ffe0b2;font-size:12px;word-break:break-word;';
+      txt.textContent = t.text;
+      row.appendChild(txt);
+
+      if (t.sourceType) {
+        var srcBadge = document.createElement('span');
+        srcBadge.textContent = t.sourceType === 'priority' ? '\u26A0' : '\u2630';
+        srcBadge.title = 'Linked from ' + (t.sourceType === 'priority' ? 'High Priority' : 'project tasks');
+        srcBadge.style.cssText = 'font-size:10px;color:#886655;';
+        row.appendChild(srcBadge);
+      }
+
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button'; doneBtn.textContent = '\u2713';
+      doneBtn.title = t.sourceType ? 'Mark done (also completes the source task).' : 'Mark done.';
+      doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      doneBtn.addEventListener('click', function() { completeTodayTask(t.id); });
+      row.appendChild(doneBtn);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button'; removeBtn.textContent = '\u2715';
+      removeBtn.title = 'Remove from today (does not affect the source task).';
+      removeBtn.style.cssText = 'background:transparent;color:#886655;border:1px solid #b8731a;border-radius:4px;padding:3px 7px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      removeBtn.addEventListener('click', function() { removeTodayTask(t.id); });
+      row.appendChild(removeBtn);
+
+      listEl.appendChild(row);
+    });
+  }
+
+  // Wire Today's Tasks input + button
+  (function() {
+    var input = document.getElementById('todayTaskInput');
+    var btn = document.getElementById('addTodayTaskBtn');
+    if (input) input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); addTodayTaskFromInput(); }
+    });
+    if (btn) btn.addEventListener('click', function() { addTodayTaskFromInput(); });
+  })();
 
   // ============== TASK MANAGEMENT ==============
   function addTask() {
