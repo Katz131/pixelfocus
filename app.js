@@ -5940,7 +5940,7 @@ try {
       // focuses the existing tab instead of opening a duplicate.
       function openPFWindow(path) {
         // v3.21.7: Block game windows when locked (priorities or timer).
-        var gamePages = ['gallery.html', 'factory.html', 'house.html', 'profile.html', 'ratiocinatory.html', 'bureau.html', 'employees.html', 'research.html', 'incinerator.html'];
+        var gamePages = ['gallery.html', 'factory.html', 'house.html', 'ratiocinatory.html', 'bureau.html', 'employees.html', 'research.html', 'incinerator.html'];
         if (gamePages.indexOf(path) !== -1 && isGameLocked()) {
           notify(getGameLockReason(), 'var(--warning)');
           return;
