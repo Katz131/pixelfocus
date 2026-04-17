@@ -1,5 +1,8 @@
 // =============================================================================
-// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! (version read from manifest)
+// !!! BUMP manifest.json VERSION AFTER ANY CHANGE TO THIS FILE !!!
+// !!! BUMP manifest.json VERSION AFTER ANY CHANGE TO THIS FILE !!!
+// !!! BUMP manifest.json VERSION AFTER ANY CHANGE TO THIS FILE !!!
+// !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
 // =============================================================================
 // PixelFocus is a SEPARATE WINDOW (full browser tab) — NOT a Chrome extension
 // popup. The file is named popup.html for legacy reasons but it is OPENED VIA
