@@ -286,24 +286,26 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <!-- v3.22.27: Surveillance Mode panel — replaces weekly focus graph (moved to profile) -->
 <div id="surveillancePanel" style="background:var(--surface,#12122a);border:1px solid #ff6b6b;border-radius:10px;padding:12px 14px;margin:4px 0 8px;">
   <div style="display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ff6b6b;letter-spacing:0.5px;">SURVEILLANCE MODE</div>
-    <div id="surveillanceStatus" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;"></div>
+    <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ff6b6b;letter-spacing:0.5px;" title="Surveillance mode nags you every 5 minutes when no focus timer is running. After 3 ignored nags it escalates: opens Cold Turkey + a confrontational pop-up. Pick a duration and hit START.">SURVEILLANCE MODE</div>
+    <div id="surveillanceStatus" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;" title="Shows whether surveillance is currently active or inactive."></div>
   </div>
+  <div id="surveillanceElapsed" style="margin-top:6px;font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;letter-spacing:0.5px;" title="Time since your last completed focus session, plus a countdown to the next surveillance nag. Green = recent. Orange = getting stale. Red = it's been a while."></div>
+  <div id="siteNagCountdownSurv" style="display:none;margin-top:6px;padding:6px 8px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);border-radius:4px;font-family:'Press Start 2P',monospace;font-size:7px;color:#ff6b6b;text-align:center;letter-spacing:0.5px;" title="Distraction site detected in another tab. Shows a countdown to the next nag notification. Escalates: 5 min → 10 min → 10 min → 2-hour pause after 3 strikes."></div>
   <div style="margin-top:8px;font-family:'Courier New',monospace;font-size:11px;color:#aaa;line-height:1.5;" id="surveillanceDesc">
     Nags you every 5 min when you're not running a focus timer. Escalates if ignored.
   </div>
   <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-    <button id="surveillanceStartBtn" style="background:linear-gradient(135deg,#ff6b6b,#ff8c8c);color:#0a0a14;border:none;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;">START</button>
-    <button id="surveillanceStopBtn" style="display:none;background:transparent;border:1px solid #ff6b6b;color:#ff6b6b;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;">STOP</button>
-    <select id="surveillanceDuration" style="background:var(--surface2,#1a1a3a);border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:6px 8px;border-radius:4px;cursor:pointer;">
+    <button id="surveillanceStartBtn" style="background:linear-gradient(135deg,#ff6b6b,#ff8c8c);color:#0a0a14;border:none;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;" title="Start surveillance mode for the selected duration. You'll be nagged every 5 minutes unless a focus timer is running.">START</button>
+    <button id="surveillanceStopBtn" style="display:none;background:transparent;border:1px solid #ff6b6b;color:#ff6b6b;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;" title="Turn off surveillance mode early. Nags stop immediately.">STOP</button>
+    <select id="surveillanceDuration" style="background:var(--surface2,#1a1a3a);border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:6px 8px;border-radius:4px;cursor:pointer;" title="How long surveillance mode stays active. After this time it turns off automatically.">
       <option value="60">1 HOUR</option>
       <option value="120">2 HOURS</option>
       <option value="240">4 HOURS</option>
       <option value="480" selected>8 HOURS</option>
       <option value="720">12 HOURS</option>
     </select>
-    <div id="surveillanceTimer" style="display:none;font-family:'Press Start 2P',monospace;font-size:9px;color:#ff6b6b;"></div>
-    <button id="surveillanceTestBtn" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-radius:4px;cursor:pointer;margin-left:auto;">TEST</button>
+    <div id="surveillanceTimer" style="display:none;font-family:'Press Start 2P',monospace;font-size:9px;color:#ff6b6b;" title="Time remaining in this surveillance session."></div>
+    <button id="surveillanceTestBtn" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-radius:4px;cursor:pointer;margin-left:auto;" title="Test: simulates a full strike-3 escalation — opens the confrontational nag window + Cold Turkey. Does not affect your YES/NO score.">TEST</button>
   </div>
 </div>
 
@@ -935,6 +937,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       </div>
 
       <div id="coldTurkeyStatus" style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;min-height:14px;text-align:center;"></div>
+      <div id="siteNagCountdown" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);border-radius:6px;font-family:'Press Start 2P',monospace;font-size:7px;color:#ff6b6b;text-align:center;letter-spacing:0.5px;" title="Distraction site detected in another tab. Shows a countdown to the next nag notification. Escalates: 5 min → 10 min → 10 min → 2-hour pause after 3 strikes."></div>
 
       <!-- v3.21.63: Important note about browser scope -->
       <div style="margin-top:12px;padding:8px 10px;background:rgba(255,159,67,0.08);border:1px solid rgba(255,159,67,0.25);border-radius:6px;">

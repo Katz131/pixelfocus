@@ -5211,11 +5211,116 @@ try {
     var statusEl = document.getElementById('surveillanceStatus');
     var descEl = document.getElementById('surveillanceDesc');
     var panel = document.getElementById('surveillancePanel');
+    var elapsedEl = document.getElementById('surveillanceElapsed');
     if (!startBtn) return;
+
+    function updateElapsedDisplay() {
+      if (!elapsedEl) return;
+      var now = Date.now();
+      // Timer currently running? Show that instead
+      if (state.timerEndsAt && state.timerEndsAt > now) {
+        elapsedEl.textContent = 'FOCUS TIMER RUNNING';
+        elapsedEl.style.color = '#00ff88';
+        return;
+      }
+      var lastSession = state.lastStartedSessionAt || state.lastCompletedSessionAt || 0;
+      if (!lastSession) {
+        elapsedEl.textContent = 'NO SESSIONS TODAY';
+        elapsedEl.style.color = '#ff6b6b';
+        return;
+      }
+      var diff = now - lastSession;
+      var totalSec = Math.floor(diff / 1000);
+      var h = Math.floor(totalSec / 3600);
+      var m = Math.floor((totalSec % 3600) / 60);
+      var s = totalSec % 60;
+      var txt;
+      if (totalSec < 5) {
+        txt = 'LAST TIMER: JUST NOW';
+      } else if (h > 0) {
+        txt = 'LAST TIMER: ' + h + 'H ' + (m < 10 ? '0' : '') + m + 'M ' + (s < 10 ? '0' : '') + s + 'S AGO';
+      } else {
+        txt = 'LAST TIMER: ' + m + 'M ' + (s < 10 ? '0' : '') + s + 'S AGO';
+      }
+      elapsedEl.textContent = txt;
+      var mins = Math.floor(diff / 60000);
+      if (mins < 30) elapsedEl.style.color = '#00ff88';
+      else if (mins < 60) elapsedEl.style.color = '#ff9f43';
+      else elapsedEl.style.color = '#ff6b6b';
+      // Countdown to next nag + auto-fire when it hits zero
+      if (state.surveillanceActive) {
+        var _nagInterval = 300000; // 5 minutes
+        // Re-entry guard: prevent multi-fire while async storage write is in flight
+        if (window._survNagFiring) {
+          elapsedEl.textContent = txt + '  |  NAG FIRING...';
+        } else {
+        try {
+          chrome.storage.local.get('pixelFocusState', function(result) {
+            var st = result.pixelFocusState;
+            if (!st) return;
+            var _now = Date.now();
+            var lastNag = st.surveillanceLastNag || 0;
+            var anchor = lastNag || st.surveillanceStartedAt || _now;
+            var nextNag = anchor + _nagInterval;
+            var remaining = Math.max(0, nextNag - _now);
+            var rSec = Math.floor(remaining / 1000);
+            var nM = Math.floor(rSec / 60);
+            var nS = rSec % 60;
+            if (rSec > 0) {
+              elapsedEl.textContent = txt + '  |  NEXT NAG: ' + nM + 'M ' + (nS < 10 ? '0' : '') + nS + 'S';
+            } else {
+              // Time's up — fire the nag right here
+              // Guard: don't fire if timer is running or recently completed
+              var _timerOn = st.timerEndsAt && st.timerEndsAt > _now;
+              var _counting = st.timerState === 'countdown';
+              var _recent = st.lastCompletedSessionAt && (_now - st.lastCompletedSessionAt) < 300000;
+              if (_timerOn || _counting || _recent) {
+                elapsedEl.textContent = txt + '  |  NAG PAUSED (timer active)';
+                return;
+              }
+              // Lock to prevent re-fire on next tick
+              window._survNagFiring = true;
+              st.surveillanceNagCount = (st.surveillanceNagCount || 0) + 1;
+              st.surveillanceLastNag = _now;
+              var _nagNum = st.surveillanceNagCount;
+              if (_nagNum >= 3) {
+                st.surveillanceNagCount = 0;
+              }
+              // Nag 3: deduct 100 coins penalty — but only once per surveillance session
+              var _penaltyJustApplied = false;
+              if (_nagNum >= 3 && !st.surveillancePenaltyApplied) {
+                st.coins = Math.max(0, (st.coins || 0) - 100);
+                st.surveillancePenaltyApplied = true;
+                _penaltyJustApplied = true;
+                state.coins = st.coins;
+              }
+              // Single storage write with all changes (including penalty if applied)
+              chrome.storage.local.set({ pixelFocusState: st }, function() {
+                window._survNagFiring = false;
+              });
+              state.surveillanceNagCount = st.surveillanceNagCount;
+              state.surveillanceLastNag = _now;
+              if (_penaltyJustApplied) {
+                try { notify('-$100 PENALTY — Surveillance strike 3!', '#ff4444'); } catch(_e) {}
+                try { render(); } catch(_e) {}
+              }
+              // Every nag: notification + surveillance window + Cold Turkey
+              try { chrome.runtime.sendMessage({ type: 'SURVEILLANCE_NAG', nagNum: _nagNum, penaltyApplied: !!st.surveillancePenaltyApplied }); } catch(_e) {}
+              var _nagPath = 'surveillance-nag.html' + (_penaltyJustApplied ? '?penalty=1' : '');
+              try { chrome.runtime.sendMessage({ type: 'pf-open', path: _nagPath }); } catch(_e) {}
+              setTimeout(function() { try { openColdTurkeyApp(); } catch(_e) {} }, 3000);
+              elapsedEl.textContent = txt + '  |  NAG #' + _nagNum + ' FIRED';
+            }
+          });
+        } catch(_) {}
+        } // end re-entry guard
+      }
+    }
 
     function updateSurveillanceUI() {
       var now = Date.now();
       var active = state.surveillanceActive && state.surveillanceEndsAt > now;
+      updateElapsedDisplay();
       if (active) {
         startBtn.style.display = 'none';
         durSelect.style.display = 'none';
@@ -5255,8 +5360,10 @@ try {
       var minutes = parseInt(durSelect.value) || 480;
       state.surveillanceActive = true;
       state.surveillanceEndsAt = Date.now() + (minutes * 60000);
+      state.surveillanceStartedAt = Date.now();
       state.surveillanceNagCount = 0;
       state.surveillanceLastNag = 0;
+      state.surveillancePenaltyApplied = false;
       save();
       updateSurveillanceUI();
       try {
@@ -5281,6 +5388,8 @@ try {
 
     // Update timer display every second (shows seconds)
     setInterval(updateSurveillanceUI, 1000);
+
+    // Old setInterval nag check removed — now runs inside updateSurveillanceUI (v3.22.57)
 
     // Initial render
     updateSurveillanceUI();
@@ -5327,13 +5436,162 @@ try {
         try {
           chrome.runtime.sendMessage({ type: 'pf-open', path: 'surveillance-nag.html?test=1' });
         } catch(_) {}
-        // Open Cold Turkey after delay (so nag tab settles first, CT gets foreground)
+        // Open Cold Turkey after delay (so nag tab fully settles, CT gets foreground)
         setTimeout(function() {
           try { openColdTurkeyApp(); } catch(_) {}
-        }, 1500);
+        }, 3000);
       });
     }
   } catch(_) {}
+
+  // v3.22.59: Page-side distraction site nag — replaces broken chrome.alarms in Brave.
+  // Runs every second for smooth countdown display + fires nag when countdown hits zero.
+  // Escalating cooldowns: 5min → 10min → 10min → 2hr pause (same logic as old alarm handler).
+  (function pageSideSiteNag() {
+    var _siteNagFiring = false; // guard against re-entrant fires
+    var _siteNagEls = [
+      document.getElementById('siteNagCountdown'),      // Cold Turkey settings area
+      document.getElementById('siteNagCountdownSurv')    // Surveillance panel
+    ];
+    function _updateSiteNagDisplay(html, borderColor, textColor) {
+      for (var e = 0; e < _siteNagEls.length; e++) {
+        if (!_siteNagEls[e]) continue;
+        if (html === null) { _siteNagEls[e].style.display = 'none'; continue; }
+        _siteNagEls[e].style.display = 'block';
+        _siteNagEls[e].style.borderColor = borderColor || 'rgba(255,68,68,0.3)';
+        _siteNagEls[e].style.color = textColor || '#ff6b6b';
+        _siteNagEls[e].innerHTML = html;
+      }
+    }
+    var _lastTabCheckAt = 0;
+    var _lastMatchedSite = ''; // cache: last detected distraction site
+    var _isOnDistraction = false; // cache: whether active tab is on a watchlisted site
+    setInterval(function() {
+      if (_siteNagFiring) return;
+      var now = Date.now();
+      try {
+        chrome.storage.local.get('pixelFocusState', function(result) {
+          var st = result.pixelFocusState;
+          if (!st) return;
+          var sites = st.coldTurkeyNagSites;
+          if (!sites || !sites.length) {
+            _updateSiteNagDisplay(null);
+            _isOnDistraction = false;
+            return;
+          }
+
+          // Don't nag if a focus timer is currently running
+          if (st.timerEndsAt && st.timerEndsAt > now) {
+            _updateSiteNagDisplay(null);
+            _isOnDistraction = false;
+            return;
+          }
+
+          // Escalating cooldowns: 3 nags then 2hr pause
+          var unacked = st.siteNagUnackedCount || 0;
+          var in2hrPause = false;
+          if (unacked >= 3) {
+            var TWO_HOURS = 2 * 60 * 60 * 1000;
+            if (st.coldTurkeyLastSiteNagAt && (now - st.coldTurkeyLastSiteNagAt) < TWO_HOURS) {
+              in2hrPause = true;
+            } else {
+              // 2 hours passed — reset
+              st.siteNagUnackedCount = 0;
+              unacked = 0;
+              chrome.storage.local.set({ pixelFocusState: st });
+            }
+          }
+
+          // Cooldown between nags: 0 → 5min → 10min → 10min
+          var cooldown = (unacked === 0) ? 0 : (unacked === 1 ? 5 * 60 * 1000 : 10 * 60 * 1000);
+
+          // Check ALL open tabs every 5 seconds for watchlist matches
+          if (now - _lastTabCheckAt >= 5000) {
+            _lastTabCheckAt = now;
+            _siteNagFiring = true;
+            try {
+              chrome.tabs.query({}, function(tabs) {
+                _siteNagFiring = false;
+                if (!tabs || !tabs.length) {
+                  _isOnDistraction = false;
+                  _lastMatchedSite = '';
+                  return;
+                }
+                var matched = false;
+                var matchedSite = '';
+                for (var t = 0; t < tabs.length; t++) {
+                  var url = (tabs[t].url || '').toLowerCase();
+                  if (!url || url.indexOf('chrome-extension://') === 0 || url.indexOf('chrome://') === 0
+                      || url.indexOf('brave://') === 0 || url.indexOf('about:') === 0) continue;
+                  for (var i = 0; i < sites.length; i++) {
+                    if (url.indexOf(sites[i]) !== -1) { matched = true; matchedSite = sites[i]; break; }
+                  }
+                  if (matched) break;
+                }
+                _isOnDistraction = matched;
+                _lastMatchedSite = matchedSite;
+              });
+            } catch(_) { _siteNagFiring = false; }
+          }
+
+          // Update countdown display (both surveillance panel + CT settings)
+          if (!_isOnDistraction) {
+            _updateSiteNagDisplay(null);
+          } else if (in2hrPause) {
+            // In 2hr pause after 3 strikes
+            var pauseRemaining = Math.max(0, (st.coldTurkeyLastSiteNagAt + 2 * 60 * 60 * 1000) - now);
+            var pH = Math.floor(pauseRemaining / 3600000);
+            var pM = Math.floor((pauseRemaining % 3600000) / 60000);
+            var pS = Math.floor((pauseRemaining % 60000) / 1000);
+            _updateSiteNagDisplay(
+              '&#9888; DISTRACTION: ' + _lastMatchedSite.toUpperCase()
+              + '<br>3 STRIKES — PAUSED ' + pH + 'H ' + (pM < 10 ? '0' : '') + pM + 'M ' + (pS < 10 ? '0' : '') + pS + 'S',
+              'rgba(255,159,67,0.3)', '#ff9f43'
+            );
+          } else if (cooldown > 0 && st.coldTurkeyLastSiteNagAt) {
+            // Show countdown to next nag
+            var nextNagAt = st.coldTurkeyLastSiteNagAt + cooldown;
+            var remaining = Math.max(0, nextNagAt - now);
+            var rM = Math.floor(remaining / 60000);
+            var rS = Math.floor((remaining % 60000) / 1000);
+            if (remaining > 0) {
+              _updateSiteNagDisplay(
+                '&#9888; DISTRACTION: ' + _lastMatchedSite.toUpperCase()
+                + '<br>NAG ' + (unacked + 1) + '/3 IN: ' + rM + 'M ' + (rS < 10 ? '0' : '') + rS + 'S'
+              );
+            } else {
+              _updateSiteNagDisplay(
+                '&#9888; DISTRACTION: ' + _lastMatchedSite.toUpperCase()
+                + '<br>NAG IMMINENT...'
+              );
+            }
+
+            // Fire when countdown reaches zero
+            if (remaining <= 0) {
+              st.coldTurkeyLastSiteNagAt = Date.now();
+              st.siteNagUnackedCount = (st.siteNagUnackedCount || 0) + 1;
+              chrome.storage.local.set({ pixelFocusState: st });
+              try {
+                chrome.runtime.sendMessage({ type: 'SITE_NAG_FIRE', nagNum: st.siteNagUnackedCount });
+              } catch(_) {}
+            }
+          } else {
+            // First nag — fire immediately
+            _updateSiteNagDisplay(
+              '&#9888; DISTRACTION: ' + _lastMatchedSite.toUpperCase()
+              + '<br>FIRING NAG 1/3...'
+            );
+            st.coldTurkeyLastSiteNagAt = Date.now();
+            st.siteNagUnackedCount = (st.siteNagUnackedCount || 0) + 1;
+            chrome.storage.local.set({ pixelFocusState: st });
+            try {
+              chrome.runtime.sendMessage({ type: 'SITE_NAG_FIRE', nagNum: st.siteNagUnackedCount });
+            } catch(_) {}
+          }
+        });
+      } catch(_) {}
+    }, 1000); // every second for smooth countdown
+  })();
 
   function beginActualSession() {
     SFX.startTimer();
@@ -5855,6 +6113,11 @@ try {
     // institution flat bonuses all pause until they return and run
     // a session, at which point passive income resumes live.
     state.lastCompletedSessionAt = Date.now();
+    // v3.22.72: Reset surveillance nag anchor so next nag is 5 min from now, not from session start
+    if (state.surveillanceActive) {
+      state.surveillanceLastNag = Date.now();
+      state.surveillanceNagCount = 0;
+    }
 
     // Calculate XP
     const xpGain = calculateXPGain(state.combo, state.streak);
@@ -6025,6 +6288,16 @@ try {
     // Update modal copy to reflect the session length
     var modalTitle = document.getElementById('focusModalTitle');
     var modalSub = document.getElementById('focusModalSub');
+    // v3.22.44: Expire challenge if timer started too late (>3 min after accepting)
+    if (state.challengeActive && state.challengeAcceptedAt) {
+      var sessionStart = state._sessionStartedAt || Date.now();
+      if ((sessionStart - state.challengeAcceptedAt) > (3 * 60 * 1000)) {
+        state.challengeActive = false;
+        state.challengeAcceptedAt = 0;
+        state.challengeSessionPaused = false;
+        save();
+      }
+    }
     // v3.21.51: Show challenge bonus info in the confirmation modal
     var challengePending = state.challengeActive && !state.challengeSessionPaused;
     if (modalTitle) modalTitle.textContent = challengePending ? '\u2694 IDLE CHALLENGE — Did you focus?' : 'Did you actually focus?';
@@ -6052,6 +6325,17 @@ try {
       if (!_focusConfirmArmed) { closeModal(); return; }
       _focusConfirmArmed = false;
       closeModal();
+      // v3.22.44: Expire challenge if timer wasn't started within 3 min of accepting
+      var CHALLENGE_EXPIRY_MS = 3 * 60 * 1000;
+      if (state.challengeActive && state.challengeAcceptedAt) {
+        var sessionStart = state._sessionStartedAt || Date.now();
+        if ((sessionStart - state.challengeAcceptedAt) > CHALLENGE_EXPIRY_MS) {
+          state.challengeActive = false;
+          state.challengeAcceptedAt = 0;
+          state.challengeSessionPaused = false;
+          notify('Idle challenge expired — timer not started within 3 minutes.', 'var(--warning)');
+        }
+      }
       // v3.21.51: Idle Challenge — 1.5x rewards if challenge active + no pause
       var challengeBonus = false;
       if (state.challengeActive && !state.challengeSessionPaused) {

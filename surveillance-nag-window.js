@@ -4,6 +4,16 @@
 
 (function() {
   var isTest = window.location.search.indexOf('test=1') !== -1;
+  var isPenalty = window.location.search.indexOf('penalty=1') !== -1;
+
+  // Show penalty banner if $100 was just deducted
+  if (isPenalty) {
+    var card = document.querySelector('.nag-card');
+    var penaltyBanner = document.createElement('div');
+    penaltyBanner.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:10px;color:#ff4444;background:rgba(255,68,68,0.15);border:2px solid #ff4444;border-radius:8px;padding:12px;margin-bottom:16px;letter-spacing:1px;text-align:center;animation:pulse 2s ease-in-out infinite;';
+    penaltyBanner.innerHTML = '-$100 PENALTY<br><span style="font-size:7px;color:#ff8888;margin-top:4px;display:inline-block;">Strike 3. You just lost $100.</span>';
+    card.insertBefore(penaltyBanner, card.firstChild);
+  }
 
   var messages = [
     'Every minute you waste right now is a minute <span class="em">stolen from the version of you that worked so hard to get here.</span><br><br>You didn\'t build this foundation overnight. It took months. Years. Discipline you didn\'t think you had. And now you\'re letting it erode — not in some dramatic collapse, but in the quiet, incremental way that\'s almost worse.<br><br><span class="dim">Drip. Drip. Drip.</span>',

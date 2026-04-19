@@ -207,20 +207,20 @@ body {
 <div class="nag-card">
   <div class="nag-icon">&#128065;</div>
   <div class="nag-title">SURVEILLANCE</div>
-  <div class="nag-reminder">YOU TURNED THIS ON. YOU ASKED FOR THIS.</div>
-  <div class="nag-elapsed" id="elapsedLine">idle for <span id="elapsedTime">??</span></div>
-  <div class="nag-message" id="nagMessage"></div>
-  <div class="cycle-dots" id="cycleDots"></div>
+  <div class="nag-reminder" title="You opted into surveillance mode voluntarily. This is what you asked for.">YOU TURNED THIS ON. YOU ASKED FOR THIS.</div>
+  <div class="nag-elapsed" id="elapsedLine" title="How long it's been since your last focus timer ended.">idle for <span id="elapsedTime">??</span></div>
+  <div class="nag-message" id="nagMessage" title="Rotating motivational messages. Each one is a different angle on why idle time matters."></div>
+  <div class="cycle-dots" id="cycleDots" title="Message position. There are 10 rotating messages."></div>
   <div id="ackGate" style="margin-top:20px;">
-    <button class="btn-no" id="ackBtn" type="button" style="color:#5a5a7e;border-color:#5a5a7e;">I KNOW</button>
+    <button class="btn-no" id="ackBtn" type="button" style="color:#5a5a7e;border-color:#5a5a7e;" title="Acknowledge you've read the message. Reveals the YES/NO choice.">I KNOW</button>
   </div>
   <div id="questionGate" style="display:none;">
     <div class="nag-question">Are you going to set a timer<br>right now or not?</div>
     <div class="nag-buttons">
-      <button class="btn-yes" id="yesBtn" type="button">YES</button>
-      <button class="btn-no" id="noBtn" type="button">NO</button>
+      <button class="btn-yes" id="yesBtn" type="button" title="Yes — you'll start a focus timer right now. Closes this window. Your YES count goes up.">YES</button>
+      <button class="btn-no" id="noBtn" type="button" title="No — you're not going to start a timer. Your NO count goes up. Window stays open.">NO</button>
     </div>
-    <div class="nag-score" id="scoreDisplay"></div>
+    <div class="nag-score" id="scoreDisplay" title="Your lifetime YES vs NO count and follow-through percentage."></div>
   </div>
 </div>
 

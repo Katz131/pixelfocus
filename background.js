@@ -138,6 +138,62 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true;
   }
 
+  // v3.22.52: Surveillance nag notification from page-side check (fallback for alarms)
+  if (msg && msg.type === 'SURVEILLANCE_NAG') {
+    var nagNum = (msg && msg.nagNum) || 1;
+    var penaltyDone = msg && msg.penaltyApplied;
+    var nagTitle, nagMsg;
+    if (nagNum >= 3 && !penaltyDone) {
+      nagTitle = 'STRIKE 3 \u2014 $100 PENALTY';
+      nagMsg = 'You just lost $100. Start a focus timer or keep bleeding money.';
+    } else if (nagNum >= 3 && penaltyDone) {
+      nagTitle = 'STRIKE 3 \u2014 No focus timer running!';
+      nagMsg = 'Penalty already applied this session. Start a timer.';
+    } else if (nagNum === 2 && !penaltyDone) {
+      nagTitle = 'STRIKE 2 \u2014 Next one costs $100!';
+      nagMsg = 'This is your warning. Strike 3 deducts $100 from your balance.';
+    } else {
+      nagTitle = 'Surveillance: No focus timer running!';
+      nagMsg = 'Nag ' + nagNum + '/3 \u2014 Start a focus timer! Ignoring this costs you.';
+    }
+    try {
+      chrome.notifications.create('surveillance-nag-' + Date.now(), {
+        type: 'basic', iconUrl: 'icons/icon128.png',
+        title: nagTitle,
+        message: nagMsg,
+        priority: 2, requireInteraction: false
+      }, function() {
+        try { sendResponse({ ok: true }); } catch(_){}
+      });
+    } catch(_){
+      try { sendResponse({ ok: false }); } catch(_){}
+    }
+    return true;
+  }
+
+  // v3.22.59: Site nag notification from page-side check (fallback for broken alarms in Brave)
+  if (msg && msg.type === 'SITE_NAG_FIRE') {
+    var siteNagNum = (msg && msg.nagNum) || 1;
+    var siteTitle = siteNagNum >= 3 ? 'FINAL WARNING — Distraction detected'
+                  : siteNagNum === 2 ? 'Second warning — Distraction detected'
+                  : 'Distraction site detected';
+    var siteMsg = siteNagNum >= 3 ? 'Third strike! Nags paused for 2 hours.'
+                : siteNagNum === 2 ? 'Still on a distraction site. Next nag in 10 min.'
+                : 'You\'re on a distraction site. Time to focus!';
+    try {
+      chrome.notifications.create('site-nag-' + Date.now(), {
+        type: 'basic', iconUrl: 'icons/icon128.png',
+        title: siteTitle, message: siteMsg, priority: 2
+      });
+    } catch(_){}
+    // Open Cold Turkey via native messaging
+    try {
+      chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {});
+    } catch(_){}
+    try { sendResponse({ ok: true }); } catch(_){}
+    return false;
+  }
+
   // v3.20.31: Safe Refresh request from popup.js. The popup has already
   // written a backup to disk and mirrored it into chrome.storage.local
   // under 'pixelFocusState_backup'. We reply, then reload the extension
@@ -217,8 +273,9 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       var now = Date.now();
 
-      // Timer currently running? Don't nag.
+      // Timer currently running, counting down, or paused? Don't nag.
       if (state.timerEndsAt && state.timerEndsAt > now) return;
+      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused') return;
 
       // Last STARTED session within 2 hours? All good.
       var TWO_HOURS = 2 * 60 * 60 * 1000;
@@ -247,10 +304,11 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
   // v3.22.27: Surveillance Mode — nag every 5 min, escalate after 3 ignored
   if (alarm.name === 'pixelfocus-surveillance') {
+    console.log('[Surveillance] Alarm fired at', new Date().toLocaleTimeString());
     chrome.storage.local.get('pixelFocusState', function(result) {
       var state = result.pixelFocusState;
-      if (!state) return;
-      if (!state.surveillanceActive) return;
+      if (!state) { console.log('[Surveillance] No state'); return; }
+      if (!state.surveillanceActive) { console.log('[Surveillance] Not active'); return; }
 
       var now = Date.now();
 
@@ -261,6 +319,8 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
         chrome.storage.local.set({ pixelFocusState: state });
         return;
       }
+
+      console.log('[Surveillance] Active, endsAt:', state.surveillanceEndsAt, 'now:', now, 'nagCount:', state.surveillanceNagCount, 'lastStart:', state.lastStartedSessionAt, 'timerEndsAt:', state.timerEndsAt);
 
       // Timer currently running? Reset nag count and skip.
       if (state.timerEndsAt && state.timerEndsAt > now) {
@@ -290,16 +350,31 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       // Escalation: 1-2 = notification only, 3+ = surveillance nag window + Cold Turkey
       if (nagNum >= 3) {
-        // ESCALATION: Open surveillance nag window, then Cold Turkey after delay
-        // so CT launches AFTER the tab settles and actually gets foreground
-        try { openPixelFocusWindow('surveillance-nag.html'); } catch(_){}
+        // ESCALATION: Close all extension tabs except popup.html, then open surveillance nag
+        var extOrigin = chrome.runtime.getURL('');
+        try {
+          chrome.tabs.query({}, function(tabs) {
+            var toClose = [];
+            for (var t = 0; t < tabs.length; t++) {
+              var tUrl = tabs[t].url || '';
+              if (tUrl.indexOf(extOrigin) === 0 && tUrl.indexOf('popup.html') === -1) {
+                toClose.push(tabs[t].id);
+              }
+            }
+            if (toClose.length > 0) chrome.tabs.remove(toClose);
+          });
+        } catch(_){}
+        // Open surveillance nag window after brief delay for tab cleanup
+        setTimeout(function() {
+          try { openPixelFocusWindow('surveillance-nag.html'); } catch(_){}
+        }, 300);
         setTimeout(function() {
           try {
             chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {
               if (chrome.runtime.lastError) {}
             });
           } catch(_){}
-        }, 1500);
+        }, 3000);
         try {
           chrome.notifications.create('surveillance-nag', {
             type: 'basic', iconUrl: 'icons/icon128.png',
