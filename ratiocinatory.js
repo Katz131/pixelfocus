@@ -1150,8 +1150,8 @@
 
     // Attach message log UI
     try {
-      if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.attach) {
-        MsgLog.attach(document.getElementById('msgConsole'));
+      if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.mount) {
+        MsgLog.mount('msgConsole');
       }
     } catch (_) {}
 

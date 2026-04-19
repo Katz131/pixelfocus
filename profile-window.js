@@ -44,25 +44,101 @@
     return { level: 100, currentXP: 0, nextLevelXP: 1, totalXP: totalXP };
   }
 
-  // Trim the huge title ladder from app.js down to the thresholds we need.
-  // These must be kept in sync with getLevelTitle(level) in app.js.
+  // Full title ladder — must match getLevelTitle(level) in app.js exactly.
   function getLevelTitle(level) {
-    if (level >= 100) return 'Omnifabric Singularity';
-    if (level >= 90)  return 'Quasar-Class Loom Consciousness';
-    if (level >= 80)  return 'Distributed Loom Intelligence';
-    if (level >= 70)  return 'Orbital Loom Investor';
-    if (level >= 60)  return 'Loom Venture Capitalist';
-    if (level >= 50)  return 'Solar Weaver';
-    if (level >= 45)  return 'Master of Markets';
-    if (level >= 40)  return 'Lord of the Spinning Jennies';
-    if (level >= 35)  return 'Mill Magnate';
-    if (level >= 30)  return 'Warden of the Floor';
-    if (level >= 25)  return 'Foreman of the Jacquards';
-    if (level >= 20)  return 'Senior Weaver';
-    if (level >= 15)  return 'Heddlekeeper';
-    if (level >= 10)  return 'Journeyman Weaver';
-    if (level >= 5)   return 'Apprentice Weaver';
-    return 'Would-Be Weaver';
+    // Tier 1 — The Craft
+    if (level < 3)   return 'Novice of the Loom';
+    if (level < 6)   return 'Apprentice Weaver';
+    if (level < 9)   return 'Journeyman of the Shuttle';
+    if (level < 12)  return 'Focused Weaver';
+    if (level < 15)  return 'Dedicated Weaver';
+    if (level < 18)  return 'Disciplined Weaver';
+    if (level < 22)  return 'Adept of the Warp';
+    if (level < 26)  return 'Master Weaver';
+    if (level < 30)  return 'Grandmaster of the Shuttle';
+
+    // Tier 2 — The Trade
+    if (level < 33)  return 'Shopkeeper of Cloth';
+    if (level < 36)  return 'Guildsman of the Mercers';
+    if (level < 39)  return 'Mercer';
+    if (level < 42)  return 'Draper';
+    if (level < 45)  return 'Clothier';
+    if (level < 48)  return 'Warden of the Drapers\u2019 Company';
+    if (level < 51)  return 'Alderman of the Weavers\u2019 Guild';
+    if (level < 54)  return 'Factor of the Cloth Trade';
+    if (level < 57)  return 'Master of the Mercery';
+
+    // Tier 3 — The Mill
+    if (level < 60)  return 'Mill Foreman';
+    if (level < 63)  return 'Mill Overseer';
+    if (level < 66)  return 'Mill Owner';
+    if (level < 69)  return 'Master of the Mill';
+    if (level < 72)  return 'Industrial Clothier';
+    if (level < 75)  return 'Lord of the Spinning Jennies';
+    if (level < 78)  return 'Factory Lord';
+
+    // Tier 4 — The Aristocracy
+    if (level < 82)  return 'Cotton Baron';
+    if (level < 86)  return 'Linen Viscount';
+    if (level < 90)  return 'Silk Count';
+    if (level < 94)  return 'Wool Earl';
+    if (level < 98)  return 'Warp Marquess';
+    if (level < 102) return 'Weft Duke';
+    if (level < 106) return 'Loom Prince';
+    if (level < 110) return 'Textile Archduke';
+    if (level < 114) return 'Fabric Potentate';
+
+    // Tier 5 — The Corporate Oligarchy
+    if (level < 119) return 'Textile Magnate';
+    if (level < 124) return 'Cloth Tycoon';
+    if (level < 129) return 'Chair of the Textile Trust';
+    if (level < 134) return 'Weaving Conglomerate CEO';
+    if (level < 139) return 'Textile Oligarch';
+    if (level < 144) return 'Global Fabric Hegemon';
+    if (level < 149) return 'Sovereign of the Cloth Monopoly';
+    if (level < 155) return 'Emperor of the Warp Exchange';
+
+    // Tier 6 — The Technocratic Playboy Billionaire
+    if (level < 161) return 'Textile Futurist';
+    if (level < 167) return 'Loom Venture Capitalist';
+    if (level < 173) return 'Silicon Weaver';
+    if (level < 179) return 'Algorithmic Thread Architect';
+    if (level < 185) return 'Playboy of the Warp';
+    if (level < 191) return 'Yacht-Class Fabric Baron';
+    if (level < 197) return 'Private-Island Textile Mogul';
+    if (level < 204) return 'Orbital Loom Investor';
+    if (level < 211) return 'Post-Scarcity Cloth Titan';
+    if (level < 218) return 'Trillionaire Thread Architect';
+
+    // Tier 7 — The Posthuman Upload
+    if (level < 226) return 'Uploaded Consciousness, Mk I';
+    if (level < 234) return 'Distributed Loom Intelligence';
+    if (level < 242) return 'Cybernetic Warp-Mind';
+    if (level < 250) return 'Polymorphic Thread-Entity';
+    if (level < 260) return 'Hive-Loom Node Prime';
+    if (level < 270) return 'Aggregate Fabric Intelligence';
+
+    // Tier 8 — The Cosmic Megastructure
+    if (level < 285) return 'Planet-Scale Loom';
+    if (level < 300) return 'Lunar Mill Sovereign';
+    if (level < 315) return 'Solar Weaver';
+    if (level < 330) return 'Ringworld Weaver';
+    if (level < 345) return 'Dyson Loom Architect';
+    if (level < 360) return 'System-Wide Warp Hegemon';
+
+    // Tier 9 — The Galactic Hegemon
+    if (level < 380) return 'Galactic Thread Sovereign';
+    if (level < 400) return 'Nebular Loom Archon';
+    if (level < 425) return 'Starforge Weaver';
+    if (level < 450) return 'Intergalactic Cloth Emperor';
+    if (level < 475) return 'Quasar-Class Loom Consciousness';
+
+    // Tier 10 — Universal Transcendence
+    if (level < 525) return 'Universal Loom Archon';
+    if (level < 600) return 'Multiversal Weaver of All Cloth';
+    if (level < 750) return 'Omnifabric Singularity';
+    if (level < 1000) return 'The Loom That Is All Looms';
+    return 'Heat-Death Tailor';
   }
 
   function getStreakBonus(streak) {
@@ -257,7 +333,11 @@
     // Today's focus time banner (v3.21.33)
     var _pfTodayEl = document.getElementById('profileTodayFocusTime');
     if (_pfTodayEl) {
-      var _pfToday = new Date().toISOString().slice(0, 10);
+      // v3.21.55: Use LOCAL date, not UTC — must match app.js todayStr().
+      var _pfD = new Date();
+      var _pfMM = _pfD.getMonth() + 1;
+      var _pfDD = _pfD.getDate();
+      var _pfToday = _pfD.getFullYear() + '-' + (_pfMM < 10 ? '0' : '') + _pfMM + '-' + (_pfDD < 10 ? '0' : '') + _pfDD;
       var _pfSessions = (state.dailySessionLog && state.dailySessionLog.date === _pfToday)
         ? (state.dailySessionLog.sessions || []) : [];
       var _pfMin = 0;
@@ -321,6 +401,9 @@
     // v3.21.19: Daily completed tasks
     renderDailyTasks(state);
 
+    // v3.22.27: Weekly focus bar chart
+    renderWeeklyFocus();
+
     // Sync to Firestore + show link
     updateProfileLinkBar(state);
     syncProfile(state);
@@ -333,7 +416,11 @@
     if (!panel || !listEl) return;
 
     var log = state.dailyTaskLog;
-    var today = new Date().toISOString().slice(0, 10);
+    // v3.21.55: Use LOCAL date, not UTC — must match app.js todayStr().
+    var _dtD = new Date();
+    var _dtMM = _dtD.getMonth() + 1;
+    var _dtDD = _dtD.getDate();
+    var today = _dtD.getFullYear() + '-' + (_dtMM < 10 ? '0' : '') + _dtMM + '-' + (_dtDD < 10 ? '0' : '') + _dtDD;
     var dateLabel = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
     if (log && log.date) {
@@ -359,12 +446,13 @@
       return;
     }
 
+    var blurStyle = state.blurCompletedTasks ? 'filter:blur(5px);user-select:none;' : '';
     var html = '';
     for (var i = 0; i < keys.length; i++) {
       var name = keys[i];
       var count = log.tasks[name] || 0;
       var countStr = count > 1 ? 'x' + count : '\u2713';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(78,205,196,0.1);">'
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(78,205,196,0.1);' + blurStyle + '">'
         + '<span style="font-size:12px;color:var(--text);">' + escHtml(name) + '</span>'
         + '<span style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#4ecdc4;">' + countStr + '</span>'
         + '</div>';
@@ -645,6 +733,7 @@
       ['toFactoryBtn', 'factory.html'],
       ['toGalleryBtn', 'gallery.html'],
       ['toHouseBtn', 'house.html'],
+      ['toTimelineBtn', 'timeline.html'],
       ['backToTrackerBtn', 'popup.html']
     ];
     map.forEach(function(pair) {
@@ -730,11 +819,136 @@
     });
   }
 
+  // ===== Weekly Focus Bar Chart (v3.22.27, moved from app.js) =====
+  var _weekOffset = 0; // 0 = current week, -1 = last week, etc.
+
+  function renderWeeklyFocus() {
+    var barsEl = document.getElementById('weeklyBars');
+    var labelsEl = document.getElementById('weeklyLabels');
+    var summaryEl = document.getElementById('weeklySummary');
+    var labelEl = document.getElementById('weekLabel');
+    if (!barsEl || !currentState) return;
+
+    var state = currentState;
+
+    // Compute the Monday of the target week
+    var now = new Date();
+    var todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var dayOfWeek = todayDate.getDay(); // 0=Sun
+    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    var thisMonday = new Date(todayDate.getTime() + mondayOffset * 86400000);
+    var targetMonday = new Date(thisMonday.getTime() + _weekOffset * 7 * 86400000);
+
+    // Helper to format today's date
+    function todayStr() {
+      var d = new Date();
+      var m = d.getMonth() + 1;
+      var dd = d.getDate();
+      return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
+    }
+
+    var today = todayStr();
+    var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var days = [];
+    var maxMin = 1; // min 1 to avoid div-by-zero
+
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(targetMonday.getTime() + i * 86400000);
+      var mm = d.getMonth() + 1;
+      var dd = d.getDate();
+      var dateStr = d.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
+
+      var mins = 0;
+      if (dateStr === today) {
+        // Live: sum from current dailySessionLog
+        if (state.dailySessionLog && state.dailySessionLog.date === today) {
+          var sess = state.dailySessionLog.sessions || [];
+          for (var s = 0; s < sess.length; s++) mins += (sess[s].min || 0);
+        }
+      } else {
+        // Archived
+        mins = (state.focusHistory && state.focusHistory[dateStr]) || 0;
+      }
+
+      if (mins > maxMin) maxMin = mins;
+      var isFuture = dateStr > today;
+      days.push({ label: dayNames[i], dateStr: dateStr, mins: mins, isToday: dateStr === today, isFuture: isFuture });
+    }
+
+    // Date range label
+    var endDate = new Date(targetMonday.getTime() + 6 * 86400000);
+    function fmtShort(dt) {
+      var m = dt.getMonth() + 1;
+      var d = dt.getDate();
+      return (m < 10 ? '0' : '') + m + '/' + (d < 10 ? '0' : '') + d;
+    }
+    if (labelEl) labelEl.textContent = fmtShort(targetMonday) + ' - ' + fmtShort(endDate);
+
+    // Render bars
+    barsEl.innerHTML = '';
+    labelsEl.innerHTML = '';
+    var totalMins = 0;
+
+    for (var j = 0; j < days.length; j++) {
+      var day = days[j];
+      totalMins += day.mins;
+
+      // Bar
+      var barWrap = document.createElement('div');
+      barWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;';
+
+      // Minute label on top of bar
+      var valSpan = document.createElement('div');
+      valSpan.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#ff9f43;margin-bottom:2px;';
+      valSpan.textContent = day.isFuture ? '' : (day.mins > 0 ? day.mins + 'm' : '');
+      barWrap.appendChild(valSpan);
+
+      // The bar itself
+      var bar = document.createElement('div');
+      var pct = day.isFuture ? 0 : Math.max(day.mins > 0 ? 8 : 2, Math.round((day.mins / maxMin) * 100));
+      var color = day.isToday ? '#00ff88' : (day.isFuture ? '#1a1a2e' : '#ff9f43');
+      var opacity = day.isFuture ? '0.2' : '1';
+      bar.style.cssText = 'width:100%;border-radius:3px 3px 0 0;background:' + color + ';opacity:' + opacity + ';height:' + pct + '%;min-height:2px;transition:height 0.3s ease;';
+      barWrap.appendChild(bar);
+
+      barsEl.appendChild(barWrap);
+
+      // Day label
+      var lbl = document.createElement('div');
+      lbl.style.cssText = 'flex:1;text-align:center;font-family:"Press Start 2P",monospace;font-size:6px;color:' + (day.isToday ? '#00ff88' : '#5a5a7e') + ';';
+      lbl.textContent = day.label;
+      labelsEl.appendChild(lbl);
+    }
+
+    // Summary
+    var hrs = Math.floor(totalMins / 60);
+    var rm = totalMins % 60;
+    var sumText = totalMins === 0 ? 'No focus data this week' : (hrs > 0 ? hrs + 'h ' : '') + rm + 'm total';
+    if (summaryEl) summaryEl.textContent = sumText;
+  }
+
+  // Wire prev/next buttons for weekly focus
+  function wireWeeklyFocusNav() {
+    var prev = document.getElementById('weekPrev');
+    var next = document.getElementById('weekNext');
+    if (prev) prev.addEventListener('click', function() {
+      _weekOffset--;
+      renderWeeklyFocus();
+    });
+    if (next) next.addEventListener('click', function() {
+      if (_weekOffset < 0) {
+        _weekOffset++;
+        renderWeeklyFocus();
+      }
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     wireNav();
     wireEditable('displayName', 'displayName', 40);
     wireEditable('tagline', 'tagline', 140);
     wireCopyButton();
+    wireWeeklyFocusNav();
     var lbBtn = document.getElementById('leaderboardBtn');
     if (lbBtn) lbBtn.addEventListener('click', function() {
       window.open('https://todo-of-the-loom.web.app/', '_blank');

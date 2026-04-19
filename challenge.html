@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!! NEVER A POPUP !!!
+  =============================================================================
+  Challenge Window — v3.21.51
+
+  A pop-out window triggered by the 2-hour idle reminder. Shows a 3-minute
+  countdown timer and lets the player accept or decline a 1.5x reward
+  challenge on their next focus session. If accepted, the next completed
+  session (no pause, no fail) earns 1.5x rewards.
+
+  Opened by background.js via chrome.tabs.create / chrome.windows.create.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo of the Loom — Idle Challenge</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #08080f;
+  --surface: #12122a;
+  --surface2: #1a1a3a;
+  --accent: #00ff88;
+  --accent2: #ff6b9d;
+  --accent3: #4ecdc4;
+  --gold: #ffd700;
+  --flame: #ff8c3a;
+  --text: #e0e0e0;
+  --text-dim: #5a5a7e;
+  --border: #2a2a4a;
+  --warning: #ff6b6b;
+}
+
+body {
+  background: radial-gradient(ellipse at 50% 30%, #1a1028 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.challenge-card {
+  background: var(--surface);
+  border: 2px solid var(--flame);
+  border-radius: 16px;
+  max-width: 480px;
+  width: 100%;
+  padding: 32px 28px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(255, 140, 58, 0.25), inset 0 0 60px rgba(255, 140, 58, 0.03);
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 40px rgba(255, 140, 58, 0.25); }
+  50%      { box-shadow: 0 0 60px rgba(255, 140, 58, 0.4); }
+}
+
+.challenge-card.ticking {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.challenge-icon {
+  font-size: 56px;
+  margin-bottom: 12px;
+  text-shadow: 0 0 20px rgba(255, 140, 58, 0.5);
+}
+
+.challenge-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  color: var(--flame);
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+  text-shadow: 0 0 10px rgba(255, 140, 58, 0.3);
+}
+
+.challenge-timer {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 42px;
+  color: var(--text);
+  margin: 20px 0;
+  letter-spacing: 4px;
+  text-shadow: 0 0 16px rgba(255, 140, 58, 0.3);
+}
+
+.challenge-timer.urgent {
+  color: var(--warning);
+  text-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+}
+
+.timer-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.challenge-explanation {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.8;
+  text-align: left;
+  margin: 16px 0 24px;
+  padding: 16px;
+  background: rgba(255, 140, 58, 0.06);
+  border: 1px solid rgba(255, 140, 58, 0.15);
+  border-radius: 8px;
+}
+
+.challenge-explanation .highlight {
+  color: var(--flame);
+  font-weight: bold;
+}
+
+.challenge-explanation .gold {
+  color: var(--gold);
+  font-weight: bold;
+}
+
+.challenge-explanation .warn {
+  color: var(--warning);
+}
+
+.challenge-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.btn-accept {
+  background: linear-gradient(135deg, #ff8c3a, #ffb64c);
+  color: #0a0a14;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 28px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 16px rgba(255, 140, 58, 0.3);
+}
+
+.btn-accept:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 24px rgba(255, 140, 58, 0.5);
+}
+
+.btn-accept:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-decline {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--text-dim);
+  border-radius: 8px;
+  padding: 14px 28px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-decline:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.result-msg {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  margin-top: 20px;
+  line-height: 1.8;
+  display: none;
+}
+
+.result-msg.accepted {
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.result-msg.declined {
+  color: var(--text-dim);
+}
+
+.result-msg.expired {
+  color: var(--warning);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--flame), var(--gold));
+  transition: width 1s linear;
+  border-radius: 3px;
+}
+</style>
+</head>
+<body>
+
+<div class="challenge-card" id="challengeCard">
+  <div class="challenge-icon">&#9876;</div>
+  <div class="challenge-title">IDLE CHALLENGE</div>
+
+  <div class="challenge-timer" id="timerDisplay">3:00</div>
+  <div class="timer-label">CHALLENGE WINDOW</div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:100%;"></div></div>
+
+  <div class="challenge-explanation" id="explanationText">
+    <span class="highlight">You haven't completed a focus session in over 2 hours.</span><br><br>
+    Accept the <span class="gold">Idle Challenge</span> and your next completed focus session
+    (10, 20, 30, or 60 minutes) will earn <span class="gold">1.5x rewards</span> —
+    that means 1.5x textiles, 1.5x XP, and 1.5x coins.<br><br>
+    <span class="warn">The catch:</span> you must complete the session with
+    <span class="warn">no pausing</span> and <span class="warn">no failing</span>.
+    If you pause or say you didn't focus, the bonus is lost.<br><br>
+    You have <span class="highlight">3 minutes</span> to decide.
+  </div>
+
+  <div class="challenge-buttons" id="buttonRow">
+    <button class="btn-accept" id="acceptBtn" type="button">ACCEPT CHALLENGE</button>
+    <button class="btn-decline" id="declineBtn" type="button">NOT NOW</button>
+  </div>
+
+  <div class="result-msg" id="resultMsg"></div>
+</div>
+
+<script src="challenge-window.js"></script>
+</body>
+</html>

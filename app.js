@@ -736,6 +736,42 @@ try {
     coldTurkeyBlockName: '111 claude blocker',
     coldTurkeyDailyPrompt: false,   // show "open Cold Turkey" popup once per day
     coldTurkeyLastPromptDate: '',   // YYYY-MM-DD of last prompt shown
+    coldTurkeyIdleReminder: false,  // open Cold Turkey if no session for 2h during wake hours
+    coldTurkeyLastIdleOpen: 0,      // timestamp of last idle-triggered open (prevent spamming)
+    windDownCTCheckin: false,       // wind-down Cold Turkey check-in (off by default)
+    windDownCTStreak: 0,            // consecutive days of wind-down check-in
+    windDownCTLastDate: '',         // YYYY-MM-DD of last confirmed check-in
+    windDownCTCheckedToday: false,  // has the check-in been done today
+    windDownCTPromptedToday: false, // has the prompt been shown today
+    focusIdleReminder: true,        // standalone nudge notification if no focus session for 2h
+    focusIdleLastNudge: 0,          // timestamp of last nudge (prevent spamming)
+    surveillanceActive: false,       // is surveillance mode on right now
+    surveillanceEndsAt: 0,           // timestamp when current surveillance session ends
+    surveillanceNagCount: 0,         // how many consecutive nags ignored (for escalation)
+    surveillanceLastNag: 0,          // timestamp of last surveillance nag
+    surveillanceDailyPromptDate: '', // YYYY-MM-DD of last daily opt-in prompt
+    sleepTimeEnabled: false,        // show sleep as blocked period on timeline
+    sleepHour: 23,                  // bedtime hour (24h)
+    sleepMinute: 0,                 // bedtime minute
+    sleepPrepMin: 30,               // lead-in / wind-down minutes before bed
+    sleepDurMin: 480,               // sleep duration in minutes (default 8h)
+    coldTurkeyNagSites: [],         // domains that trigger a CT reminder every 10 min
+    coldTurkeyLastSiteNagAt: 0,     // timestamp of last site-nag (prevent spamming)
+    autoReopenTodoList: false,      // reopen todo list if closed (persistent mode)
+    startupBrowser: 'brave',        // which browser the startup script should open ('brave' or 'chrome')
+    startupExtras: [],              // additional file paths to launch on startup
+    focusHistory: {},               // { 'YYYY-MM-DD': minutes } — daily focus archive
+    blurCompletedTasks: false,      // blur today's completed tasks on profile page
+    challengeActive: false,         // idle challenge accepted — 1.5x on next session
+    challengeAcceptedAt: 0,         // timestamp of challenge acceptance
+    challengeSessionPaused: false,  // set true if player pauses during challenge session
+    mirrorMode: false,              // v3.21.67: true = this browser mirrors stats from linked main browser
+    siteNagUnackedCount: 0,         // v3.21.78: unacknowledged distraction nag count (resets on page load / notif click)
+    volumeMuteEnabled: false,       // v3.21.79: volume mute scheduler toggle
+    volumeMuteHour: 23,             // v3.21.79: mute start hour (0-23)
+    volumeMuteMinute: 0,            // v3.21.79: mute start minute (0-59)
+    volumeUnmuteHour: 10,           // v3.21.79: unmute start hour (0-23)
+    volumeUnmuteMinute: 0,          // v3.21.79: unmute start minute (0-59)
     // Streak-driven passive currency (Paperclips-style precursor)
     coins: 0,                 // current spendable coin balance
     lifetimeCoins: 0,         // all-time coins earned
@@ -1147,6 +1183,8 @@ try {
           if (typeof p.recurInterval !== 'number') p.recurInterval = 0;
           if (typeof p.lastCompletedDate !== 'string') p.lastCompletedDate = '';
         });
+        // v3.21.52: Sync state.level so events engine can gate by tier.
+        state.level = getLevelFromXP(state.xp || 0).level;
         // v3.20.26: profile stat backfills.
         if (typeof state.tagline !== 'string') state.tagline = '';
         if (typeof state.longestStreak !== 'number') state.longestStreak = 0;
@@ -1419,6 +1457,29 @@ try {
       var minsYesterday = (state.todayBlocks || 0) * 10;
       awardEndOfDayBonus(minsYesterday, state.streak);
 
+      // v3.21.59: Archive yesterday's focus minutes into focusHistory
+      try {
+        if (!state.focusHistory || typeof state.focusHistory !== 'object') state.focusHistory = {};
+        var yDate = state.lastActiveDate; // yesterday's date string
+        if (yDate && state.dailySessionLog && state.dailySessionLog.date === yDate) {
+          var yMins = 0;
+          var ySessions = state.dailySessionLog.sessions || [];
+          for (var _yi = 0; _yi < ySessions.length; _yi++) yMins += (ySessions[_yi].min || 0);
+          state.focusHistory[yDate] = yMins;
+        } else if (yDate) {
+          // No session log for yesterday — record 0 or use block estimate
+          state.focusHistory[yDate] = (state.todayBlocks || 0) * 10;
+        }
+        // Cap history to ~90 days to prevent unbounded growth
+        var hKeys = Object.keys(state.focusHistory);
+        if (hKeys.length > 90) {
+          hKeys.sort();
+          for (var _hk = 0; _hk < hKeys.length - 90; _hk++) {
+            delete state.focusHistory[hKeys[_hk]];
+          }
+        }
+      } catch (_) {}
+
       // Daily reset (state.blocks is the spendable currency balance — it should
       // NOT be zeroed here; only today-specific counters reset)
       state.todayBlocks = 0;
@@ -1439,6 +1500,9 @@ try {
       // v3.20.21: Populate recurring tasks for the new day.
       populateRecurringTasks();
 
+      // v3.21.45: Reset recurrent aqueduct stages for the new day.
+      resetRecurrentAqueducts();
+
       state.lastActiveDate = today;
       state.sessionBlocks = 0;
       // v3.22.0 Stage 1: day-rollover is the cadence on which ambient
@@ -1448,7 +1512,7 @@ try {
       // events are checked first (for beats gated by reaching a level /
       // coin threshold overnight), then ambient if nothing triggered.
       try {
-        if (typeof Events !== 'undefined' && Events && Events.tick) {
+        if (!state.mirrorMode && typeof Events !== 'undefined' && Events && Events.tick) {
           var evResult = Events.tick(state, 'either');
           if (evResult && evResult.ok && typeof EventsModal !== 'undefined' && EventsModal && EventsModal.show) {
             EventsModal.show(evResult);
@@ -2517,6 +2581,120 @@ try {
     });
   })();
 
+  // ===== Weekly Focus Bar Chart (v3.21.59) =====
+  var _weekOffset = 0; // 0 = current week, -1 = last week, etc.
+
+  function renderWeeklyFocus() {
+    var barsEl = document.getElementById('weeklyBars');
+    var labelsEl = document.getElementById('weeklyLabels');
+    var summaryEl = document.getElementById('weeklySummary');
+    var labelEl = document.getElementById('weekLabel');
+    if (!barsEl) return;
+
+    // Compute the Monday of the target week
+    var now = new Date();
+    var todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var dayOfWeek = todayDate.getDay(); // 0=Sun
+    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    var thisMonday = new Date(todayDate.getTime() + mondayOffset * 86400000);
+    var targetMonday = new Date(thisMonday.getTime() + _weekOffset * 7 * 86400000);
+
+    var today = todayStr();
+    var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var days = [];
+    var maxMin = 1; // min 1 to avoid div-by-zero
+
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(targetMonday.getTime() + i * 86400000);
+      var mm = d.getMonth() + 1;
+      var dd = d.getDate();
+      var dateStr = d.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
+
+      var mins = 0;
+      if (dateStr === today) {
+        // Live: sum from current dailySessionLog
+        if (state.dailySessionLog && state.dailySessionLog.date === today) {
+          var sess = state.dailySessionLog.sessions || [];
+          for (var s = 0; s < sess.length; s++) mins += (sess[s].min || 0);
+        }
+      } else {
+        // Archived
+        mins = (state.focusHistory && state.focusHistory[dateStr]) || 0;
+      }
+
+      if (mins > maxMin) maxMin = mins;
+      var isFuture = dateStr > today;
+      days.push({ label: dayNames[i], dateStr: dateStr, mins: mins, isToday: dateStr === today, isFuture: isFuture });
+    }
+
+    // Date range label
+    var endDate = new Date(targetMonday.getTime() + 6 * 86400000);
+    function fmtShort(dt) {
+      var m = dt.getMonth() + 1;
+      var d = dt.getDate();
+      return (m < 10 ? '0' : '') + m + '/' + (d < 10 ? '0' : '') + d;
+    }
+    if (labelEl) labelEl.textContent = fmtShort(targetMonday) + ' - ' + fmtShort(endDate);
+
+    // Render bars
+    barsEl.innerHTML = '';
+    labelsEl.innerHTML = '';
+    var totalMins = 0;
+
+    for (var j = 0; j < days.length; j++) {
+      var day = days[j];
+      totalMins += day.mins;
+
+      // Bar
+      var barWrap = document.createElement('div');
+      barWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;';
+
+      // Minute label on top of bar
+      var valSpan = document.createElement('div');
+      valSpan.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#ff9f43;margin-bottom:2px;';
+      valSpan.textContent = day.isFuture ? '' : (day.mins > 0 ? day.mins + 'm' : '');
+      barWrap.appendChild(valSpan);
+
+      // The bar itself
+      var bar = document.createElement('div');
+      var pct = day.isFuture ? 0 : Math.max(day.mins > 0 ? 8 : 2, Math.round((day.mins / maxMin) * 100));
+      var color = day.isToday ? '#00ff88' : (day.isFuture ? '#1a1a2e' : '#ff9f43');
+      var opacity = day.isFuture ? '0.2' : '1';
+      bar.style.cssText = 'width:100%;border-radius:3px 3px 0 0;background:' + color + ';opacity:' + opacity + ';height:' + pct + '%;min-height:2px;transition:height 0.3s ease;';
+      barWrap.appendChild(bar);
+
+      barsEl.appendChild(barWrap);
+
+      // Day label
+      var lbl = document.createElement('div');
+      lbl.style.cssText = 'flex:1;text-align:center;font-family:"Press Start 2P",monospace;font-size:6px;color:' + (day.isToday ? '#00ff88' : '#5a5a7e') + ';';
+      lbl.textContent = day.label;
+      labelsEl.appendChild(lbl);
+    }
+
+    // Summary
+    var hrs = Math.floor(totalMins / 60);
+    var rm = totalMins % 60;
+    var sumText = totalMins === 0 ? 'No focus data this week' : (hrs > 0 ? hrs + 'h ' : '') + rm + 'm total';
+    if (summaryEl) summaryEl.textContent = sumText;
+  }
+
+  // Wire prev/next buttons
+  (function() {
+    var prev = document.getElementById('weekPrev');
+    var next = document.getElementById('weekNext');
+    if (prev) prev.addEventListener('click', function() {
+      _weekOffset--;
+      renderWeeklyFocus();
+    });
+    if (next) next.addEventListener('click', function() {
+      if (_weekOffset < 0) {
+        _weekOffset++;
+        renderWeeklyFocus();
+      }
+    });
+  })();
+
   // ===== Do Now System (v3.21.34) =====
   // "Do Now" lets you commit to doing a task right now with a time estimate.
   // Recurring tasks remember how long they take. Conflicts with blocked-out
@@ -2571,18 +2749,49 @@ try {
     var now = Date.now();
     var endMs = now + (durMin * 60000);
 
-    // Check for conflicts with blocked-out times
+    // Check for conflicts with blocked-out times + sleep block
     var conflicts = [];
-    if (state.blockedTimes && state.blockedTimes.length) {
-      for (var i = 0; i < state.blockedTimes.length; i++) {
-        var bt = state.blockedTimes[i];
-        if (bt.endMs <= now || bt.startMs >= endMs) continue; // no overlap
-        var overlapStart = Math.max(now, bt.startMs);
-        var overlapEnd = Math.min(endMs, bt.endMs);
-        var overlapMin = Math.round((overlapEnd - overlapStart) / 60000);
-        if (overlapMin > 0) {
-          conflicts.push({ label: bt.label, overlapMin: overlapMin });
-        }
+    var allBlocksForConflict = (state.blockedTimes || []).slice();
+    // v3.22.8: Include sleep blocks in conflict checks (today + yesterday carry-over)
+    if (state.sleepTimeEnabled) {
+      var _sleepDayStart = new Date(now);
+      _sleepDayStart.setHours(0, 0, 0, 0);
+      var _dsMsConf = _sleepDayStart.getTime();
+      var _sH = (state.sleepHour != null) ? state.sleepHour : 23;
+      var _sM = state.sleepMinute || 0;
+      var _sPrep = state.sleepPrepMin || 0;
+      var _sDur = state.sleepDurMin || 480;
+      var _sleepEventMs = _dsMsConf + (_sH * 3600000) + (_sM * 60000);
+      var _sleepPrepMs = _sleepEventMs - (_sPrep * 60000);
+      // Today's sleep
+      allBlocksForConflict.push({
+        startMs: _sleepPrepMs,
+        endMs: _sleepEventMs + (_sDur * 60000),
+        eventStartMs: _sleepEventMs,
+        prepMin: _sPrep,
+        label: 'Sleep ' + _fmtTime(_sH, _sM)
+      });
+      // Yesterday's carry-over
+      var _yEventMs = _sleepEventMs - 86400000;
+      var _yEndMs = _yEventMs + (_sDur * 60000);
+      if (_yEndMs > now) {
+        allBlocksForConflict.push({
+          startMs: _yEventMs - (_sPrep * 60000),
+          endMs: _yEndMs,
+          eventStartMs: _yEventMs,
+          prepMin: _sPrep,
+          label: 'Sleep (last night)'
+        });
+      }
+    }
+    for (var i = 0; i < allBlocksForConflict.length; i++) {
+      var bt = allBlocksForConflict[i];
+      if (bt.endMs <= now || bt.startMs >= endMs) continue; // no overlap
+      var overlapStart = Math.max(now, bt.startMs);
+      var overlapEnd = Math.min(endMs, bt.endMs);
+      var overlapMin = Math.round((overlapEnd - overlapStart) / 60000);
+      if (overlapMin > 0) {
+        conflicts.push({ label: bt.label, overlapMin: overlapMin });
       }
     }
 
@@ -2913,12 +3122,57 @@ try {
 
   // Render blocked-out zones on the timeline (called from renderFocusTimeline)
   function _renderBlockedZones(bar, windowStartMs, windowEndMs, windowMs) {
-    if (!state.blockedTimes || !state.blockedTimes.length) return;
     var now = new Date();
     var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-    for (var i = 0; i < state.blockedTimes.length; i++) {
-      var bt = state.blockedTimes[i];
+    // Build combined list: manual blocks + auto sleep block
+    var allBlocks = (state.blockedTimes || []).slice();
+
+    // v3.22.8: Inject sleep time as blocked period(s) — today + yesterday's carry-over
+    if (state.sleepTimeEnabled) {
+      var sleepH = (state.sleepHour != null) ? state.sleepHour : 23;
+      var sleepM = state.sleepMinute || 0;
+      var prepMin = state.sleepPrepMin || 0;
+      var sleepDur = state.sleepDurMin || 480;
+
+      // Today's sleep block (e.g. tonight at 23:00)
+      var sleepStartMs = dayStart + (sleepH * 3600000) + (sleepM * 60000);
+      var sleepEndMs = sleepStartMs + (sleepDur * 60000);
+      var prepStartMs = sleepStartMs - (prepMin * 60000);
+      allBlocks.push({
+        id: '_sleep_',
+        startMs: prepStartMs,
+        endMs: sleepEndMs,
+        eventStartMs: sleepStartMs,
+        prepMin: prepMin,
+        durationMin: sleepDur,
+        label: 'Sleep ' + _fmtTime(sleepH, sleepM),
+        isSleep: true
+      });
+
+      // Yesterday's sleep block carry-over (e.g. if bedtime 23:00 and it's 2 AM,
+      // yesterday's sleep 23:00→07:00 overlaps into today)
+      var yesterdaySleepStart = sleepStartMs - 86400000; // 24h earlier
+      var yesterdaySleepEnd = yesterdaySleepStart + (sleepDur * 60000);
+      if (yesterdaySleepEnd > dayStart) { // still overlaps into today
+        var yPrepStart = yesterdaySleepStart - (prepMin * 60000);
+        allBlocks.push({
+          id: '_sleep_yesterday_',
+          startMs: yPrepStart,
+          endMs: yesterdaySleepEnd,
+          eventStartMs: yesterdaySleepStart,
+          prepMin: prepMin,
+          durationMin: sleepDur,
+          label: 'Sleep (last night)',
+          isSleep: true
+        });
+      }
+    }
+
+    if (!allBlocks.length) return;
+
+    for (var i = 0; i < allBlocks.length; i++) {
+      var bt = allBlocks[i];
       var bStart = Math.max(bt.startMs, windowStartMs);
       var bEnd = Math.min(bt.endMs, windowEndMs);
       if (bStart >= bEnd) continue;
@@ -2926,6 +3180,14 @@ try {
       var leftPct = ((bStart - windowStartMs) / windowMs) * 100;
       var widthPct = ((bEnd - bStart) / windowMs) * 100;
       if (widthPct < 0.5) widthPct = 0.5;
+
+      var isSleep = !!bt.isSleep;
+      var baseColor = isSleep ? '#6b6bff' : '#ff6b6b';
+      var darkColor = isSleep ? '#4444cc' : '#cc4444';
+      var prepStripe = isSleep
+        ? 'repeating-linear-gradient(45deg,#6b6bff22,#6b6bff22 3px,#6b6bff44 3px,#6b6bff44 6px)'
+        : 'repeating-linear-gradient(45deg,#ff6b6b22,#ff6b6b22 3px,#ff6b6b44 3px,#ff6b6b44 6px)';
+      var prepBorder = isSleep ? '#6b6bff55' : '#ff6b6b55';
 
       // Prep zone (striped) vs event zone (solid)
       var prepEndMs = bt.eventStartMs || bt.startMs;
@@ -2938,8 +3200,8 @@ try {
           var pLeft = ((prepStart - windowStartMs) / windowMs) * 100;
           var pWidth = ((prepEnd - prepStart) / windowMs) * 100;
           var prepEl = document.createElement('div');
-          prepEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;left:' + pLeft + '%;width:' + pWidth + '%;z-index:1;opacity:0.6;background:repeating-linear-gradient(45deg,#ff6b6b22,#ff6b6b22 3px,#ff6b6b44 3px,#ff6b6b44 6px);border:1px dashed #ff6b6b55;';
-          prepEl.title = 'Prep/travel (' + bt.prepMin + 'min)';
+          prepEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;left:' + pLeft + '%;width:' + pWidth + '%;z-index:1;opacity:0.6;background:' + prepStripe + ';border:1px dashed ' + prepBorder + ';';
+          prepEl.title = (isSleep ? 'Wind-down' : 'Prep/travel') + ' (' + bt.prepMin + 'min)';
           bar.appendChild(prepEl);
         }
       }
@@ -2951,13 +3213,18 @@ try {
         var eLeft = ((evStart - windowStartMs) / windowMs) * 100;
         var eWidth = ((evEnd - evStart) / windowMs) * 100;
         var evEl = document.createElement('div');
-        evEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;background:linear-gradient(180deg,#ff6b6b,#cc4444);opacity:0.7;left:' + eLeft + '%;width:' + eWidth + '%;z-index:1;cursor:pointer;';
-        evEl.title = bt.label + ' — click to remove';
-        evEl.setAttribute('data-bt-id', bt.id);
-        evEl.addEventListener('click', function() {
-          var bid = this.getAttribute('data-bt-id');
-          if (confirm('Remove this blocked time?')) removeBlockedTime(bid);
-        });
+        if (isSleep) {
+          evEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;background:linear-gradient(180deg,' + baseColor + ',' + darkColor + ');opacity:0.7;left:' + eLeft + '%;width:' + eWidth + '%;z-index:1;';
+          evEl.title = bt.label + ' \u2014 click \uD83C\uDF19 to edit';
+        } else {
+          evEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;background:linear-gradient(180deg,' + baseColor + ',' + darkColor + ');opacity:0.7;left:' + eLeft + '%;width:' + eWidth + '%;z-index:1;cursor:pointer;';
+          evEl.title = bt.label + ' \u2014 click to remove';
+          evEl.setAttribute('data-bt-id', bt.id);
+          evEl.addEventListener('click', function() {
+            var bid = this.getAttribute('data-bt-id');
+            if (confirm('Remove this blocked time?')) removeBlockedTime(bid);
+          });
+        }
         bar.appendChild(evEl);
       }
     }
@@ -3126,6 +3393,7 @@ try {
     renderTodayTasks();
     renderDailyReminders();
     renderFocusTimeline();
+    renderWeeklyFocus();
     renderDoNowBanner();
     refreshTrackerBriefBadge();
     attachHoverSounds();
@@ -3394,6 +3662,26 @@ try {
     // Update session picker active pill + lock state
     renderSessionPicker();
     try { renderPopOutTimer(); } catch (_) {}
+
+    // v3.21.51: Show/hide idle challenge banner
+    var challengeBanner = document.getElementById('challengeBanner');
+    if (challengeBanner) {
+      if (state.challengeActive && !state.challengeSessionPaused) {
+        challengeBanner.style.display = 'block';
+        challengeBanner.innerHTML = state.timerState === 'running'
+          ? '&#9876; IDLE CHALLENGE &#8212; NO PAUSING! 1.5x REWARDS &#9876;'
+          : '&#9876; IDLE CHALLENGE ACTIVE &#8212; 1.5x REWARDS &#9876;';
+      } else if (state.challengeActive && state.challengeSessionPaused) {
+        challengeBanner.style.display = 'block';
+        challengeBanner.style.borderColor = '#ff6b6b';
+        challengeBanner.style.color = '#ff6b6b';
+        challengeBanner.innerHTML = '&#9876; CHALLENGE VOIDED &#8212; YOU PAUSED &#9876;';
+      } else {
+        challengeBanner.style.display = 'none';
+        challengeBanner.style.borderColor = '#ff8c3a';
+        challengeBanner.style.color = '#ffd700';
+      }
+    }
 
     if (state.selectedTaskId) {
       const task = findTask(state.selectedTaskId);
@@ -4737,15 +5025,27 @@ try {
   // v3.21.15: Open Cold Turkey's UI via native messaging.
   function openColdTurkeyApp() {
     try {
+      console.log('[ColdTurkey] Sending open command...');
       chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', {
         action: 'open'
       }, function(response) {
         if (chrome.runtime.lastError) {
-          console.warn('[ColdTurkey] Could not open app:', chrome.runtime.lastError.message);
+          var errMsg = chrome.runtime.lastError.message || '';
+          console.warn('[ColdTurkey] Could not open app:', errMsg);
+          var statusEl = document.getElementById('coldTurkeyStatus');
+          if (statusEl) {
+            var extId = chrome.runtime.id || '?';
+            statusEl.innerHTML = '<span style="color:#ff6666;">Native messaging failed.</span> Run setup-cold-turkey.bat first. Extension ID: <b>' + extId + '</b>';
+          } else {
+            try { notify('Cold Turkey: native messaging not set up. Run setup-cold-turkey.bat', '#ff6666'); } catch(_){}
+          }
+        } else {
+          console.log('[ColdTurkey] Open response:', JSON.stringify(response));
         }
       });
     } catch (err) {
       console.warn('[ColdTurkey] Failed to open app:', err);
+      try { notify('Cold Turkey: native messaging error. Run setup-cold-turkey.bat', '#ff6666'); } catch(_){}
     }
   }
 
@@ -4784,6 +5084,257 @@ try {
     });
   }
 
+  // v3.22.11: Wind-down Cold Turkey check-in
+  // During the wind-down period before sleep, opens Cold Turkey and asks the
+  // player to confirm they turned on their blockers. Rewards XP + coins with
+  // a streak bonus for consecutive days.
+  function isInWindDown() {
+    if (!state.sleepTimeEnabled || !state.windDownCTCheckin) return false;
+    var prep = state.sleepPrepMin || 0;
+    if (prep <= 0) return false; // no wind-down period set
+    var now = new Date();
+    var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    var nowMs = now.getTime();
+    var sleepH = (state.sleepHour != null) ? state.sleepHour : 23;
+    var sleepM = state.sleepMinute || 0;
+    var sleepMs = dayStart + (sleepH * 3600000) + (sleepM * 60000);
+    var windDownStart = sleepMs - (prep * 60000);
+    // Also check yesterday's sleep (for after-midnight wind-down)
+    var yWindDownStart = windDownStart - 86400000;
+    var ySleepMs = sleepMs - 86400000;
+    return (nowMs >= windDownStart && nowMs < sleepMs) ||
+           (nowMs >= yWindDownStart && nowMs < ySleepMs);
+  }
+
+  function maybeWindDownCTCheckin() {
+    if (!state.windDownCTCheckin || !state.sleepTimeEnabled) return;
+    var today = todayStr();
+    // Already confirmed or prompted today
+    if (state.windDownCTCheckedToday && state.windDownCTLastDate === today) return;
+    if (state.windDownCTPromptedToday && state.windDownCTLastDate === today) return;
+    if (!isInWindDown()) return;
+
+    // Reset flags if new day
+    if (state.windDownCTLastDate !== today) {
+      state.windDownCTCheckedToday = false;
+      state.windDownCTPromptedToday = false;
+    }
+
+    state.windDownCTPromptedToday = true;
+    state.windDownCTLastDate = today;
+    save();
+
+    // Open Cold Turkey automatically, then show modal after a delay
+    // so Cold Turkey has time to come to front before the modal reclaims focus
+    try { openColdTurkeyApp(); } catch (_) {}
+
+    var modal = document.getElementById('windDownCTModal');
+    var streakEl = document.getElementById('windDownCTStreak');
+    if (!modal) return;
+
+    // Show streak info + modal after delay
+    if (streakEl) {
+      var s = state.windDownCTStreak || 0;
+      streakEl.textContent = s > 0 ? 'Wind-down streak: ' + s + ' day' + (s !== 1 ? 's' : '') : 'Start your wind-down streak!';
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  function _windDownCTReward() {
+    var today = todayStr();
+    // Update streak
+    var yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    var yStr = yesterday.getFullYear() + '-' + String(yesterday.getMonth() + 1).padStart(2, '0') + '-' + String(yesterday.getDate()).padStart(2, '0');
+    if (state.windDownCTLastDate === yStr || state.windDownCTLastDate === today) {
+      state.windDownCTStreak = (state.windDownCTStreak || 0) + 1;
+    } else {
+      state.windDownCTStreak = 1;
+    }
+    state.windDownCTCheckedToday = true;
+    state.windDownCTLastDate = today;
+
+    // XP reward: 5 base + 1 per streak day (capped at 15)
+    var streakDays = state.windDownCTStreak || 1;
+    var xpReward = Math.min(5 + streakDays, 15);
+    state.xp = (state.xp || 0) + xpReward;
+    state.todayXP = (state.todayXP || 0) + xpReward;
+
+    // Coin reward: 25 base + 10 per streak day (capped at 125), scaled by multipliers
+    var coinBase = Math.min(25 + (streakDays * 10), 125);
+    awardCoins(coinBase, 'Wind-down check-in (streak ' + streakDays + ')');
+
+    // XP notification
+    notify('+' + xpReward + ' XP — wind-down check-in (' + streakDays + '-day streak)', '#6b6bff');
+
+    save();
+    render();
+  }
+
+  // Wire up wind-down check-in modal buttons
+  var _windDownIsTest = false;
+  (function() {
+    var modal = document.getElementById('windDownCTModal');
+    var confirmBtn = document.getElementById('windDownCTConfirm');
+    var skipBtn = document.getElementById('windDownCTSkip');
+    if (confirmBtn) confirmBtn.addEventListener('click', function() {
+      if (modal) modal.style.display = 'none';
+      if (_windDownIsTest) {
+        notify('TEST: Wind-down check-in confirmed (no real rewards)', '#6b6bff');
+      } else {
+        _windDownCTReward();
+      }
+      _windDownIsTest = false;
+    });
+    if (skipBtn) skipBtn.addEventListener('click', function() {
+      if (modal) modal.style.display = 'none';
+      if (!_windDownIsTest) {
+        // Skipping breaks the streak (only on real prompts)
+        state.windDownCTCheckedToday = true;
+        save();
+      }
+      _windDownIsTest = false;
+    });
+    if (modal) modal.addEventListener('click', function(e) {
+      if (e.target === modal) { modal.style.display = 'none'; _windDownIsTest = false; }
+    });
+  })();
+
+  // ===== Surveillance Mode (v3.22.27) =====
+  // Nags every 5 min when no focus timer is running. Escalates after 3 ignored.
+  (function() {
+    var startBtn = document.getElementById('surveillanceStartBtn');
+    var stopBtn = document.getElementById('surveillanceStopBtn');
+    var durSelect = document.getElementById('surveillanceDuration');
+    var timerEl = document.getElementById('surveillanceTimer');
+    var statusEl = document.getElementById('surveillanceStatus');
+    var descEl = document.getElementById('surveillanceDesc');
+    var panel = document.getElementById('surveillancePanel');
+    if (!startBtn) return;
+
+    function updateSurveillanceUI() {
+      var now = Date.now();
+      var active = state.surveillanceActive && state.surveillanceEndsAt > now;
+      if (active) {
+        startBtn.style.display = 'none';
+        durSelect.style.display = 'none';
+        stopBtn.style.display = '';
+        timerEl.style.display = '';
+        panel.style.borderColor = '#ff4444';
+        panel.style.boxShadow = '0 0 15px rgba(255,68,68,0.2)';
+        // Show remaining time with seconds
+        var rem = state.surveillanceEndsAt - now;
+        var h = Math.floor(rem / 3600000);
+        var m = Math.floor((rem % 3600000) / 60000);
+        var s = Math.floor((rem % 60000) / 1000);
+        timerEl.textContent = h + 'h ' + (m < 10 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+        statusEl.textContent = 'ACTIVE';
+        statusEl.style.color = '#ff4444';
+        descEl.textContent = 'You will be nagged every 5 min without a running focus timer.';
+      } else {
+        // Auto-deactivate if expired
+        if (state.surveillanceActive && state.surveillanceEndsAt <= now) {
+          state.surveillanceActive = false;
+          state.surveillanceNagCount = 0;
+          save();
+        }
+        startBtn.style.display = '';
+        durSelect.style.display = '';
+        stopBtn.style.display = 'none';
+        timerEl.style.display = 'none';
+        panel.style.borderColor = '#ff6b6b';
+        panel.style.boxShadow = 'none';
+        statusEl.textContent = 'OFF';
+        statusEl.style.color = '#5a5a7e';
+        descEl.textContent = 'Nags you every 5 min when you\'re not running a focus timer. Escalates if ignored.';
+      }
+    }
+
+    startBtn.addEventListener('click', function() {
+      var minutes = parseInt(durSelect.value) || 480;
+      state.surveillanceActive = true;
+      state.surveillanceEndsAt = Date.now() + (minutes * 60000);
+      state.surveillanceNagCount = 0;
+      state.surveillanceLastNag = 0;
+      save();
+      updateSurveillanceUI();
+      try {
+        chrome.notifications.create('surveillance-started', {
+          type: 'basic', iconUrl: 'icons/icon128.png',
+          title: 'Surveillance Mode ON',
+          message: 'You will be nagged every 5 min without a focus timer for the next ' + (minutes >= 60 ? (minutes/60) + ' hours' : minutes + ' min') + '.',
+          priority: 2
+        });
+      } catch(_){}
+    });
+
+    stopBtn.addEventListener('click', function() {
+      state.surveillanceActive = false;
+      state.surveillanceEndsAt = 0;
+      state.surveillanceNagCount = 0;
+      save();
+      updateSurveillanceUI();
+    });
+
+    // Test button — removed from IIFE, wired up standalone after this IIFE (v3.22.34)
+
+    // Update timer display every second (shows seconds)
+    setInterval(updateSurveillanceUI, 1000);
+
+    // Initial render
+    updateSurveillanceUI();
+
+    // Daily opt-in prompt: if surveillance not active and hasn't been prompted today
+    var todayDate = new Date().toISOString().slice(0, 10);
+    if (!state.surveillanceActive && state.surveillanceDailyPromptDate !== todayDate) {
+      setTimeout(function() {
+        state.surveillanceDailyPromptDate = todayDate;
+        save();
+        // Show a subtle prompt within the panel
+        descEl.innerHTML = '<span style="color:#ff9f43;">Daily check-in:</span> Want surveillance mode today? Pick a duration and hit START.';
+        panel.style.borderColor = '#ff9f43';
+        setTimeout(function() {
+          if (!state.surveillanceActive) {
+            panel.style.borderColor = '#ff6b6b';
+            descEl.textContent = 'Nags you every 5 min when you\'re not running a focus timer. Escalates if ignored.';
+          }
+        }, 30000); // Revert after 30s if not started
+      }, 3000);
+    }
+  })();
+
+  // v3.22.34: Standalone surveillance TEST button — simulates real escalation.
+  // Opens challenge.html + Cold Turkey + notification, same as a real nag cycle reaching strike 3.
+  try {
+    var _survTestBtn = document.getElementById('surveillanceTestBtn');
+    var _survDescEl = document.getElementById('surveillanceDesc');
+    if (_survTestBtn) {
+      _survTestBtn.addEventListener('click', function() {
+        // Visual feedback
+        try {
+          if (_survDescEl) _survDescEl.innerHTML = '<span style="color:#ff9f43;font-weight:bold;">TEST ESCALATION FIRED!</span>';
+          _survTestBtn.textContent = 'SENT!';
+          _survTestBtn.style.color = '#00ff88';
+          _survTestBtn.style.borderColor = '#00ff88';
+          setTimeout(function() {
+            _survTestBtn.textContent = 'TEST';
+            _survTestBtn.style.color = '#ff6b6b';
+            _survTestBtn.style.borderColor = '#ff6b6b';
+          }, 3000);
+        } catch(_) {}
+        // Open surveillance nag window in test/preview mode (YES/NO don't count)
+        try {
+          chrome.runtime.sendMessage({ type: 'pf-open', path: 'surveillance-nag.html?test=1' });
+        } catch(_) {}
+        // Open Cold Turkey after delay (so nag tab settles first, CT gets foreground)
+        setTimeout(function() {
+          try { openColdTurkeyApp(); } catch(_) {}
+        }, 1500);
+      });
+    }
+  } catch(_) {}
+
   function beginActualSession() {
     SFX.startTimer();
     _gameLockGraceUntil = 0; // v3.21.10: new session cancels any grace window
@@ -4797,6 +5348,8 @@ try {
       state.timerRemaining = state.sessionDurationSec || 600;
     }
     state.timerEndsAt = Date.now() + (state.timerRemaining * 1000);
+    // v3.22.25: Record when a focus timer was last started (for idle reminders)
+    state.lastStartedSessionAt = Date.now();
     // v3.21.17: Record session start for the daily timeline.
     state._sessionStartedAt = Date.now();
     save();
@@ -4969,6 +5522,8 @@ try {
       }
       state.timerEndsAt = 0;
       state.timerState = 'paused';
+      // v3.21.51: Pausing voids the idle challenge bonus
+      if (state.challengeActive) state.challengeSessionPaused = true;
       clearInterval(timerInterval);
       timerInterval = null;
       try { cancelWorkCheckIn(); } catch (_) {}
@@ -5070,6 +5625,10 @@ try {
     state.timerEndsAt = 0;
     // Reset combo on manual reset
     state.combo = 0;
+    // v3.21.51: Manual reset clears idle challenge
+    state.challengeActive = false;
+    state.challengeAcceptedAt = 0;
+    state.challengeSessionPaused = false;
     // Reset stops the honor-system check-in clock.
     try { cancelWorkCheckIn(); } catch (_) {}
     // v3.19.12: a manual reset clears the focus-confirmation latch
@@ -5306,6 +5865,8 @@ try {
     state.lastBlockTime = Date.now();
 
     const newLevel = getLevelFromXP(state.xp).level;
+    // v3.21.52: Keep state.level in sync so the events engine can gate by tier.
+    state.level = newLevel;
 
     // ===== Session textile award =====
     // Base: 1 textile per 10-minute session. On top of that:
@@ -5440,7 +6001,7 @@ try {
   var _focusConfirmArmed = false;
   function clearFocusConfirmLatch() { _focusConfirmArmed = false; }
   function showFocusConfirmation() {
-    const reward = getSessionReward(state.sessionDurationSec || 600);
+    var reward = getSessionReward(state.sessionDurationSec || 600);
     const total = reward.blocks + reward.bonus;
     const modal = document.getElementById('focusConfirmModal');
     if (!modal) {
@@ -5464,8 +6025,17 @@ try {
     // Update modal copy to reflect the session length
     var modalTitle = document.getElementById('focusModalTitle');
     var modalSub = document.getElementById('focusModalSub');
-    if (modalTitle) modalTitle.textContent = 'Did you actually focus?';
-    if (modalSub) modalSub.textContent = 'Completing the ' + reward.label + ' will earn ' + total + ' textile' + (total === 1 ? '' : 's') + (reward.bonus > 0 ? ' (' + reward.blocks + ' + ' + reward.bonus + ' commitment bonus)' : '') + '.';
+    // v3.21.51: Show challenge bonus info in the confirmation modal
+    var challengePending = state.challengeActive && !state.challengeSessionPaused;
+    if (modalTitle) modalTitle.textContent = challengePending ? '\u2694 IDLE CHALLENGE — Did you focus?' : 'Did you actually focus?';
+    var subText = 'Completing the ' + reward.label + ' will earn ' + total + ' textile' + (total === 1 ? '' : 's') + (reward.bonus > 0 ? ' (' + reward.blocks + ' + ' + reward.bonus + ' commitment bonus)' : '') + '.';
+    if (challengePending) {
+      var boosted = Math.round(reward.blocks * 1.5) + Math.round(reward.bonus * 1.5);
+      subText += ' \u2694 CHALLENGE ACTIVE: 1.5x = ' + boosted + ' textile' + (boosted === 1 ? '' : 's') + '!';
+    } else if (state.challengeActive && state.challengeSessionPaused) {
+      subText += ' (Challenge voided — you paused during this session.)';
+    }
+    if (modalSub) modalSub.textContent = subText;
     modal.style.display = 'flex';
     // Defensive: clone the Yes/No buttons NOW (before attaching new
     // listeners), so any stale handlers from a previous render cycle
@@ -5482,7 +6052,26 @@ try {
       if (!_focusConfirmArmed) { closeModal(); return; }
       _focusConfirmArmed = false;
       closeModal();
+      // v3.21.51: Idle Challenge — 1.5x rewards if challenge active + no pause
+      var challengeBonus = false;
+      if (state.challengeActive && !state.challengeSessionPaused) {
+        challengeBonus = true;
+        reward = {
+          blocks: Math.round(reward.blocks * 1.5),
+          bonus: Math.round(reward.bonus * 1.5),
+          label: reward.label + ' (1.5x IDLE CHALLENGE)'
+        };
+      }
+      // Clear challenge regardless (one-time use)
+      state.challengeActive = false;
+      state.challengeAcceptedAt = 0;
+      state.challengeSessionPaused = false;
       awardSessionReward(reward);
+      if (challengeBonus) {
+        setTimeout(function() {
+          notify('\u2694 IDLE CHALLENGE COMPLETE! 1.5x rewards earned!', '#ffd700');
+        }, 800);
+      }
       // v3.21.10: 5-minute grace unlock after completing a 10+ min session.
       // The player earned their break — let them visit the game pages.
       var sessionSec = state.sessionDurationSec || 600;
@@ -5499,6 +6088,10 @@ try {
       if (!_focusConfirmArmed) { closeModal(); return; }
       _focusConfirmArmed = false;
       closeModal();
+      // v3.21.51: Failing voids idle challenge
+      state.challengeActive = false;
+      state.challengeAcceptedAt = 0;
+      state.challengeSessionPaused = false;
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
       save();
@@ -5552,6 +6145,17 @@ try {
     try {
       if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
         window.ProfileSync.sync(state);
+      }
+    } catch (_) {}
+    // v3.21.52: Check trigger events after session completion — story beats
+    // that gate on level / coins / etc. fire immediately rather than waiting
+    // for the next day rollover. Ambient events still only fire on rollover.
+    try {
+      if (!state.mirrorMode && typeof Events !== 'undefined' && Events && Events.tick) {
+        var evResult = Events.tick(state, 'trigger');
+        if (evResult && evResult.ok && typeof EventsModal !== 'undefined' && EventsModal && EventsModal.show) {
+          setTimeout(function() { EventsModal.show(evResult); }, 1500);
+        }
       }
     } catch (_) {}
   }
@@ -5622,6 +6226,32 @@ try {
         recurring: true  // flag so the UI can show the ↻ icon
       });
     });
+  }
+
+  // v3.21.45: Reset recurrent aqueducts across all task types on day rollover.
+  function resetRecurrentAqueducts() {
+    function resetStages(task) {
+      if (!task || !task.recurrentAqueducts || !task.aqueducts || !task.aqueducts.length) return;
+      for (var i = 0; i < task.aqueducts.length; i++) {
+        task.aqueducts[i].done = false;
+      }
+    }
+    // Today's tasks
+    if (Array.isArray(state.todayTasks)) {
+      state.todayTasks.forEach(resetStages);
+    }
+    // Project tasks
+    if (state.tasks) {
+      Object.keys(state.tasks).forEach(function(pid) {
+        if (Array.isArray(state.tasks[pid])) {
+          state.tasks[pid].forEach(resetStages);
+        }
+      });
+    }
+    // Priority tasks
+    if (Array.isArray(state.priorityTasks)) {
+      state.priorityTasks.forEach(resetStages);
+    }
   }
 
   // Toast shown when a recurring task is completed.
@@ -6606,7 +7236,12 @@ try {
     var holdUntil = state.incrementalizeLog[holdKey];
     if (holdUntil && Date.now() < holdUntil) return true; // still on hold
     var today = todayStr();
-    return new Date(last).toISOString().slice(0, 10) === today;
+    // v3.21.55: Use LOCAL date for comparison — toISOString is UTC
+    var _ld = new Date(last);
+    var _lmm = _ld.getMonth() + 1;
+    var _ldd = _ld.getDate();
+    var lastLocal = _ld.getFullYear() + '-' + (_lmm < 10 ? '0' : '') + _lmm + '-' + (_ldd < 10 ? '0' : '') + _ldd;
+    return lastLocal === today;
   }
 
   function _markPromptedToday(id) {
@@ -6623,6 +7258,8 @@ try {
   }
 
   function checkIncrementalization() {
+    // Global defer — skip all incrementalize prompts until this time
+    if (state.incrementalizeDeferUntil && Date.now() < state.incrementalizeDeferUntil) return;
     var now = Date.now();
     var STALE_MS = 24 * 60 * 60 * 1000;
     _incrementalizeQueue = [];
@@ -6676,6 +7313,25 @@ try {
     showIncrementalizeModal(entry.id, entry.text, entry.type, entry.projectId);
   }
 
+  // Helper: find a task object by ID across task types
+  function _findTaskById(taskId, taskType, projectId) {
+    if (taskType === 'today' && Array.isArray(state.todayTasks)) {
+      for (var i = 0; i < state.todayTasks.length; i++) {
+        if (state.todayTasks[i].id === taskId) return state.todayTasks[i];
+      }
+    } else if (taskType === 'project' && projectId && state.tasks && state.tasks[projectId]) {
+      var ptasks = state.tasks[projectId];
+      for (var j = 0; j < ptasks.length; j++) {
+        if (ptasks[j].id === taskId) return ptasks[j];
+      }
+    } else if (taskType === 'priority' && Array.isArray(state.priorityTasks)) {
+      for (var k = 0; k < state.priorityTasks.length; k++) {
+        if (state.priorityTasks[k].id === taskId) return state.priorityTasks[k];
+      }
+    }
+    return null;
+  }
+
   function showIncrementalizeModal(taskId, taskText, taskType, projectId) {
     var modal = document.getElementById('incrementalizeModal');
     if (!modal) return;
@@ -6695,6 +7351,13 @@ try {
     modal.dataset.taskType = taskType || 'today';
     modal.dataset.projectId = projectId || '';
     modal.dataset.taskText = taskText || '';
+
+    // Check if the task already has recurrentAqueducts set
+    var recurrentToggle = document.getElementById('incrementalizeRecurrentToggle');
+    if (recurrentToggle) {
+      var existingTask = _findTaskById(taskId, taskType, projectId);
+      recurrentToggle.checked = !!(existingTask && existingTask.recurrentAqueducts);
+    }
 
     // Populate "pull from today" list
     var fromTodayWrap = document.getElementById('incrementalizeFromTodayWrap');
@@ -6893,25 +7556,45 @@ try {
 
       _markPromptedToday(taskId);
 
+      var recurrentToggle = document.getElementById('incrementalizeRecurrentToggle');
+      var isRecurrent = !!(recurrentToggle && recurrentToggle.checked);
+      var projectId = modal.dataset.projectId || '';
+
       if (taskType === 'today') {
         // Already in Today's Tasks — just attach aqueducts
         _applyAqueductsToTodayTask(taskId, _incrementalizePendingStages);
-      } else {
-        // Project or Priority task: send to Today's Tasks with aqueducts
-        var srcType = taskType === 'priority' ? 'priority' : 'project';
-        addTodayTask(taskText, taskId, srcType);
-        // Now find the newly added today task and attach aqueducts
-        var newest = state.todayTasks[state.todayTasks.length - 1];
-        if (newest && newest.sourceId === taskId) {
-          newest.aqueducts = [];
+        // Set recurrent flag on the today task
+        var todayTask = _findTaskById(taskId, 'today');
+        if (todayTask) todayTask.recurrentAqueducts = isRecurrent;
+      } else if (taskType === 'project') {
+        // Apply aqueducts directly to the project task (don't move to today)
+        var projTask = _findTaskById(taskId, 'project', projectId);
+        if (projTask) {
+          if (!projTask.aqueducts) projTask.aqueducts = [];
           for (var j = 0; j < _incrementalizePendingStages.length; j++) {
-            newest.aqueducts.push({
+            projTask.aqueducts.push({
               id: 'aq' + Date.now() + '-' + Math.random().toString(36).slice(2, 5) + j,
               text: _incrementalizePendingStages[j],
               done: false
             });
           }
-          newest.incrementalizedAt = Date.now();
+          projTask.incrementalizedAt = Date.now();
+          projTask.recurrentAqueducts = isRecurrent;
+        }
+      } else if (taskType === 'priority') {
+        // Apply aqueducts directly to the priority task
+        var priTask = _findTaskById(taskId, 'priority');
+        if (priTask) {
+          if (!priTask.aqueducts) priTask.aqueducts = [];
+          for (var j2 = 0; j2 < _incrementalizePendingStages.length; j2++) {
+            priTask.aqueducts.push({
+              id: 'aq' + Date.now() + '-' + Math.random().toString(36).slice(2, 5) + j2,
+              text: _incrementalizePendingStages[j2],
+              done: false
+            });
+          }
+          priTask.incrementalizedAt = Date.now();
+          priTask.recurrentAqueducts = isRecurrent;
         }
       }
 
@@ -6941,6 +7624,43 @@ try {
       }
       modal.style.display = 'none';
       _advanceIncrQueue();
+    });
+
+    // Skip — mark prompted today, advance to next in queue (task stays)
+    var skipBtn = document.getElementById('incrementalizeSkipBtn');
+    if (skipBtn) skipBtn.addEventListener('click', function() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      var taskId = modal.dataset.taskId;
+      if (taskId) _markPromptedToday(taskId);
+      _incrementalizePendingStages = [];
+      modal.style.display = 'none';
+      _advanceIncrQueue();
+    });
+
+    // Skip All — mark all remaining prompted today, close modal entirely
+    var skipAllBtn = document.getElementById('incrementalizeSkipAllBtn');
+    if (skipAllBtn) skipAllBtn.addEventListener('click', function() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      for (var q = 0; q < _incrementalizeQueue.length; q++) {
+        _markPromptedToday(_incrementalizeQueue[q].id);
+      }
+      _incrementalizeQueue = [];
+      _incrementalizePendingStages = [];
+      modal.style.display = 'none';
+    });
+
+    // Defer All 4 Hours — suppress all incrementalize prompts for 4h
+    var defer4hBtn = document.getElementById('incrementalizeDefer4hBtn');
+    if (defer4hBtn) defer4hBtn.addEventListener('click', function() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      state.incrementalizeDeferUntil = Date.now() + (4 * 60 * 60 * 1000);
+      _incrementalizeQueue = [];
+      _incrementalizePendingStages = [];
+      save();
+      modal.style.display = 'none';
     });
 
     // Not now — mark prompted today, come back tomorrow
@@ -7016,8 +7736,8 @@ try {
         var completedAq = t.aqueducts.filter(function(a) { return a.done; }).length;
         var aqBadge = document.createElement('span');
         aqBadge.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#ffb43c;margin-left:6px;border:1px solid #8b5e1a;border-radius:8px;padding:1px 5px;';
-        aqBadge.textContent = completedAq + '/' + t.aqueducts.length + ' \u2B62';
-        aqBadge.title = completedAq + ' of ' + t.aqueducts.length + ' aqueduct stage(s) complete';
+        aqBadge.textContent = completedAq + '/' + t.aqueducts.length + (t.recurrentAqueducts ? ' \u21BB' : ' \u2B62');
+        aqBadge.title = completedAq + ' of ' + t.aqueducts.length + ' aqueduct stage(s) complete' + (t.recurrentAqueducts ? ' (resets daily)' : '');
         txt.appendChild(aqBadge);
       }
       row.appendChild(txt);
@@ -7378,21 +8098,85 @@ try {
         if (burnBtn) {
           burnBtn.disabled = !gateReached || alreadyBurned;
           burnBtn.style.opacity = (!gateReached || alreadyBurned) ? '0.4' : '1';
+          burnBtn.textContent = 'BURN DUST';
+        }
+
+        // v3.21.93: Prominent lock banner above the button
+        var lockBanner = $('dustLockBanner');
+        var lockReason = $('dustLockReason');
+        if (lockBanner && lockReason) {
+          if (alreadyBurned) {
+            lockBanner.style.display = '';
+            lockBanner.style.borderColor = 'rgba(136,136,170,0.2)';
+            lockBanner.querySelector('div').textContent = 'BURNED TODAY';
+            lockBanner.querySelector('div').style.color = 'var(--text-dim)';
+            lockReason.textContent = 'The annex is quiet until tomorrow.';
+          } else if (!gateReached) {
+            lockBanner.style.display = '';
+            lockBanner.style.borderColor = 'rgba(212,168,87,0.3)';
+            lockBanner.querySelector('div').style.color = '#d4a857';
+            lockBanner.querySelector('div').textContent = 'INCINERATOR LOCKED';
+            var remaining = DUST_TASK_GATE - done;
+            lockReason.textContent = 'Complete ' + remaining + ' more task' + (remaining !== 1 ? 's' : '') + ' today to unlock. (Minimum ' + DUST_TASK_GATE + ' tasks required per day.)';
+          } else {
+            lockBanner.style.display = 'none';
+          }
         }
 
         if (hint) {
+          var streak = Math.max(0, state.streak || 0);
+          var preview = DUST_BURN_BASE + streak * DUST_BURN_PER_STREAK;
           if (alreadyBurned) {
-            hint.textContent = 'burned today \u2014 the annex is quiet until tomorrow.';
+            hint.textContent = 'payout was $' + preview + ' (streak \u00D7' + streak + ')';
           } else {
-            // Preview today's potential payout.
-            var streak = Math.max(0, state.streak || 0);
-            var preview = DUST_BURN_BASE + streak * DUST_BURN_PER_STREAK;
-            var line = 'today\u2019s burn: $' + preview + ' (streak \u00D7' + streak + ')';
-            if (!gateReached) {
-              line += ' \u2014 ' + (DUST_TASK_GATE - done) + ' more task' + ((DUST_TASK_GATE - done) === 1 ? '' : 's') + ' to unlock';
-            }
-            hint.textContent = line;
+            hint.textContent = 'today\u2019s burn: $' + preview + ' (streak \u00D7' + streak + ')';
           }
+        }
+
+        // v3.21.91: Always-visible burn status timer
+        var timerEl = $('dustBurnTimer');
+        if (timerEl) {
+          timerEl.style.display = '';
+          if (window._dustBurnTimerInterval) clearInterval(window._dustBurnTimerInterval);
+          console.log('[Dustbin] dustBurnDate=' + (state.dustBurnDate || 'none') + ' todayStr=' + todayStr() + ' alreadyBurned=' + alreadyBurned + ' gateReached=' + gateReached + ' done=' + done);
+          var _burnTimerBurned = alreadyBurned;
+          var _burnTimerGate = gateReached;
+          var _burnTimerNeed = DUST_TASK_GATE - done;
+          function updateBurnTimer() {
+            var now = new Date();
+            var midnight = new Date(now);
+            midnight.setHours(24, 0, 0, 0);
+            var diff = midnight - now;
+            var hh = Math.floor(diff / 3600000);
+            var mm = Math.floor((diff % 3600000) / 60000);
+            var ss = Math.floor((diff % 60000) / 1000);
+            var clock = (hh < 10 ? '0' : '') + hh + ':'
+              + (mm < 10 ? '0' : '') + mm + ':'
+              + (ss < 10 ? '0' : '') + ss;
+
+            if (diff <= 0) {
+              timerEl.textContent = 'NEW DAY — RELOAD';
+              timerEl.style.color = '#d4a857';
+              clearInterval(window._dustBurnTimerInterval);
+              return;
+            }
+
+            if (_burnTimerBurned) {
+              // Already burned today — countdown to next opportunity
+              timerEl.textContent = 'NEXT BURN: ' + clock;
+              timerEl.style.color = 'var(--text-dim)';
+            } else if (_burnTimerGate) {
+              // Gate reached, burn available now
+              timerEl.textContent = 'BURN READY | DAY ENDS: ' + clock;
+              timerEl.style.color = '#d4a857';
+            } else {
+              // Need more tasks
+              timerEl.textContent = _burnTimerNeed + ' TASK' + (_burnTimerNeed !== 1 ? 'S' : '') + ' TO GO | DAY ENDS: ' + clock;
+              timerEl.style.color = 'var(--text-dim)';
+            }
+          }
+          updateBurnTimer();
+          window._dustBurnTimerInterval = setInterval(updateBurnTimer, 1000);
         }
       } else {
         burnRow.style.display = 'none';
@@ -7908,6 +8692,8 @@ try {
       // helper (sent via runtime message) so we get dedup: a second click
       // focuses the existing tab instead of opening a duplicate.
       function openPFWindow(path) {
+        // v3.21.75: Mirror mode — block all navigation except profile
+        if (state.mirrorMode && path !== 'profile.html') return;
         // v3.21.7: Block game windows when locked (priorities or timer).
         var gamePages = ['gallery.html', 'factory.html', 'house.html', 'ratiocinatory.html', 'bureau.html', 'employees.html', 'research.html', 'incinerator.html'];
         if (gamePages.indexOf(path) !== -1 && isGameLocked()) {
@@ -8295,6 +9081,81 @@ try {
         });
       }
 
+      var coldTurkeyIdleToggle = $('coldTurkeyIdleToggle');
+      if (coldTurkeyIdleToggle) {
+        coldTurkeyIdleToggle.checked = !!state.coldTurkeyIdleReminder;
+        coldTurkeyIdleToggle.addEventListener('change', function() {
+          state.coldTurkeyIdleReminder = coldTurkeyIdleToggle.checked;
+          save();
+          if (coldTurkeyStatus) {
+            coldTurkeyStatus.textContent = state.coldTurkeyIdleReminder ? 'Idle reminder enabled (2h wake hours).' : 'Idle reminder disabled.';
+            setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 3000);
+          }
+        });
+      }
+
+      // v3.22.11: Wind-down Cold Turkey check-in toggle
+      var windDownCTToggle = $('windDownCTToggle');
+      if (windDownCTToggle) {
+        windDownCTToggle.checked = !!state.windDownCTCheckin;
+        windDownCTToggle.addEventListener('change', function() {
+          state.windDownCTCheckin = windDownCTToggle.checked;
+          save();
+        });
+      }
+
+      // v3.22.11: Test button for wind-down check-in (shows modal without time check)
+      var windDownCTTestBtn = $('windDownCTTestBtn');
+      if (windDownCTTestBtn) {
+        windDownCTTestBtn.addEventListener('click', function() {
+          chrome.notifications.create('winddown-ct-test-' + Date.now(), {
+            type: 'basic',
+            iconUrl: 'icons/icon128.png',
+            title: 'Wind-Down Check-In (TEST)',
+            message: 'PREVIEW: Cold Turkey opened. When this fires for real, a check-in modal will appear for you to confirm blockers are on.',
+            priority: 2
+          });
+          // Delay CT open so the notification settles first
+          setTimeout(function() { try { openColdTurkeyApp(); } catch (_) {} }, 600);
+        });
+      }
+
+      // v3.22.0: Test button for Cold Turkey idle — preview only, no real challenge
+      var coldTurkeyIdleTestBtn = $('coldTurkeyIdleTestBtn');
+      if (coldTurkeyIdleTestBtn) {
+        coldTurkeyIdleTestBtn.addEventListener('click', function() {
+          // Show notification + UI feedback first, THEN open Cold Turkey after a delay
+          // so the popup's UI work doesn't steal focus back from CT
+          try {
+            chrome.notifications.create('ct-idle-test-' + Date.now(), {
+              type: 'basic',
+              iconUrl: 'icons/icon128.png',
+              title: 'Idle Challenge — 1.5x Rewards!',
+              message: 'PREVIEW: When this fires for real it will also open the challenge window + Cold Turkey blocker.',
+              priority: 2
+            });
+          } catch (_) {}
+
+          if (coldTurkeyStatus) {
+            coldTurkeyStatus.textContent = 'Preview sent. Real trigger opens challenge.html + Cold Turkey.';
+            coldTurkeyStatus.style.color = '#ff9f43';
+            setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 4000);
+          }
+
+          coldTurkeyIdleTestBtn.textContent = 'SENT!';
+          coldTurkeyIdleTestBtn.style.color = '#00ff88';
+          coldTurkeyIdleTestBtn.style.borderColor = '#00ff88';
+          setTimeout(function() {
+            coldTurkeyIdleTestBtn.textContent = 'TEST';
+            coldTurkeyIdleTestBtn.style.color = 'var(--accent)';
+            coldTurkeyIdleTestBtn.style.borderColor = 'var(--accent)';
+          }, 3000);
+
+          // Delay CT open so the popup/notification settle first
+          setTimeout(function() { try { openColdTurkeyApp(); } catch (_) {} }, 600);
+        });
+      }
+
       if (coldTurkeyBlockNameInput) {
         coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
         coldTurkeyBlockNameInput.addEventListener('change', function() {
@@ -8303,6 +9164,641 @@ try {
           if (coldTurkeyStatus) {
             coldTurkeyStatus.textContent = 'Block name saved.';
             setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 2000);
+          }
+        });
+      }
+
+      // v3.21.56: Nag sites list — distraction watchlist
+      var nagSitesList = $('nagSitesList');
+      var nagSiteInput = $('nagSiteInput');
+      var nagSiteAddBtn = $('nagSiteAddBtn');
+
+      function renderNagSites() {
+        if (!nagSitesList) return;
+        var sites = state.coldTurkeyNagSites || [];
+        if (sites.length === 0) {
+          nagSitesList.innerHTML = '<div style="font-family:\'Courier New\',monospace;font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;padding:6px 0;">No sites added yet.</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < sites.length; i++) {
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;margin-bottom:3px;background:rgba(78,205,196,0.06);border:1px solid rgba(78,205,196,0.15);border-radius:4px;">'
+            + '<span style="font-family:\'Courier New\',monospace;font-size:11px;color:var(--text);">' + escapeHtml(sites[i]) + '</span>'
+            + '<button type="button" data-nag-remove="' + i + '" style="background:transparent;border:none;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;cursor:pointer;padding:2px 6px;" title="Remove this site from the watchlist.">\u2715</button>'
+            + '</div>';
+        }
+        nagSitesList.innerHTML = html;
+        // Wire remove buttons
+        var removeBtns = nagSitesList.querySelectorAll('[data-nag-remove]');
+        for (var j = 0; j < removeBtns.length; j++) {
+          removeBtns[j].addEventListener('click', function() {
+            var idx = parseInt(this.getAttribute('data-nag-remove'), 10);
+            if (!isNaN(idx) && state.coldTurkeyNagSites && idx < state.coldTurkeyNagSites.length) {
+              state.coldTurkeyNagSites.splice(idx, 1);
+              save();
+              renderNagSites();
+            }
+          });
+        }
+      }
+
+      function addNagSite() {
+        if (!nagSiteInput) return;
+        var raw = nagSiteInput.value.trim().toLowerCase();
+        if (!raw) return;
+        // Split on newlines, commas, or whitespace — handles pasted URL lists
+        var entries = raw.split(/[\n\r,]+/).map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+        if (!state.coldTurkeyNagSites) state.coldTurkeyNagSites = [];
+        var added = 0;
+        for (var i = 0; i < entries.length; i++) {
+          // Strip protocol, www, path — just keep the domain
+          var domain = entries[i]
+            .replace(/^https?:\/\//, '')
+            .replace(/^www\./, '')
+            .replace(/\/.*$/, '')
+            .replace(/\s+/g, '');
+          if (domain && domain.indexOf('.') !== -1 && state.coldTurkeyNagSites.indexOf(domain) === -1) {
+            state.coldTurkeyNagSites.push(domain);
+            added++;
+          }
+        }
+        if (added > 0) {
+          save();
+          renderNagSites();
+          // v3.21.60: Ensure background alarm exists (no reload needed)
+          try { chrome.runtime.sendMessage({ type: 'ENSURE_SITE_NAG_ALARM' }); } catch (_) {}
+        }
+        nagSiteInput.value = '';
+        if (added > 0) {
+          var statusEl = $('coldTurkeyStatus');
+          if (statusEl) {
+            statusEl.style.color = '#4ecdc4';
+            statusEl.textContent = added + ' site' + (added === 1 ? '' : 's') + ' added to watchlist.';
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 3000);
+          }
+        }
+      }
+
+      if (nagSiteAddBtn) nagSiteAddBtn.addEventListener('click', addNagSite);
+      if (nagSiteInput) nagSiteInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); addNagSite(); }
+      });
+      renderNagSites();
+
+      // v3.21.78: Opening the todo list = acknowledgment → reset nag counter
+      if (state.siteNagUnackedCount > 0) {
+        state.siteNagUnackedCount = 0;
+        save();
+      }
+
+      // v3.21.60: Ensure alarm on load if watchlist has entries
+      if (state.coldTurkeyNagSites && state.coldTurkeyNagSites.length > 0) {
+        try { chrome.runtime.sendMessage({ type: 'ENSURE_SITE_NAG_ALARM' }); } catch (_) {}
+      }
+
+      // v3.21.60: Test Nag button — fires a one-shot check against active tab
+      // v3.21.64: Export watchlist to clipboard for syncing across browsers
+      var nagExportBtn = $('nagExportBtn');
+      if (nagExportBtn) {
+        nagExportBtn.addEventListener('click', function() {
+          var statusEl = $('coldTurkeyStatus');
+          var sites = state.coldTurkeyNagSites || [];
+          if (!sites.length) {
+            if (statusEl) { statusEl.style.color = '#ff9f43'; statusEl.textContent = 'Nothing to export — watchlist is empty.'; }
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 3000);
+            return;
+          }
+          var text = sites.join('\n');
+          navigator.clipboard.writeText(text).then(function() {
+            if (statusEl) { statusEl.style.color = '#00ff88'; statusEl.textContent = '\u2714 ' + sites.length + ' site(s) copied! Paste into the other browser\'s watchlist and click ADD SITES.'; }
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 5000);
+          }).catch(function() {
+            if (statusEl) { statusEl.style.color = '#ff4757'; statusEl.textContent = 'Copy failed. Try selecting and copying manually.'; }
+          });
+        });
+      }
+
+      var nagTestBtn = $('nagTestBtn');
+      if (nagTestBtn) {
+        nagTestBtn.addEventListener('click', function() {
+          var statusEl = $('coldTurkeyStatus');
+          nagTestBtn.disabled = true;
+          nagTestBtn.textContent = 'TESTING...';
+          try {
+            chrome.runtime.sendMessage({ type: 'TEST_SITE_NAG' }, function(resp) {
+              nagTestBtn.disabled = false;
+              nagTestBtn.textContent = 'TEST NAG';
+              if (!resp) {
+                if (statusEl) { statusEl.style.color = '#ff4757'; statusEl.textContent = 'Test failed — background not responding. Reload extension from chrome://extensions.'; }
+                return;
+              }
+              if (resp.ok) {
+                if (statusEl) { statusEl.style.color = '#00ff88'; statusEl.textContent = '\u2714 Match! Detected "' + resp.matched + '" — notification sent.'; }
+              } else if (resp.reason === 'no-sites') {
+                if (statusEl) { statusEl.style.color = '#ff9f43'; statusEl.textContent = 'No sites in watchlist. Add some first!'; }
+              } else if (resp.reason === 'no-match') {
+                var trunc = resp.url.length > 60 ? resp.url.substring(0, 60) + '...' : resp.url;
+                if (statusEl) { statusEl.style.color = '#ff9f43'; statusEl.textContent = 'No match. Active tab: ' + trunc + '\nWatchlist: ' + resp.sites.join(', '); }
+              } else if (resp.reason === 'no-active-tab') {
+                if (statusEl) { statusEl.style.color = '#ff4757'; statusEl.textContent = 'Could not read active tab. Try focusing a browser tab first.'; }
+              }
+              setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 8000);
+            });
+          } catch (e) {
+            nagTestBtn.disabled = false;
+            nagTestBtn.textContent = 'TEST NAG';
+            if (statusEl) { statusEl.style.color = '#ff4757'; statusEl.textContent = 'Error: ' + e.message; }
+          }
+        });
+      }
+
+      // v3.21.63: Multi-browser install guide toggle + copy path
+      var multiBrowserToggle = $('multiBrowserToggle');
+      var multiBrowserGuide = $('multiBrowserGuide');
+      if (multiBrowserToggle && multiBrowserGuide) {
+        multiBrowserToggle.addEventListener('click', function() {
+          var showing = multiBrowserGuide.style.display !== 'none';
+          multiBrowserGuide.style.display = showing ? 'none' : 'block';
+          multiBrowserToggle.innerHTML = (showing ? '&#9660;' : '&#9650;') + ' MULTI-BROWSER INSTALL GUIDE';
+        });
+      }
+      var copyExtPathBtn = $('copyExtPathBtn');
+      if (copyExtPathBtn) {
+        copyExtPathBtn.addEventListener('click', function() {
+          try {
+            // chrome.runtime.getURL('') gives us the extension's root URL;
+            // the actual folder path isn't directly available, but we can
+            // guide users. We'll get the extension ID and construct the
+            // typical path, or use a known technique.
+            var extUrl = chrome.runtime.getURL('');
+            var extId = chrome.runtime.id || '';
+            // Construct a message the user can use
+            var statusEl = $('copyExtPathStatus');
+
+            // Try to detect browser and show the likely path
+            var ua = navigator.userAgent || '';
+            var browser = 'Chrome';
+            var profileFolder = 'Default';
+            if (ua.indexOf('Brave') !== -1) browser = 'Brave-Browser';
+            else if (ua.indexOf('Edg/') !== -1) browser = 'Edge';
+            else if (ua.indexOf('OPR/') !== -1 || ua.indexOf('Opera') !== -1) browser = 'Opera';
+            else if (ua.indexOf('Vivaldi') !== -1) browser = 'Vivaldi';
+
+            // The extension folder for unpacked extensions is wherever the
+            // user originally loaded it from — not the browser profile.
+            // We'll provide the getURL approach instead: have them find it
+            // through the extensions page.
+            var infoText = 'Extension ID: ' + extId + '\n\n'
+              + 'To find the extension folder:\n'
+              + '1. Go to your extensions page (e.g. brave://extensions)\n'
+              + '2. Enable Developer Mode (top right toggle)\n'
+              + '3. Find "Todo of the Loom" in the list\n'
+              + '4. The folder path is shown under the extension name\n'
+              + '5. Copy that path and use it in the other browser\n\n'
+              + 'Or look at the source path shown below:';
+
+            // For unpacked extensions, the manifest URL reveals the folder
+            var manifestUrl = chrome.runtime.getURL('manifest.json');
+            // This gives something like: chrome-extension://XXXX/manifest.json
+            // Not helpful as a file path. But the extensions page shows it.
+
+            // Best approach: copy the extension ID so the user can spot it
+            // on the extensions page, and also provide the extensions page URL
+            navigator.clipboard.writeText(extId).then(function() {
+              if (statusEl) {
+                statusEl.style.color = '#00ff88';
+                statusEl.innerHTML = '\u2713 Extension ID copied: <span style="color:#ff9f43;">' + extId + '</span><br>Go to your extensions page — the folder path is shown under the extension name.';
+              }
+              setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 10000);
+            }).catch(function() {
+              if (statusEl) {
+                statusEl.style.color = '#ff9f43';
+                statusEl.innerHTML = 'Extension ID: <span style="color:var(--text);">' + extId + '</span><br>Go to your extensions page to find the folder path.';
+              }
+            });
+          } catch (e) {
+            var statusEl2 = $('copyExtPathStatus');
+            if (statusEl2) { statusEl2.style.color = '#ff4757'; statusEl2.textContent = 'Error: ' + e.message; }
+          }
+        });
+      }
+
+      // v3.21.65: Link browsers — show profile code, copy, apply link
+      var linkProfileCode = $('linkProfileCode');
+      var linkCopyCodeBtn = $('linkCopyCodeBtn');
+      var linkCodeInput = $('linkCodeInput');
+      var linkApplyBtn = $('linkApplyBtn');
+      var linkStatus = $('linkStatus');
+
+      // Show current profile code
+      if (linkProfileCode && state.profileId) {
+        linkProfileCode.textContent = state.profileId;
+      }
+
+      // Copy code
+      if (linkCopyCodeBtn) {
+        linkCopyCodeBtn.addEventListener('click', function() {
+          var code = state.profileId || '';
+          if (!code) {
+            if (linkStatus) { linkStatus.style.color = '#ff4757'; linkStatus.textContent = 'No profile ID yet. Complete a focus session first to generate one.'; }
+            return;
+          }
+          navigator.clipboard.writeText(code).then(function() {
+            linkCopyCodeBtn.textContent = '\u2713';
+            setTimeout(function() { linkCopyCodeBtn.textContent = 'COPY'; }, 2000);
+          }).catch(function() {});
+        });
+      }
+
+      // v3.21.68: Force push — immediately push all stats to Firestore (bypasses throttle)
+      var linkForcePushBtn = $('linkForcePushBtn');
+      var linkPushStatus = $('linkPushStatus');
+      if (linkForcePushBtn) {
+        linkForcePushBtn.addEventListener('click', function() {
+          if (state.mirrorMode) {
+            if (linkPushStatus) { linkPushStatus.style.color = '#ff9f43'; linkPushStatus.textContent = 'This browser is in mirror mode — it pulls from the main browser, not pushes. Use PUSH NOW on the main browser.'; }
+            return;
+          }
+          if (!state.profileId) {
+            if (linkPushStatus) { linkPushStatus.style.color = '#ff4757'; linkPushStatus.textContent = 'No profile ID.'; }
+            return;
+          }
+          linkForcePushBtn.disabled = true;
+          linkForcePushBtn.textContent = '...';
+          if (linkPushStatus) { linkPushStatus.style.color = '#5a5a7e'; linkPushStatus.textContent = 'Pushing to Firestore...'; }
+
+          // Temporarily clear the throttle so sync goes through
+          if (window.ProfileSync && window.ProfileSync._resetThrottle) {
+            window.ProfileSync._resetThrottle();
+          }
+          if (window.ProfileSync && window.ProfileSync.sync) {
+            window.ProfileSync.sync(state).then(function(result) {
+              linkForcePushBtn.disabled = false;
+              linkForcePushBtn.textContent = 'PUSH NOW';
+              if (result) {
+                if (linkPushStatus) { linkPushStatus.style.color = '#00ff88'; linkPushStatus.textContent = '\u2714 Pushed! Profile + shared data uploaded. Other browsers can now pull.'; }
+              } else {
+                if (linkPushStatus) { linkPushStatus.style.color = '#ff9f43'; linkPushStatus.textContent = 'Sync returned null — may have been throttled. Try again in a minute.'; }
+              }
+              setTimeout(function() { if (linkPushStatus) linkPushStatus.textContent = ''; }, 6000);
+            }).catch(function(err) {
+              linkForcePushBtn.disabled = false;
+              linkForcePushBtn.textContent = 'PUSH NOW';
+              if (linkPushStatus) { linkPushStatus.style.color = '#ff4757'; linkPushStatus.textContent = 'Push failed: ' + err.message; }
+            });
+          }
+        });
+      }
+
+      // Apply link — adopt another profile's ID
+      if (linkApplyBtn) {
+        linkApplyBtn.addEventListener('click', function() {
+          var code = (linkCodeInput.value || '').trim().toLowerCase();
+          if (!code) {
+            if (linkStatus) { linkStatus.style.color = '#ff9f43'; linkStatus.textContent = 'Paste a profile code first.'; }
+            return;
+          }
+          if (code.length < 6 || code.length > 20) {
+            if (linkStatus) { linkStatus.style.color = '#ff4757'; linkStatus.textContent = 'Invalid code length. Should be ~12 characters.'; }
+            return;
+          }
+          if (code === state.profileId && state.mirrorMode) {
+            if (linkStatus) { linkStatus.style.color = '#ff9f43'; linkStatus.textContent = 'Already linked and mirroring this profile!'; }
+            return;
+          }
+
+          var oldId = state.profileId;
+          linkApplyBtn.disabled = true;
+          linkApplyBtn.textContent = '...';
+          if (linkStatus) { linkStatus.style.color = '#5a5a7e'; linkStatus.textContent = 'Linking and pulling shared data...'; }
+
+          // Adopt the new profile ID + enable mirror mode
+          state.profileId = code;
+          state.mirrorMode = true;
+          save();
+
+          // Update displayed code
+          if (linkProfileCode) linkProfileCode.textContent = code;
+
+          // Pull shared config from Firestore immediately — full mirror
+          if (window.ProfileSync && window.ProfileSync.pullShared) {
+            window.ProfileSync.pullShared(code).then(function(config) {
+              linkApplyBtn.disabled = false;
+              linkApplyBtn.textContent = 'LINK';
+              if (config) {
+                // Merge watchlist
+                if (config.nagSites && Array.isArray(config.nagSites)) {
+                  var local = state.coldTurkeyNagSites || [];
+                  var merged = local.slice();
+                  var added = 0;
+                  for (var i = 0; i < config.nagSites.length; i++) {
+                    if (merged.indexOf(config.nagSites[i]) === -1) {
+                      merged.push(config.nagSites[i]);
+                      added++;
+                    }
+                  }
+                  state.coldTurkeyNagSites = merged;
+                }
+                // Mirror all stats
+                var mirrorKeys = [
+                  'xp', 'streak', 'longestStreak', 'totalLifetimeBlocks',
+                  'lifetimeFocusMinutes', 'tasksCompletedLifetime', 'coins',
+                  'lifetimeCoins', 'combo', 'maxCombo', 'maxComboToday',
+                  'blocks', 'todayBlocks', 'todayXP', 'sessionBlocks', 'displayName',
+                  'tagline', 'lastActiveDate', 'dailyTaskLog', 'dailySessionLog',
+                  'focusHistory'
+                ];
+                for (var k = 0; k < mirrorKeys.length; k++) {
+                  var key = mirrorKeys[k];
+                  if (config[key] !== undefined && config[key] !== null) {
+                    state[key] = config[key];
+                  }
+                }
+                state.level = getLevelFromXP(state.xp || 0).level;
+                save();
+                renderNagSites();
+                render();
+                if (linkStatus) {
+                  linkStatus.style.color = '#00ff88';
+                  linkStatus.textContent = '\u2714 Linked & mirrored! Profile: ' + code + ' — all stats synced from ' + (config.updatedBy || 'remote') + '.';
+                }
+              } else {
+                save();
+                if (linkStatus) { linkStatus.style.color = '#00ff88'; linkStatus.textContent = '\u2714 Linked to profile ' + code + '. No shared data yet — will sync when main browser pushes.'; }
+              }
+              setTimeout(function() { if (linkStatus) linkStatus.textContent = ''; }, 8000);
+            }).catch(function(err) {
+              linkApplyBtn.disabled = false;
+              linkApplyBtn.textContent = 'LINK';
+              if (linkStatus) { linkStatus.style.color = '#ff9f43'; linkStatus.textContent = 'Linked to ' + code + ' but pull failed: ' + err.message + '. Will sync on next cycle.'; }
+            });
+          } else {
+            linkApplyBtn.disabled = false;
+            linkApplyBtn.textContent = 'LINK';
+            if (linkStatus) { linkStatus.style.color = '#00ff88'; linkStatus.textContent = '\u2714 Linked to profile ' + code + '. Shared data will sync on next update.'; }
+          }
+        });
+      }
+
+      // v3.21.66: Test Link button — pulls from Firestore and reports status
+      var linkTestBtn = $('linkTestBtn');
+      var linkTestResult = $('linkTestResult');
+      if (linkTestBtn) {
+        linkTestBtn.addEventListener('click', function() {
+          linkTestBtn.disabled = true;
+          linkTestBtn.textContent = 'TESTING...';
+          if (linkTestResult) { linkTestResult.style.color = '#5a5a7e'; linkTestResult.textContent = 'Connecting to Firestore...'; }
+
+          var pid = state.profileId;
+          if (!pid) {
+            linkTestBtn.disabled = false;
+            linkTestBtn.textContent = 'TEST LINK';
+            if (linkTestResult) { linkTestResult.style.color = '#ff4757'; linkTestResult.textContent = '\u2718 No profile ID set. Complete a focus session or link to another browser first.'; }
+            return;
+          }
+
+          if (!window.ProfileSync || !window.ProfileSync.pullShared) {
+            linkTestBtn.disabled = false;
+            linkTestBtn.textContent = 'TEST LINK';
+            if (linkTestResult) { linkTestResult.style.color = '#ff4757'; linkTestResult.textContent = '\u2718 ProfileSync not loaded.'; }
+            return;
+          }
+
+          window.ProfileSync.pullShared(pid).then(function(config) {
+            linkTestBtn.disabled = false;
+            linkTestBtn.textContent = 'TEST LINK';
+            if (!config) {
+              if (linkTestResult) {
+                linkTestResult.style.color = '#ff9f43';
+                linkTestResult.innerHTML = '\u26A0 Profile <b>' + pid + '</b> exists but no shared data found yet.<br>This browser may not have synced yet. Try completing a focus session or waiting a minute.';
+              }
+              return;
+            }
+            var siteCount = (config.nagSites && config.nagSites.length) || 0;
+            var updatedBy = config.updatedBy || 'unknown';
+            var updatedAt = config.updatedAt || 'never';
+            // Format the timestamp nicely
+            var timeStr = '';
+            try {
+              var d = new Date(updatedAt);
+              var hh = d.getHours(), mm = d.getMinutes();
+              timeStr = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+            } catch (_) { timeStr = updatedAt; }
+
+            var localCount = (state.coldTurkeyNagSites || []).length;
+            var inSync = localCount === siteCount;
+
+            // v3.21.68: Show full mirror stats in test
+            var remoteXP = config.xp;
+            var hasStats = remoteXP !== undefined && remoteXP !== null;
+            var localXP = state.xp || 0;
+            var mirrorOn = state.mirrorMode ? 'YES' : 'NO';
+
+            if (linkTestResult) {
+              linkTestResult.style.color = '#00ff88';
+              linkTestResult.innerHTML = '\u2714 <b>Connected!</b><br>'
+                + 'Profile: <span style="color:#ff9f43;">' + pid + '</span><br>'
+                + 'Mirror mode: <b>' + mirrorOn + '</b><br>'
+                + 'Shared watchlist: <b>' + siteCount + '</b> site(s)<br>'
+                + 'Local watchlist: <b>' + localCount + '</b> site(s) '
+                + (inSync ? '<span style="color:#00ff88;">(in sync)</span>' : '<span style="color:#ff9f43;">(not synced yet)</span>') + '<br>'
+                + (hasStats
+                  ? 'Remote XP: <b>' + remoteXP + '</b> | Local XP: <b>' + localXP + '</b><br>'
+                    + 'Remote streak: <b>' + (config.streak || 0) + '</b> | Remote coins: <b>' + (config.coins || 0) + '</b><br>'
+                  : '<span style="color:#ff9f43;">No stats in shared data — main browser needs to PUSH NOW first.</span><br>')
+                + 'Last pushed by: <span style="color:#4ecdc4;">' + updatedBy + '</span> at ' + timeStr;
+            }
+          }).catch(function(err) {
+            linkTestBtn.disabled = false;
+            linkTestBtn.textContent = 'TEST LINK';
+            if (linkTestResult) {
+              linkTestResult.style.color = '#ff4757';
+              linkTestResult.textContent = '\u2718 Failed to reach Firestore: ' + err.message;
+            }
+          });
+        });
+      }
+
+      // v3.21.67: On load, pull shared config from Firestore.
+      // Mirror mode: overwrite local stats with remote stats.
+      // Non-mirror: just merge watchlist.
+      function pullAndMirror() {
+        if (!state.profileId || !window.ProfileSync || !window.ProfileSync.pullShared) return;
+        window.ProfileSync.pullShared(state.profileId).then(function(config) {
+          if (!config) return;
+
+          // Always merge watchlist (union)
+          if (config.nagSites && Array.isArray(config.nagSites)) {
+            var local = state.coldTurkeyNagSites || [];
+            var merged = local.slice();
+            var added = 0;
+            for (var i = 0; i < config.nagSites.length; i++) {
+              if (merged.indexOf(config.nagSites[i]) === -1) {
+                merged.push(config.nagSites[i]);
+                added++;
+              }
+            }
+            if (added > 0) {
+              state.coldTurkeyNagSites = merged;
+              console.log('[Mirror] Merged ' + added + ' watchlist site(s).');
+            }
+          }
+
+          // Mirror mode: overwrite stats with remote data
+          if (state.mirrorMode) {
+            var mirrorKeys = [
+              'xp', 'streak', 'longestStreak', 'totalLifetimeBlocks',
+              'lifetimeFocusMinutes', 'tasksCompletedLifetime', 'coins',
+              'lifetimeCoins', 'combo', 'maxCombo', 'maxComboToday',
+              'blocks', 'todayBlocks', 'todayXP', 'sessionBlocks', 'displayName',
+              'tagline', 'lastActiveDate', 'dailyTaskLog', 'dailySessionLog',
+              'focusHistory'
+            ];
+            for (var k = 0; k < mirrorKeys.length; k++) {
+              var key = mirrorKeys[k];
+              if (config[key] !== undefined && config[key] !== null) {
+                state[key] = config[key];
+              }
+            }
+            // Recompute level from synced XP
+            state.level = getLevelFromXP(state.xp || 0).level;
+            console.log('[Mirror] Stats synced from ' + (config.updatedBy || 'remote') + '.');
+          }
+
+          save();
+          renderNagSites();
+          render();
+        }).catch(function(err) {
+          console.warn('[Mirror] Pull failed:', err);
+        });
+      }
+
+      // v3.21.71: Auto-detect mirror mode. If this browser has a profile ID
+      // but basically no data (no XP, no lifetime blocks), it's not the main
+      // browser — enable mirror mode automatically.
+      if (state.profileId && !state.mirrorMode) {
+        var hasNoData = (state.xp || 0) === 0 && (state.totalLifetimeBlocks || 0) === 0;
+        if (hasNoData) {
+          state.mirrorMode = true;
+          save();
+          console.log('[Mirror] Auto-enabled mirror mode — this browser has no local data.');
+        }
+      }
+
+      // v3.21.74: Apply mirror mode UI — stripped-down read-only view
+      if (state.mirrorMode) {
+        document.body.classList.add('mirror-mode');
+        var mirrorBanner = document.getElementById('mirrorBanner');
+        if (mirrorBanner) mirrorBanner.style.display = 'block';
+        // Hide elements that don't have unique CSS-targetable classes
+        var mirrorHideIds = ['taskInput', 'addTaskBtn', 'loadBundleBtn', 'taskList',
+          'dustbin', 'dustBurnRow', 'bundleList', 'bundleCreator', 'newBundleBtn',
+          'todayTasksPanel', 'doNowModal', 'coinDisplayRow'];
+        for (var _mh = 0; _mh < mirrorHideIds.length; _mh++) {
+          var el = document.getElementById(mirrorHideIds[_mh]);
+          if (el) el.style.display = 'none';
+        }
+        // Hide parent containers by walking up from known children
+        var taskInput = document.getElementById('taskInput');
+        if (taskInput) {
+          // Task input area parent (has task list too)
+          var p = taskInput.closest ? taskInput.closest('[style*="margin:0 10px"]') : null;
+          if (p) p.style.display = 'none';
+        }
+        var dustbin = document.getElementById('dustbin');
+        if (dustbin && dustbin.parentElement) dustbin.parentElement.style.display = 'none';
+        // Hide bundles section
+        var bundleHeader = document.querySelector('.collapsible-header');
+        if (bundleHeader && bundleHeader.parentElement) bundleHeader.parentElement.style.display = 'none';
+        // Hide daily reminders panel
+        var drPanel = document.getElementById('dailyRemindersPanel');
+        if (drPanel) drPanel.style.display = 'none';
+        // Hide the daily tasks "today completed" panel
+        var todayPanel = document.getElementById('todayTasksPanel');
+        if (todayPanel) todayPanel.style.display = 'none';
+      }
+
+      // Pull on load after short delay
+      // Mirror: pull immediately on load, then again after sync pushes
+      if (state.mirrorMode) {
+        setTimeout(pullAndMirror, 1500);
+      }
+      setTimeout(pullAndMirror, 5000);
+      // Also pull every 2 minutes to keep mirror fresh
+      if (state.mirrorMode) {
+        setInterval(pullAndMirror, 2 * 60 * 1000);
+      }
+
+      // v3.21.47: Cold Turkey setup guide toggle, test button, copy ID
+      var ctSetupToggle = $('ctSetupToggle');
+      var ctSetupGuide = $('ctSetupGuide');
+      if (ctSetupToggle && ctSetupGuide) {
+        ctSetupToggle.addEventListener('click', function() {
+          var showing = ctSetupGuide.style.display !== 'none';
+          ctSetupGuide.style.display = showing ? 'none' : 'block';
+          ctSetupToggle.innerHTML = (showing ? '&#9660;' : '&#9650;') + ' FIRST-TIME SETUP GUIDE';
+        });
+      }
+
+      var ctCopyIdBtn = $('ctCopyIdBtn');
+      if (ctCopyIdBtn) {
+        ctCopyIdBtn.addEventListener('click', function() {
+          try {
+            var extId = chrome.runtime.id || '';
+            navigator.clipboard.writeText(extId).then(function() {
+              ctCopyIdBtn.textContent = '\u2713 Copied!';
+              setTimeout(function() { ctCopyIdBtn.innerHTML = '&#128203; Copy ID'; }, 2000);
+            });
+          } catch (_) {}
+        });
+      }
+
+      var ctTestBtn = $('ctTestBtn');
+      var ctConnStatus = $('ctConnectionStatus');
+      if (ctTestBtn) {
+        ctTestBtn.addEventListener('click', function() {
+          ctTestBtn.disabled = true;
+          ctTestBtn.textContent = 'Testing...';
+          try {
+            chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', {
+              action: 'open'
+            }, function(response) {
+              ctTestBtn.disabled = false;
+              ctTestBtn.innerHTML = '&#9889; TEST CONNECTION';
+              if (chrome.runtime.lastError) {
+                var err = chrome.runtime.lastError.message || 'Unknown error';
+                if (ctConnStatus) {
+                  ctConnStatus.style.display = 'block';
+                  ctConnStatus.style.background = 'rgba(255,68,102,0.1)';
+                  ctConnStatus.style.border = '1px solid rgba(255,68,102,0.3)';
+                  ctConnStatus.style.color = '#ff6666';
+                  ctConnStatus.innerHTML = '<b>&#10060; Not connected.</b><br>' + err + '<br><span style="color:var(--text-dim);">Follow the setup guide below to fix this.</span>';
+                }
+                // Auto-open the setup guide
+                if (ctSetupGuide) {
+                  ctSetupGuide.style.display = 'block';
+                  if (ctSetupToggle) ctSetupToggle.innerHTML = '&#9650; FIRST-TIME SETUP GUIDE';
+                }
+              } else {
+                if (ctConnStatus) {
+                  ctConnStatus.style.display = 'block';
+                  ctConnStatus.style.background = 'rgba(0,255,136,0.08)';
+                  ctConnStatus.style.border = '1px solid rgba(0,255,136,0.3)';
+                  ctConnStatus.style.color = 'var(--accent)';
+                  ctConnStatus.innerHTML = '<b>&#9989; Connected!</b> Cold Turkey Blocker opened successfully. You can enable the features below.';
+                }
+              }
+            });
+          } catch (err) {
+            ctTestBtn.disabled = false;
+            ctTestBtn.innerHTML = '&#9889; TEST CONNECTION';
+            if (ctConnStatus) {
+              ctConnStatus.style.display = 'block';
+              ctConnStatus.style.background = 'rgba(255,68,102,0.1)';
+              ctConnStatus.style.border = '1px solid rgba(255,68,102,0.3)';
+              ctConnStatus.style.color = '#ff6666';
+              ctConnStatus.innerHTML = '<b>&#10060; Error:</b> ' + err.message + '<br><span style="color:var(--text-dim);">Follow the setup guide below.</span>';
+            }
           }
         });
       }
@@ -8328,6 +9824,666 @@ try {
         });
       }
 
+      // v3.21.50: Blur completed tasks on profile
+      var blurCompletedToggle = $('blurCompletedToggle');
+      if (blurCompletedToggle) {
+        blurCompletedToggle.checked = !!state.blurCompletedTasks;
+        blurCompletedToggle.addEventListener('change', function() {
+          state.blurCompletedTasks = blurCompletedToggle.checked;
+          save();
+        });
+      }
+
+      // v3.21.79: Volume mute scheduler settings
+      var volumeMuteEnabled = $('volumeMuteEnabled');
+      var volumeMuteHourInput = $('volumeMuteHour');
+      var volumeMuteMinInput = $('volumeMuteMinute');
+      var volumeUnmuteHourInput = $('volumeUnmuteHour');
+      var volumeUnmuteMinInput = $('volumeUnmuteMinute');
+      var volumeSaveConfigBtn = $('volumeSaveConfigBtn');
+      var volumeInstallInfoBtn = $('volumeInstallInfoBtn');
+      var volumeStatusEl = $('volumeStatus');
+      var volumeInstallGuide = $('volumeInstallGuide');
+
+      if (volumeMuteEnabled) {
+        volumeMuteEnabled.checked = !!state.volumeMuteEnabled;
+      }
+      if (volumeMuteHourInput) volumeMuteHourInput.value = state.volumeMuteHour != null ? state.volumeMuteHour : 23;
+      if (volumeMuteMinInput) volumeMuteMinInput.value = state.volumeMuteMinute != null ? state.volumeMuteMinute : 0;
+      if (volumeUnmuteHourInput) volumeUnmuteHourInput.value = state.volumeUnmuteHour != null ? state.volumeUnmuteHour : 10;
+      if (volumeUnmuteMinInput) volumeUnmuteMinInput.value = state.volumeUnmuteMinute != null ? state.volumeUnmuteMinute : 0;
+
+      if (volumeMuteEnabled) {
+        volumeMuteEnabled.addEventListener('change', function() {
+          state.volumeMuteEnabled = volumeMuteEnabled.checked;
+          save();
+          writeVolumeConfig();
+        });
+      }
+
+      function writeVolumeConfig(silent) {
+        var cfg = {
+          muteHour: parseInt(volumeMuteHourInput.value, 10) || 0,
+          muteMinute: parseInt(volumeMuteMinInput.value, 10) || 0,
+          unmuteHour: parseInt(volumeUnmuteHourInput.value, 10) || 0,
+          unmuteMinute: parseInt(volumeUnmuteMinInput.value, 10) || 0,
+          enabled: !!state.volumeMuteEnabled
+        };
+        try {
+          chrome.runtime.sendNativeMessage('com.todooftheloom.volume', {
+            action: 'writeConfig',
+            config: cfg
+          }, function(resp) {
+            if (chrome.runtime.lastError) {
+              if (volumeStatusEl && !silent) {
+                volumeStatusEl.style.color = '#ff6b6b';
+                volumeStatusEl.textContent = 'Volume host not installed. Run install-volume-host.bat first.';
+              }
+              return;
+            }
+            if (resp && resp.ok) {
+              if (volumeStatusEl && !silent) {
+                volumeStatusEl.style.color = '#00ff88';
+                volumeStatusEl.textContent = 'Config saved! Changes take effect within 5 minutes.';
+                setTimeout(function() { if (volumeStatusEl) volumeStatusEl.textContent = ''; }, 5000);
+              }
+            } else {
+              if (volumeStatusEl && !silent) {
+                volumeStatusEl.style.color = '#ff6b6b';
+                volumeStatusEl.textContent = 'Error: ' + ((resp && resp.error) || 'unknown');
+              }
+            }
+          });
+        } catch (_) {
+          if (volumeStatusEl && !silent) {
+            volumeStatusEl.style.color = '#ff6b6b';
+            volumeStatusEl.textContent = 'Volume host not installed. Run install-volume-host.bat first.';
+          }
+        }
+      }
+
+      if (volumeSaveConfigBtn) {
+        volumeSaveConfigBtn.addEventListener('click', function() {
+          state.volumeMuteHour = parseInt(volumeMuteHourInput.value, 10) || 0;
+          state.volumeMuteMinute = parseInt(volumeMuteMinInput.value, 10) || 0;
+          state.volumeUnmuteHour = parseInt(volumeUnmuteHourInput.value, 10) || 0;
+          state.volumeUnmuteMinute = parseInt(volumeUnmuteMinInput.value, 10) || 0;
+          save();
+          writeVolumeConfig();
+        });
+      }
+
+      var volumeTestMuteBtn = $('volumeTestMuteBtn');
+      if (volumeTestMuteBtn) {
+        volumeTestMuteBtn.addEventListener('click', function() {
+          if (volumeStatusEl) {
+            volumeStatusEl.style.color = '#ff9f43';
+            volumeStatusEl.textContent = 'Muting for 5 seconds...';
+          }
+          volumeTestMuteBtn.disabled = true;
+          volumeTestMuteBtn.textContent = 'MUTING...';
+          try {
+            chrome.runtime.sendNativeMessage('com.todooftheloom.volume', {
+              action: 'testMute'
+            }, function(resp) {
+              volumeTestMuteBtn.disabled = false;
+              volumeTestMuteBtn.textContent = 'TEST MUTE';
+              if (chrome.runtime.lastError) {
+                var errMsg = chrome.runtime.lastError.message || '';
+                if (volumeStatusEl) {
+                  volumeStatusEl.style.color = '#ff6b6b';
+                  if (errMsg.indexOf('not found') !== -1 || errMsg.indexOf('not connected') !== -1) {
+                    volumeStatusEl.textContent = 'Volume host not installed. Run setup-volume-host.bat in the extension folder.';
+                  } else {
+                    volumeStatusEl.textContent = 'Host error: ' + errMsg;
+                  }
+                }
+                return;
+              }
+              if (resp && resp.ok) {
+                if (volumeStatusEl) {
+                  volumeStatusEl.style.color = '#00ff88';
+                  volumeStatusEl.textContent = 'Test complete! Volume restored.';
+                  setTimeout(function() { if (volumeStatusEl) volumeStatusEl.textContent = ''; }, 5000);
+                }
+              } else {
+                if (volumeStatusEl) {
+                  volumeStatusEl.style.color = '#ff6b6b';
+                  volumeStatusEl.textContent = 'Error: ' + ((resp && resp.error) || 'unknown');
+                }
+              }
+            });
+          } catch (_) {
+            volumeTestMuteBtn.disabled = false;
+            volumeTestMuteBtn.textContent = 'TEST MUTE';
+            if (volumeStatusEl) {
+              volumeStatusEl.style.color = '#ff6b6b';
+              volumeStatusEl.textContent = 'Volume host not installed. Run setup-volume-host.bat in the extension folder.';
+            }
+          }
+        });
+      }
+
+      var volumeCheckStatusBtn = $('volumeCheckStatusBtn');
+      if (volumeCheckStatusBtn) {
+        volumeCheckStatusBtn.addEventListener('click', function() {
+          var d = new Date();
+          var nowMin = d.getHours() * 60 + d.getMinutes();
+          var muteAt = (state.volumeMuteHour != null ? state.volumeMuteHour : 23) * 60 + (state.volumeMuteMinute || 0);
+          var unmuteAt = (state.volumeUnmuteHour != null ? state.volumeUnmuteHour : 10) * 60 + (state.volumeUnmuteMinute || 0);
+
+          var shouldMute = false;
+          if (muteAt < unmuteAt) {
+            shouldMute = (nowMin >= muteAt) && (nowMin < unmuteAt);
+          } else {
+            shouldMute = (nowMin >= muteAt) || (nowMin < unmuteAt);
+          }
+
+          var paused = state.volumeMutePausedUntil && Date.now() < state.volumeMutePausedUntil;
+          var enabled = !!state.volumeMuteEnabled;
+
+          var hh = d.getHours(); var mm = d.getMinutes();
+          var timeStr = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+          var muteStr = (state.volumeMuteHour != null ? state.volumeMuteHour : 23) + ':' + ((state.volumeMuteMinute || 0) < 10 ? '0' : '') + (state.volumeMuteMinute || 0);
+          var unmuteStr = (state.volumeUnmuteHour != null ? state.volumeUnmuteHour : 10) + ':' + ((state.volumeUnmuteMinute || 0) < 10 ? '0' : '') + (state.volumeUnmuteMinute || 0);
+
+          var lines = [];
+          lines.push('Current time: ' + timeStr);
+          lines.push('Schedule: mute ' + muteStr + ' → unmute ' + unmuteStr);
+          lines.push('Enabled: ' + (enabled ? 'YES' : 'NO'));
+          if (enabled) {
+            if (paused) {
+              var resumeAt = new Date(state.volumeMutePausedUntil);
+              lines.push('Status: PAUSED (resumes ' + resumeAt.getHours() + ':' + (resumeAt.getMinutes() < 10 ? '0' : '') + resumeAt.getMinutes() + ')');
+            } else if (shouldMute) {
+              lines.push('Status: MUTE ACTIVE — volume should be at 0');
+            } else {
+              lines.push('Status: Not in mute period — volume is normal');
+            }
+          }
+
+          if (volumeStatusEl) {
+            volumeStatusEl.style.color = shouldMute && enabled && !paused ? '#ff6b6b' : '#00ff88';
+            volumeStatusEl.innerHTML = lines.join('<br>');
+          }
+
+          // v3.21.95: If should be muted right now, enforce it
+          if (shouldMute && enabled && !paused) {
+            try {
+              chrome.runtime.sendNativeMessage('com.todooftheloom.volume', {
+                action: 'mute'
+              }, function(resp) {
+                if (chrome.runtime.lastError) {
+                  if (volumeStatusEl) {
+                    volumeStatusEl.innerHTML += '<br><span style="color:#ff6b6b;">Could not enforce mute — host not connected.</span>';
+                  }
+                  return;
+                }
+                if (resp && resp.ok) {
+                  if (volumeStatusEl) {
+                    volumeStatusEl.innerHTML += '<br><span style="color:#ff9f43;">Mute enforced now.</span>';
+                  }
+                }
+              });
+            } catch (_) {}
+          }
+        });
+      }
+
+      if (volumeInstallInfoBtn) {
+        volumeInstallInfoBtn.addEventListener('click', function() {
+          if (volumeInstallGuide) {
+            var showing = volumeInstallGuide.style.display !== 'none';
+            volumeInstallGuide.style.display = showing ? 'none' : 'block';
+            volumeInstallInfoBtn.innerHTML = (showing ? '&#9660;' : '&#9650;') + ' INSTALL GUIDE';
+          }
+        });
+      }
+
+      // v3.22.7: Sleep time — standalone modal wizard (like blocked-out)
+      (function() {
+        var sleepModal = $('sleepTimeModal');
+        var sleepBody = $('sleepWizBody');
+        var sleepSummaryEl = $('sleepWizSummary');
+        var sleepBtn = $('sleepTimeBtn');
+        var sleepCloseBtn = $('sleepTimeCloseBtn');
+        var sleepRemoveBtn = $('sleepRemoveBtn');
+        var sleepSaveBtn = $('sleepSaveBtn');
+
+        function openSleepWizard() {
+          if (sleepModal) sleepModal.style.display = 'flex';
+          _renderSleepModalWiz();
+        }
+        function closeSleepWizard() {
+          if (sleepModal) sleepModal.style.display = 'none';
+        }
+
+        function _renderSleepModalWiz() {
+          if (!sleepBody) return;
+          var html = '';
+          var btnStyle = 'background:#1a1a3a;border:1px solid #6b6bff;color:#6b6bff;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 5px;border-radius:4px;cursor:pointer;min-width:38px;text-align:center;';
+          var selStyle = 'background:#6b6bff;border:1px solid #6b6bff;color:#fff;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 5px;border-radius:4px;cursor:pointer;min-width:38px;text-align:center;';
+          var prepBtnStyle = 'background:#1a1a3a;border:1px solid #9b9bff;color:#9b9bff;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+          var prepSelStyle = 'background:#9b9bff;border:1px solid #9b9bff;color:#fff;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+          var durBtnStyle = 'background:#1a1a3a;border:1px solid #8b8bff;color:#8b8bff;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+          var durSelStyle = 'background:#8b8bff;border:1px solid #8b8bff;color:#fff;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+
+          var curH = (state.sleepHour != null) ? state.sleepHour : 23;
+          var curM = state.sleepMinute || 0;
+          var curP = (state.sleepPrepMin != null) ? state.sleepPrepMin : 30;
+          var curD = state.sleepDurMin || 480;
+
+          // Hour picker
+          html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Bedtime hour:</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;">';
+          for (var h = 0; h < 24; h++) {
+            var label = state.use24Hour ? (h < 10 ? '0' : '') + h + ':00' : _fmtHrFull(h).replace(':00 ', '').replace('AM', 'a').replace('PM', 'p');
+            var isSelH = h === curH;
+            html += '<button class="slp-hour" data-val="' + h + '" style="' + (isSelH ? selStyle : btnStyle) + '">' + label + '</button>';
+          }
+          html += '</div>';
+
+          // Minute picker
+          html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Minutes past:</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">';
+          for (var m = 0; m < 60; m += 5) {
+            var lbl = m === 0 ? ':00' : ':' + (m < 10 ? '0' : '') + m;
+            var isSelM = m === curM;
+            html += '<button class="slp-min" data-val="' + m + '" style="' + (isSelM ? selStyle : btnStyle) + '">' + lbl + '</button>';
+          }
+          html += '</div>';
+
+          // Duration picker
+          html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">How long do you sleep?</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">';
+          var durOpts = [
+            { v: 300, l: '5h' }, { v: 360, l: '6h' }, { v: 390, l: '6.5h' },
+            { v: 420, l: '7h' }, { v: 450, l: '7.5h' }, { v: 480, l: '8h' },
+            { v: 510, l: '8.5h' }, { v: 540, l: '9h' }, { v: 600, l: '10h' },
+            { v: 660, l: '11h' }, { v: 720, l: '12h' }
+          ];
+          for (var d = 0; d < durOpts.length; d++) {
+            var isSelD = durOpts[d].v === curD;
+            html += '<button class="slp-dur" data-val="' + durOpts[d].v + '" style="' + (isSelD ? durSelStyle : durBtnStyle) + '">' + durOpts[d].l + '</button>';
+          }
+          html += '</div>';
+
+          // Wind-down picker
+          html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Wind-down before bed:</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+          var prepOpts = [0, 10, 15, 20, 30, 45, 60, 90, 120];
+          for (var p = 0; p < prepOpts.length; p++) {
+            var v = prepOpts[p];
+            var txt = v === 0 ? 'NONE' : v < 60 ? v + 'min' : v === 60 ? '1h' : (v >= 120 ? (v / 60) + 'h' : v + 'min');
+            var isSelP = v === curP;
+            html += '<button class="slp-prep" data-val="' + v + '" style="' + (isSelP ? prepSelStyle : prepBtnStyle) + '">' + txt + '</button>';
+          }
+          html += '</div>';
+
+          sleepBody.innerHTML = html;
+
+          // Summary in footer
+          if (sleepSummaryEl) {
+            var bedStr = _fmtTime(curH, curM);
+            var durH = Math.floor(curD / 60);
+            var durM = curD % 60;
+            var durStr = durM > 0 ? durH + 'h' + durM + 'm' : durH + 'h';
+            sleepSummaryEl.textContent = 'Bed ' + bedStr + ' \u2022 ' + durStr + (curP > 0 ? ' \u2022 ' + curP + 'min wind-down' : '');
+          }
+
+          // Show remove button if sleep is already active
+          if (sleepRemoveBtn) sleepRemoveBtn.style.display = state.sleepTimeEnabled ? 'inline-block' : 'none';
+
+          // Wire clicks — each click saves immediately + enables sleep + re-renders
+          function _sleepPick(cls, key) {
+            var btns = sleepBody.querySelectorAll('.' + cls);
+            for (var i = 0; i < btns.length; i++) {
+              btns[i].addEventListener('click', function() {
+                state[key] = parseInt(this.getAttribute('data-val'), 10);
+                save(); _renderSleepModalWiz();
+                // If already active, update timeline live
+                if (state.sleepTimeEnabled) renderFocusTimeline();
+              });
+            }
+          }
+          _sleepPick('slp-hour', 'sleepHour');
+          _sleepPick('slp-min', 'sleepMinute');
+          _sleepPick('slp-dur', 'sleepDurMin');
+          _sleepPick('slp-prep', 'sleepPrepMin');
+        }
+
+        function _updateSleepBtnStyle() {
+          if (!sleepBtn) return;
+          if (state.sleepTimeEnabled) {
+            sleepBtn.style.background = '#6b6bff';
+            sleepBtn.style.color = '#fff';
+            sleepBtn.title = 'Sleep time active — click to edit or remove';
+          } else {
+            sleepBtn.style.background = 'none';
+            sleepBtn.style.color = '#6b6bff';
+            sleepBtn.title = 'Set your sleep time — blocks out bedtime + wind-down on the timeline.';
+          }
+        }
+
+        // Wire open/close/remove
+        if (sleepBtn) sleepBtn.addEventListener('click', function() {
+          try { SFX.click && SFX.click(); } catch (_) {}
+          openSleepWizard();
+        });
+        if (sleepCloseBtn) sleepCloseBtn.addEventListener('click', closeSleepWizard);
+        if (sleepModal) sleepModal.addEventListener('click', function(e) {
+          if (e.target === sleepModal) closeSleepWizard();
+        });
+        if (sleepRemoveBtn) sleepRemoveBtn.addEventListener('click', function() {
+          state.sleepTimeEnabled = false;
+          save();
+          renderFocusTimeline();
+          _updateSleepBtnStyle();
+          closeSleepWizard();
+        });
+        if (sleepSaveBtn) sleepSaveBtn.addEventListener('click', function() {
+          state.sleepTimeEnabled = true;
+          save();
+          renderFocusTimeline();
+          _updateSleepBtnStyle();
+          closeSleepWizard();
+        });
+
+        // Init button style on load
+        _updateSleepBtnStyle();
+      })();
+
+      // v3.21.97: Standalone focus idle nudge toggle + test button
+      var focusIdleToggle = $('focusIdleToggle');
+      if (focusIdleToggle) {
+        focusIdleToggle.checked = state.focusIdleReminder !== false;
+        focusIdleToggle.addEventListener('change', function() {
+          state.focusIdleReminder = focusIdleToggle.checked;
+          save();
+        });
+      }
+      var focusIdleTestBtn = $('focusIdleTestBtn');
+      if (focusIdleTestBtn) {
+        focusIdleTestBtn.addEventListener('click', function() {
+          try {
+            chrome.notifications.create('focus-idle-test-' + Date.now(), {
+              type: 'basic',
+              iconUrl: 'icons/icon128.png',
+              title: 'Time to focus!',
+              message: 'You haven\'t started a focus session in over 2 hours. Open the timer and get a streak going!',
+              priority: 2
+            }, function() {
+              if (chrome.runtime.lastError) {
+                focusIdleTestBtn.textContent = 'FAILED';
+                focusIdleTestBtn.style.color = '#ff6b6b';
+                focusIdleTestBtn.style.borderColor = '#ff6b6b';
+              } else {
+                focusIdleTestBtn.textContent = 'SENT!';
+                focusIdleTestBtn.style.color = '#00ff88';
+                focusIdleTestBtn.style.borderColor = '#00ff88';
+              }
+              setTimeout(function() {
+                focusIdleTestBtn.textContent = 'TEST';
+                focusIdleTestBtn.style.color = '#4ecdc4';
+                focusIdleTestBtn.style.borderColor = '#4ecdc4';
+              }, 3000);
+            });
+          } catch (_) {
+            focusIdleTestBtn.textContent = 'FAILED';
+            setTimeout(function() { focusIdleTestBtn.textContent = 'TEST'; }, 3000);
+          }
+        });
+      }
+
+      // v3.21.49: Auto-reopen todo list setting
+      var autoReopenToggle = $('autoReopenToggle');
+      if (autoReopenToggle) {
+        autoReopenToggle.checked = !!state.autoReopenTodoList;
+        autoReopenToggle.addEventListener('change', function() {
+          state.autoReopenTodoList = autoReopenToggle.checked;
+          save();
+          var statusEl = $('startupStatus');
+          if (statusEl) {
+            statusEl.textContent = state.autoReopenTodoList ? 'Auto-reopen enabled. Tab will reopen within 5 min if closed.' : 'Auto-reopen disabled.';
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 3000);
+          }
+          updateAutoStartStatus();
+        });
+      }
+
+      var startupBrowserSelect = $('startupBrowserSelect');
+      if (startupBrowserSelect) {
+        startupBrowserSelect.value = state.startupBrowser || 'brave';
+        startupBrowserSelect.addEventListener('change', function() {
+          state.startupBrowser = startupBrowserSelect.value;
+          save();
+        });
+      }
+
+      // v3.21.58: Startup extras — additional programs to launch
+      var startupExtrasInput = $('startupExtrasInput');
+      if (startupExtrasInput) {
+        startupExtrasInput.value = (state.startupExtras || []).join('\n');
+        startupExtrasInput.addEventListener('change', function() {
+          var lines = startupExtrasInput.value.split('\n')
+            .map(function(s) { return s.trim(); })
+            .filter(function(s) { return s.length > 0; });
+          state.startupExtras = lines;
+          save();
+        });
+      }
+
+      // Toggle startup guide
+      var startupSetupToggle = $('startupSetupToggle');
+      var startupSetupGuide = $('startupSetupGuide');
+      if (startupSetupToggle && startupSetupGuide) {
+        startupSetupToggle.addEventListener('click', function() {
+          var showing = startupSetupGuide.style.display !== 'none';
+          startupSetupGuide.style.display = showing ? 'none' : 'block';
+          startupSetupToggle.innerHTML = (showing ? '&#9660;' : '&#9650;') + ' OPEN ON COMPUTER STARTUP';
+        });
+      }
+
+      // Download startup .bat file
+      var downloadStartupBtn = $('downloadStartupBtn');
+      if (downloadStartupBtn) {
+        downloadStartupBtn.addEventListener('click', function() {
+          var browser = state.startupBrowser || 'brave';
+          var extId = chrome.runtime.id || '';
+          var extUrl = 'chrome-extension://' + extId + '/popup.html';
+          var browserPath;
+          if (browser === 'chrome') {
+            browserPath = '%ProgramFiles%\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe';
+          } else {
+            browserPath = '%ProgramFiles%\\\\BraveSoftware\\\\Brave-Browser\\\\Application\\\\brave.exe';
+          }
+          // v3.21.58: Self-installing .bat with extras support.
+          // Build the "launch extras" lines for when running from Startup folder.
+          var extras = (state.startupExtras || []).filter(function(s) { return s.trim().length > 0; });
+          var extrasLaunch = '';
+          var extrasEcho = '';
+          for (var ei = 0; ei < extras.length; ei++) {
+            // Escape backslashes for .bat embedding
+            var ePath = extras[ei].trim();
+            extrasLaunch += '  start "" "' + ePath + '"\r\n';
+            extrasEcho += '  echo     - ' + ePath + '\r\n';
+          }
+
+          var batContent = '@echo off\r\n'
+            + 'REM ============================================================\r\n'
+            + 'REM  Todo of the Loom — Auto-open on startup (self-installer)\r\n'
+            + 'REM  Double-click this file to install. It copies itself into\r\n'
+            + 'REM  your Windows Startup folder so the todo list opens every\r\n'
+            + 'REM  time your computer starts.\r\n'
+            + 'REM  To stop: delete open-todo-list.bat from your Startup folder\r\n'
+            + 'REM    (Win+R -> shell:startup -> delete the file).\r\n'
+            + 'REM ============================================================\r\n'
+            + '\r\n'
+            + 'setlocal\r\n'
+            + 'set "STARTUP=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"\r\n'
+            + 'set "TARGET=%STARTUP%\\open-todo-list.bat"\r\n'
+            + '\r\n'
+            + 'REM Check if we are already running FROM the Startup folder\r\n'
+            + 'if /i "%~dp0"=="%STARTUP%\\" (\r\n'
+            + '  REM We are in the startup folder — launch everything\r\n'
+            + '  timeout /t 5 /nobreak >nul\r\n'
+            + '  start "" "' + browserPath + '" "' + extUrl + '"\r\n'
+            + extrasLaunch
+            + '  exit /b\r\n'
+            + ')\r\n'
+            + '\r\n'
+            + 'REM Not in startup folder — install ourselves there\r\n'
+            + 'copy /y "%~f0" "%TARGET%" >nul 2>&1\r\n'
+            + 'if %errorlevel%==0 (\r\n'
+            + '  echo.\r\n'
+            + '  echo  ============================================================\r\n'
+            + '  echo   INSTALLED SUCCESSFULLY!\r\n'
+            + '  echo.\r\n'
+            + '  echo   The following will open every time your computer starts:\r\n'
+            + '  echo     - Todo of the Loom (' + browser + ')\r\n'
+            + extrasEcho
+            + '  echo.\r\n'
+            + '  echo   To stop this, open your Startup folder:\r\n'
+            + '  echo     Win+R  then type  shell:startup\r\n'
+            + '  echo   and delete open-todo-list.bat\r\n'
+            + '  echo  ============================================================\r\n'
+            + '  echo.\r\n'
+            + ') else (\r\n'
+            + '  echo.\r\n'
+            + '  echo  [ERROR] Could not copy to Startup folder.\r\n'
+            + '  echo  Try running as Administrator or copy manually.\r\n'
+            + '  echo.\r\n'
+            + ')\r\n'
+            + 'pause\r\n'
+            + 'endlocal\r\n';
+
+          var blob = new Blob([batContent], { type: 'application/bat' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'open-todo-list.bat';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          var statusEl = $('startupStatus');
+          if (statusEl) {
+            statusEl.style.color = '#ff9f43';
+            statusEl.textContent = 'Downloaded! Open the file to install automatically.';
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 8000);
+          }
+        });
+      }
+
+      // v3.21.54: Show auto-start status indicator
+      function updateAutoStartStatus() {
+        var statusEl = $('autoStartStatus');
+        var iconEl = $('autoStartStatusIcon');
+        var textEl = $('autoStartStatusText');
+        if (!statusEl || !iconEl || !textEl) return;
+        if (!state.autoReopenTodoList) {
+          statusEl.style.display = 'none';
+          return;
+        }
+        statusEl.style.display = 'block';
+        if (state.lastAutoStartAt) {
+          var d = new Date(state.lastAutoStartAt);
+          var timeStr = state.use24Hour
+            ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+            : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+          var dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          statusEl.style.background = 'rgba(0,255,136,0.08)';
+          statusEl.style.border = '1px solid rgba(0,255,136,0.3)';
+          iconEl.textContent = '\u2713';
+          iconEl.style.color = '#00ff88';
+          textEl.style.color = '#00ff88';
+          textEl.textContent = 'Auto-start working \u2014 last opened ' + dateStr + ' at ' + timeStr;
+        } else {
+          statusEl.style.background = 'rgba(255,159,67,0.08)';
+          statusEl.style.border = '1px solid rgba(255,159,67,0.3)';
+          iconEl.textContent = '\u25CB';
+          iconEl.style.color = '#ff9f43';
+          textEl.style.color = '#ff9f43';
+          textEl.textContent = 'Not triggered yet \u2014 will activate on next computer restart';
+        }
+      }
+      updateAutoStartStatus();
+
+      // v3.21.54: "Verify Install" button — downloads a .bat that checks
+      // if open-todo-list.bat exists in the Startup folder.
+      var verifyStartupBtn = $('verifyStartupBtn');
+      if (verifyStartupBtn) {
+        verifyStartupBtn.addEventListener('click', function() {
+          var batContent = '@echo off\r\n'
+            + 'echo.\r\n'
+            + 'echo  ============================================================\r\n'
+            + 'echo   Todo of the Loom - Auto-Start Verification\r\n'
+            + 'echo  ============================================================\r\n'
+            + 'echo.\r\n'
+            + 'set "TARGET=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\open-todo-list.bat"\r\n'
+            + 'if exist "%TARGET%" (\r\n'
+            + '  echo   [OK] INSTALLED\r\n'
+            + '  echo.\r\n'
+            + '  echo   The auto-start file was found in your Startup folder.\r\n'
+            + '  echo   Your todo list will open automatically when your\r\n'
+            + '  echo   computer starts.\r\n'
+            + ') else (\r\n'
+            + '  echo   [!!] NOT INSTALLED\r\n'
+            + '  echo.\r\n'
+            + '  echo   The auto-start file was NOT found in your Startup folder.\r\n'
+            + '  echo   Go back to Settings and click "INSTALL AUTO-START".\r\n'
+            + '  echo   Then open the downloaded file to install it.\r\n'
+            + ')\r\n'
+            + 'echo.\r\n'
+            + 'echo  ============================================================\r\n'
+            + 'echo.\r\n'
+            + 'pause\r\n'
+            + '(goto) 2>nul & del "%~f0"\r\n';
+          var blob = new Blob([batContent], { type: 'application/bat' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'verify-auto-start.bat';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          var statusEl = $('startupStatus');
+          if (statusEl) {
+            statusEl.style.color = '#4ecdc4';
+            statusEl.textContent = 'Downloaded! Open the file to check your install.';
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 6000);
+          }
+        });
+      }
+
+      // v3.21.53: "Open Startup Folder" button — downloads a tiny helper
+      // .bat that opens explorer to the Startup folder then deletes itself.
+      var openStartupFolderBtn = $('openStartupFolderBtn');
+      if (openStartupFolderBtn) {
+        openStartupFolderBtn.addEventListener('click', function() {
+          var batContent = '@echo off\r\n'
+            + 'explorer "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"\r\n'
+            + '(goto) 2>nul & del "%~f0"\r\n';
+          var blob = new Blob([batContent], { type: 'application/bat' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'open-startup-folder.bat';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          var statusEl = $('startupStatus');
+          if (statusEl) {
+            statusEl.style.color = '#4ecdc4';
+            statusEl.textContent = 'Opening Startup folder... run the downloaded file.';
+            setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 6000);
+          }
+        });
+      }
+
       function openSettingsModal() {
         if (!settingsModal) return;
         settingsModal.style.display = 'flex';
@@ -8336,9 +10492,30 @@ try {
         // Sync Cold Turkey UI with state
         if (coldTurkeyToggle) coldTurkeyToggle.checked = !!state.coldTurkeyEnabled;
         if (coldTurkeyDailyToggle) coldTurkeyDailyToggle.checked = !!state.coldTurkeyDailyPrompt;
+        if (coldTurkeyIdleToggle) coldTurkeyIdleToggle.checked = !!state.coldTurkeyIdleReminder;
         if (coldTurkeyBlockNameInput) coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
+        if (focusIdleToggle) focusIdleToggle.checked = state.focusIdleReminder !== false;
         if (dailyRemindersToggle) dailyRemindersToggle.checked = state.dailyRemindersEnabled !== false;
         if (use24HourToggle) use24HourToggle.checked = !!state.use24Hour;
+        if (blurCompletedToggle) blurCompletedToggle.checked = !!state.blurCompletedTasks;
+        if (autoReopenToggle) autoReopenToggle.checked = !!state.autoReopenTodoList;
+        if (startupBrowserSelect) startupBrowserSelect.value = state.startupBrowser || 'brave';
+        if (startupExtrasInput) startupExtrasInput.value = (state.startupExtras || []).join('\n');
+        // v3.21.79: Volume mute settings sync
+        if (volumeMuteEnabled) volumeMuteEnabled.checked = !!state.volumeMuteEnabled;
+        if (volumeMuteHourInput) volumeMuteHourInput.value = state.volumeMuteHour != null ? state.volumeMuteHour : 23;
+        if (volumeMuteMinInput) volumeMuteMinInput.value = state.volumeMuteMinute != null ? state.volumeMuteMinute : 0;
+        if (volumeUnmuteHourInput) volumeUnmuteHourInput.value = state.volumeUnmuteHour != null ? state.volumeUnmuteHour : 10;
+        if (volumeUnmuteMinInput) volumeUnmuteMinInput.value = state.volumeUnmuteMinute != null ? state.volumeUnmuteMinute : 0;
+        renderNagSites();
+        updateAutoStartStatus();
+        // Show extension ID for Cold Turkey setup
+        var ctExtIdEl = $('coldTurkeyExtId');
+        if (ctExtIdEl) {
+          try {
+            ctExtIdEl.textContent = 'Your extension ID: ' + chrome.runtime.id;
+          } catch (_) {}
+        }
       }
       function closeSettingsModal() {
         if (!settingsModal) return;
@@ -8541,6 +10718,9 @@ try {
   // v3.21.15: Show Cold Turkey daily prompt after init (delayed so UI is ready).
   setTimeout(function() { try { maybeColdTurkeyDailyPrompt(); } catch (_) {} }, 1500);
 
+  // v3.22.11: Wind-down Cold Turkey check-in (delayed a bit more so daily prompt goes first).
+  setTimeout(function() { try { maybeWindDownCTCheckin(); } catch (_) {} }, 2500);
+
   // v3.21.25: Daily reminders pop-up (after cold turkey, before incrementalization).
   setTimeout(function() { try { maybeDailyRemindersPopup(); } catch (_) {} }, 1800);
 
@@ -8548,13 +10728,16 @@ try {
   setTimeout(function() { try { checkIncrementalization(); } catch (_) {} }, 2000);
 
   // v3.21.18: Auto-sync profile to Firestore on every extension open (delayed).
-  setTimeout(function() {
-    try {
-      if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
-        window.ProfileSync.sync(state);
-      }
-    } catch (_) {}
-  }, 3000);
+  // v3.21.76: Mirror mode skips auto-push to avoid overwriting main browser data.
+  if (!state.mirrorMode) {
+    setTimeout(function() {
+      try {
+        if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
+          window.ProfileSync.sync(state);
+        }
+      } catch (_) {}
+    }, 3000);
+  }
 
 })();
 } catch (pixelFocusInitError) {

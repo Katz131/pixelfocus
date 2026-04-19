@@ -1,0 +1,10 @@
+{
+  "name": "com.todooftheloom.volume",
+  "description": "Volume control bridge for Todo of the Loom",
+  "path": "C:\\Users\\theso\\Pixel todo lists\\volume-host-wrapper.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://ibobbkieoghidmojbdecjjdclfdiecae/",
+    "chrome-extension://jlfiokfngdjebicfaagoeiciihbfeeil/"
+  ]
+}

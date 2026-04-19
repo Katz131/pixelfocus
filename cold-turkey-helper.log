@@ -1,0 +1,35 @@
+﻿2026-04-19 11:16:19 Helper started
+2026-04-19 11:16:20 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:16:20   PID=30276 MainWindowHandle=66458
+2026-04-19 11:16:20   SetForegroundWindow result=True
+2026-04-19 11:16:20 Helper finished, found=True
+2026-04-19 11:16:22 Helper started
+2026-04-19 11:16:22 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:16:22   PID=30276 MainWindowHandle=66458
+2026-04-19 11:16:22   SetForegroundWindow result=True
+2026-04-19 11:16:22 Helper finished, found=True
+2026-04-19 11:16:24 Helper started
+2026-04-19 11:16:24 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:16:24   PID=30276 MainWindowHandle=66458
+2026-04-19 11:16:24   SetForegroundWindow result=True
+2026-04-19 11:16:24 Helper finished, found=True
+2026-04-19 11:20:00 Helper started
+2026-04-19 11:20:01 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:20:01   PID=30276 MainWindowHandle=66458
+2026-04-19 11:20:01   ForceForeground result=
+2026-04-19 11:20:01 Helper finished, found=True
+2026-04-19 11:20:02 Helper started
+2026-04-19 11:20:02 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:20:02   PID=30276 MainWindowHandle=66458
+2026-04-19 11:20:02   ForceForeground result=
+2026-04-19 11:20:02 Helper finished, found=True
+2026-04-19 11:20:22 Helper started
+2026-04-19 11:20:22 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:20:22   PID=30276 MainWindowHandle=66458
+2026-04-19 11:20:22   ForceForeground result=
+2026-04-19 11:20:22 Helper finished, found=True
+2026-04-19 11:20:24 Helper started
+2026-04-19 11:20:24 Found 1 process(es) named 'Cold Turkey Blocker'
+2026-04-19 11:20:24   PID=30276 MainWindowHandle=66458
+2026-04-19 11:20:24   ForceForeground result=
+2026-04-19 11:20:24 Helper finished, found=True

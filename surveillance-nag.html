@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  Surveillance Nag Window — v3.22.38
+
+  Opened by surveillance mode escalation (3 ignored nags). No rewards, no
+  multipliers — just a confrontational reminder that time doesn't wait.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo of the Loom — Surveillance</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #08080f;
+  --surface: #12122a;
+  --surface2: #1a1a3a;
+  --warning: #ff6b6b;
+  --text: #e0e0e0;
+  --text-dim: #5a5a7e;
+}
+
+body {
+  background: radial-gradient(ellipse at 50% 30%, #280f0f 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.nag-card {
+  background: var(--surface);
+  border: 2px solid var(--warning);
+  border-radius: 16px;
+  max-width: 520px;
+  width: 100%;
+  padding: 36px 30px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(255, 107, 107, 0.2), inset 0 0 60px rgba(255, 107, 107, 0.03);
+  animation: fadeIn 0.5s ease, pulse 3s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 40px rgba(255, 107, 107, 0.2); }
+  50%      { box-shadow: 0 0 60px rgba(255, 107, 107, 0.35); }
+}
+
+.nag-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.nag-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  color: var(--warning);
+  letter-spacing: 2px;
+  margin-bottom: 20px;
+  text-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
+}
+
+.nag-message {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.9;
+  text-align: left;
+  margin: 0 0 24px;
+  padding: 20px;
+  background: rgba(255, 107, 107, 0.06);
+  border: 1px solid rgba(255, 107, 107, 0.15);
+  border-radius: 8px;
+  min-height: 180px;
+  transition: opacity 0.4s ease;
+}
+
+.nag-message .em {
+  color: var(--warning);
+  font-weight: bold;
+}
+
+.nag-message .dim {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.nag-elapsed {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+}
+
+.nag-elapsed span {
+  color: var(--warning);
+}
+
+.nag-reminder {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+  line-height: 1.8;
+}
+
+.nag-question {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  color: var(--text);
+  margin: 20px 0 16px;
+  letter-spacing: 1px;
+  line-height: 1.6;
+}
+
+.nag-buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.btn-yes {
+  background: linear-gradient(135deg, #00ff88, #00cc6a);
+  color: #0a0a14;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 32px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.2);
+}
+
+.btn-yes:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 24px rgba(0, 255, 136, 0.4);
+}
+
+.btn-no {
+  background: transparent;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  padding: 14px 32px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-no:hover {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.nag-score {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-top: 20px;
+  letter-spacing: 0.5px;
+}
+
+.nag-score .yes-count { color: #00ff88; }
+.nag-score .no-count { color: var(--warning); }
+
+.cycle-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.cycle-dots .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background 0.3s;
+}
+
+.cycle-dots .dot.active {
+  background: var(--warning);
+}
+</style>
+</head>
+<body>
+
+<div class="nag-card">
+  <div class="nag-icon">&#128065;</div>
+  <div class="nag-title">SURVEILLANCE</div>
+  <div class="nag-reminder">YOU TURNED THIS ON. YOU ASKED FOR THIS.</div>
+  <div class="nag-elapsed" id="elapsedLine">idle for <span id="elapsedTime">??</span></div>
+  <div class="nag-message" id="nagMessage"></div>
+  <div class="cycle-dots" id="cycleDots"></div>
+  <div id="ackGate" style="margin-top:20px;">
+    <button class="btn-no" id="ackBtn" type="button" style="color:#5a5a7e;border-color:#5a5a7e;">I KNOW</button>
+  </div>
+  <div id="questionGate" style="display:none;">
+    <div class="nag-question">Are you going to set a timer<br>right now or not?</div>
+    <div class="nag-buttons">
+      <button class="btn-yes" id="yesBtn" type="button">YES</button>
+      <button class="btn-no" id="noBtn" type="button">NO</button>
+    </div>
+    <div class="nag-score" id="scoreDisplay"></div>
+  </div>
+</div>
+
+<script src="surveillance-nag-window.js"></script>
+</body>
+</html>

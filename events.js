@@ -46,7 +46,7 @@
   // ---------------------------------------------------------------------------
   // CONSTANTS
   // ---------------------------------------------------------------------------
-  var GLOBAL_EVENT_COOLDOWN_MS = 2 * 24 * 60 * 60 * 1000;   // 2 days between ambient
+  var GLOBAL_EVENT_COOLDOWN_MS = 1 * 24 * 60 * 60 * 1000;   // 1 day between ambient
   var DEFAULT_EVENT_COOLDOWN_DAYS = 7;                      // per-event reuse cd
   var HISTORY_CAP = 300;
 

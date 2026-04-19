@@ -1,12 +1,13 @@
 // =============================================================================
-// firebase-sync.js — v3.21.4
+// firebase-sync.js — v3.21.65
 //
 // Syncs the player's profile snapshot to Cloud Firestore so it's viewable
 // at a public URL. Uses the Firestore REST API directly (no SDK) to avoid
 // CSP and bundler issues in the Chrome extension context.
 //
 // Exposes window.ProfileSync with:
-//   .sync(state)        — push current profile to Firestore
+//   .sync(state)        — push current profile + shared data to Firestore
+//   .pullShared(id)     — fetch shared config (watchlist etc.) from Firestore
 //   .getProfileUrl()    — returns the public URL string (or null)
 //   .getProfileId()     — returns the stored profile ID (or null)
 //
@@ -140,15 +141,47 @@
       loomsSold: state.loomsSold || 0,
       livesLost: livesLost,
       avatarDataURL: avatarDataURL,
-      dailyTaskLog: (state.dailyTaskLog && state.dailyTaskLog.date === new Date().toISOString().slice(0, 10))
-        ? state.dailyTaskLog : { date: new Date().toISOString().slice(0, 10), tasks: {} },
-      dailySessionLog: (state.dailySessionLog && state.dailySessionLog.date === new Date().toISOString().slice(0, 10))
-        ? state.dailySessionLog : { date: new Date().toISOString().slice(0, 10), sessions: [] },
+      // v3.21.55: Use LOCAL date — must match app.js todayStr() which uses local midnight.
+      dailyTaskLog: (function() {
+        var _d = new Date(), _mm = _d.getMonth() + 1, _dd = _d.getDate();
+        var _t = _d.getFullYear() + '-' + (_mm < 10 ? '0' : '') + _mm + '-' + (_dd < 10 ? '0' : '') + _dd;
+        return (state.dailyTaskLog && state.dailyTaskLog.date === _t)
+          ? state.dailyTaskLog : { date: _t, tasks: {} };
+      })(),
+      dailySessionLog: (function() {
+        var _d = new Date(), _mm = _d.getMonth() + 1, _dd = _d.getDate();
+        var _t = _d.getFullYear() + '-' + (_mm < 10 ? '0' : '') + _mm + '-' + (_dd < 10 ? '0' : '') + _dd;
+        return (state.dailySessionLog && state.dailySessionLog.date === _t)
+          ? state.dailySessionLog : { date: _t, sessions: [] };
+      })(),
       updatedAt: new Date().toISOString(),
       profileCreated: state.profileCreated
         ? new Date(state.profileCreated).toISOString()
         : new Date().toISOString()
     };
+  }
+
+  // ---- Convert Firestore REST format back to a JS value ----
+  function fromFirestoreValue(fv) {
+    if (!fv || typeof fv !== 'object') return null;
+    if ('nullValue' in fv) return null;
+    if ('booleanValue' in fv) return fv.booleanValue;
+    if ('integerValue' in fv) return parseInt(fv.integerValue, 10);
+    if ('doubleValue' in fv) return fv.doubleValue;
+    if ('stringValue' in fv) return fv.stringValue;
+    if ('arrayValue' in fv) {
+      var vals = (fv.arrayValue && fv.arrayValue.values) || [];
+      return vals.map(fromFirestoreValue);
+    }
+    if ('mapValue' in fv) {
+      var obj = {};
+      var fields = (fv.mapValue && fv.mapValue.fields) || {};
+      Object.keys(fields).forEach(function(k) {
+        obj[k] = fromFirestoreValue(fields[k]);
+      });
+      return obj;
+    }
+    return null;
   }
 
   // ---- Push snapshot to Firestore ----
@@ -166,6 +199,45 @@
     }).then(function(resp) {
       if (!resp.ok) throw new Error('Firestore sync failed: ' + resp.status);
       return resp.json();
+    });
+  }
+
+  // ---- v3.21.65: Push shared config (watchlist etc.) to Firestore ----
+  // Stored in a separate document: profiles/{id}/shared/config
+  function pushSharedConfig(profileId, sharedData) {
+    var fields = {};
+    Object.keys(sharedData).forEach(function(k) {
+      fields[k] = toFirestoreValue(sharedData[k]);
+    });
+
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '/shared/config?key=' + API_KEY;
+    return fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fields })
+    }).then(function(resp) {
+      if (!resp.ok) throw new Error('Shared config push failed: ' + resp.status);
+      return resp.json();
+    });
+  }
+
+  // ---- v3.21.65: Pull shared config from Firestore ----
+  function pullSharedConfig(profileId) {
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '/shared/config?key=' + API_KEY;
+    return fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    }).then(function(resp) {
+      if (resp.status === 404) return null; // no shared config yet
+      if (!resp.ok) throw new Error('Shared config pull failed: ' + resp.status);
+      return resp.json();
+    }).then(function(doc) {
+      if (!doc || !doc.fields) return null;
+      var result = {};
+      Object.keys(doc.fields).forEach(function(k) {
+        result[k] = fromFirestoreValue(doc.fields[k]);
+      });
+      return result;
     });
   }
 
@@ -198,13 +270,80 @@
     var snapshot = buildSnapshot(state);
     lastSyncTime = now;
 
+    // v3.21.67: Push shared config — full mirror data for linked browsers
+    var _td = new Date(), _tmm = _td.getMonth() + 1, _tdd = _td.getDate();
+    var _today = _td.getFullYear() + '-' + (_tmm < 10 ? '0' : '') + _tmm + '-' + (_tdd < 10 ? '0' : '') + _tdd;
+    var sharedData = {
+      nagSites: state.coldTurkeyNagSites || [],
+      // Mirror stats — everything needed to display the main browser's state
+      xp: state.xp || 0,
+      streak: state.streak || 0,
+      longestStreak: Math.max(state.longestStreak || 0, state.streak || 0),
+      totalLifetimeBlocks: state.totalLifetimeBlocks || 0,
+      lifetimeFocusMinutes: state.lifetimeFocusMinutes || 0,
+      tasksCompletedLifetime: state.tasksCompletedLifetime || 0,
+      coins: state.coins || 0,
+      lifetimeCoins: state.lifetimeCoins || 0,
+      combo: state.combo || 0,
+      maxCombo: state.maxCombo || 0,
+      maxComboToday: state.maxComboToday || 0,
+      blocks: state.blocks || 0,
+      todayBlocks: state.todayBlocks || 0,
+      todayXP: state.todayXP || 0,
+      sessionBlocks: state.sessionBlocks || 0,
+      displayName: state.displayName || '',
+      tagline: state.tagline || '',
+      lastActiveDate: state.lastActiveDate || '',
+      dailyTaskLog: (state.dailyTaskLog && state.dailyTaskLog.date === _today) ? state.dailyTaskLog : { date: _today, tasks: {} },
+      dailySessionLog: (state.dailySessionLog && state.dailySessionLog.date === _today) ? state.dailySessionLog : { date: _today, sessions: [] },
+      focusHistory: state.focusHistory || {},
+      updatedAt: new Date().toISOString(),
+      updatedBy: _getBrowserName()
+    };
+
     return pushToFirestore(profileId, snapshot).then(function() {
       console.log('[ProfileSync] Synced profile ' + profileId);
+      // v3.21.70: Only push shared config if NOT in mirror mode.
+      // Mirror browsers must never overwrite the main browser's stats.
+      if (!state.mirrorMode) {
+        pushSharedConfig(profileId, sharedData).then(function() {
+          console.log('[ProfileSync] Shared config pushed.');
+        }).catch(function(err) {
+          console.warn('[ProfileSync] Shared config push failed:', err);
+        });
+      } else {
+        console.log('[ProfileSync] Mirror mode — skipping shared config push.');
+      }
       return profileId;
     }).catch(function(err) {
       console.warn('[ProfileSync] Sync failed:', err);
       return null;
     });
+  }
+
+  // v3.21.65: Pull shared config and return merged watchlist
+  function pullShared(profileId) {
+    if (!profileId) return Promise.resolve(null);
+    return pullSharedConfig(profileId).then(function(config) {
+      if (!config) return null;
+      console.log('[ProfileSync] Pulled shared config from ' + (config.updatedBy || 'unknown'));
+      return config;
+    }).catch(function(err) {
+      console.warn('[ProfileSync] Pull failed:', err);
+      return null;
+    });
+  }
+
+  // v3.21.65: Detect browser name for labeling which browser pushed
+  function _getBrowserName() {
+    var ua = (navigator && navigator.userAgent) || '';
+    if (ua.indexOf('Brave') !== -1) return 'Brave';
+    if (ua.indexOf('Edg/') !== -1) return 'Edge';
+    if (ua.indexOf('OPR/') !== -1 || ua.indexOf('Opera') !== -1) return 'Opera';
+    if (ua.indexOf('Vivaldi') !== -1) return 'Vivaldi';
+    if (ua.indexOf('Chrome') !== -1) return 'Chrome';
+    if (ua.indexOf('Firefox') !== -1) return 'Firefox';
+    return 'Unknown';
   }
 
   function getProfileUrl(state) {
@@ -219,8 +358,10 @@
   // Expose
   window.ProfileSync = {
     sync: sync,
+    pullShared: pullShared,
     getProfileUrl: getProfileUrl,
     getProfileId: getProfileId,
-    HOSTING_BASE: HOSTING_BASE
+    HOSTING_BASE: HOSTING_BASE,
+    _resetThrottle: function() { lastSyncTime = 0; }
   };
 })();

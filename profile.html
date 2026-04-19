@@ -392,6 +392,7 @@
     <button class="nav-btn" id="toFactoryBtn" type="button" title="Open the Textile Factory.">FACTORY</button>
     <button class="nav-btn" id="toGalleryBtn" type="button" title="Open the Master Loom gallery &mdash; where you pick the loom that becomes this profile picture.">MASTER LOOM</button>
     <button class="nav-btn" id="toHouseBtn" type="button" title="Walk home. Open the House.">HOUSE</button>
+    <button class="nav-btn" id="toTimelineBtn" type="button" title="Read the history of every event at the mill." style="color:#4ecdc4;border-color:#4ecdc4;">TIMELINE</button>
     <button class="nav-btn" id="leaderboardBtn" type="button" title="Open the public leaderboard — see how all weavers rank." style="color:#ffd700;border-color:#ffd700;">LEADERBOARD</button>
     <button class="nav-btn gold" id="backToTrackerBtn" type="button" title="Open the main tracker &mdash; your to-do list.">&#8592; TO-DO LIST</button>
   </div>
@@ -542,6 +543,21 @@
         <span class="stat-value" id="stLivesLost" style="color:#ff6666;" title="Total departures from the roster &mdash; research mishaps plus incinerator conversions. Persists across sessions.">0</span>
       </div>
     </div>
+  </div>
+
+  <!-- v3.22.27: Weekly focus history bar chart (moved from main popup) -->
+  <div id="weeklyFocusPanel" style="background:var(--surface);border:1px solid #ff9f43;border-radius:10px;padding:18px 20px;margin-top:16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ff9f43;letter-spacing:0.5px;">WEEKLY FOCUS</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button id="weekPrev" style="background:none;border:1px solid #ff9f43;color:#ff9f43;font-family:'Press Start 2P',monospace;font-size:9px;padding:3px 8px;border-radius:4px;cursor:pointer;" title="Previous week">&lt;</button>
+        <span id="weekLabel" style="font-family:'Press Start 2P',monospace;font-size:8px;color:#5a5a7e;min-width:140px;text-align:center;"></span>
+        <button id="weekNext" style="background:none;border:1px solid #ff9f43;color:#ff9f43;font-family:'Press Start 2P',monospace;font-size:9px;padding:3px 8px;border-radius:4px;cursor:pointer;" title="Next week">&gt;</button>
+      </div>
+    </div>
+    <div id="weeklyBars" style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px;"></div>
+    <div id="weeklyLabels" style="display:flex;gap:8px;padding:4px 4px 0;"></div>
+    <div id="weeklySummary" style="font-size:11px;color:#5a5a7e;text-align:center;margin-top:8px;font-family:'Courier New',monospace;"></div>
   </div>
 
   <!-- v3.21.19: Daily completed tasks -->
