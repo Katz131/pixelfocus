@@ -73,11 +73,31 @@ public class VolumeControl {
 }
 "@ -ErrorAction SilentlyContinue
 
+# State file to track whether we already muted/unmuted for this period
+$stateFile = "$env:LOCALAPPDATA\TodoOfTheLoom\volume-state.json"
+$lastAction = ""
+if (Test-Path $stateFile) {
+    try {
+        $st = Get-Content $stateFile -Raw | ConvertFrom-Json
+        $lastAction = $st.lastAction
+    } catch {}
+}
+
 try {
     if ($shouldMute) {
+        # Mute period — enforce mute
         [VolumeControl]::SetVolume(0)
+        if ($lastAction -ne "mute") {
+            @{ lastAction = "mute"; timestamp = (Get-Date -Format o) } | ConvertTo-Json | Set-Content $stateFile
+        }
     } else {
-        [VolumeControl]::SetVolume(50)
+        # Outside mute period — only unmute ONCE to reverse the mute we applied.
+        # After that, leave volume alone so user can manually mute during the day.
+        if ($lastAction -eq "mute") {
+            [VolumeControl]::SetVolume(50)
+            @{ lastAction = "unmute"; timestamp = (Get-Date -Format o) } | ConvertTo-Json | Set-Content $stateFile
+        }
+        # If lastAction is already "unmute" or empty, do nothing — respect user's volume.
     }
 } catch {
     # Silently fail — will retry in 5 minutes

@@ -722,7 +722,36 @@
     return '    <div class="stat-row"><span class="stat-label">' + escHtml(label) + '</span><span class="stat-value' + clsAttr + '"' + stAttr + '>' + escHtml(value) + '</span></div>\n';
   }
 
-  // ---- Nav wiring ----
+  // ---- Nav wiring (with lockout enforcement on gamified pages) ----
+  var _gameLockedPages = ['factory.html', 'gallery.html', 'house.html'];
+  function _isProfileNavLocked(state) {
+    var now = Date.now();
+    if (state.gameLockGraceUntil && now < state.gameLockGraceUntil) return false;
+    // Check priority tasks
+    if (Array.isArray(state.priorityTasks) && state.priorityTasks.length > 0) {
+      var d = new Date();
+      var y = d.getFullYear();
+      var m = String(d.getMonth()+1); if (m.length < 2) m = '0' + m;
+      var day = String(d.getDate()); if (day.length < 2) day = '0' + day;
+      var todayKey = y + '-' + m + '-' + day;
+      var todayWd = d.getDay();
+      var hasPri = state.priorityTasks.some(function(p) {
+        if (!p) return false;
+        if (!p.recurrence || p.recurrence === 'none') return !p.completed;
+        if (p.lastCompletedDate === todayKey) return false;
+        if (p.recurrence === 'daily') return true;
+        if (p.recurrence === 'weekly') {
+          var wd = Array.isArray(p.recurWeekdays) ? p.recurWeekdays : [];
+          return wd.length === 0 || wd.indexOf(todayWd) !== -1;
+        }
+        return !p.completed;
+      });
+      if (hasPri) return true;
+    }
+    var timerActive = state.timerState === 'running' || state.timerState === 'countdown';
+    return timerActive;
+  }
+
   function wireNav() {
     function send(path) {
       try {
@@ -738,7 +767,27 @@
     ];
     map.forEach(function(pair) {
       var btn = document.getElementById(pair[0]);
-      if (btn) btn.addEventListener('click', function() { send(pair[1]); });
+      if (!btn) return;
+      if (_gameLockedPages.indexOf(pair[1]) !== -1) {
+        // Gamified page — check lockout before navigating
+        btn.addEventListener('click', function() {
+          try {
+            chrome.storage.local.get('pixelFocusState', function(res) {
+              var s = res && res.pixelFocusState || {};
+              if (_isProfileNavLocked(s)) {
+                btn.style.opacity = '0.35';
+                btn.style.filter = 'grayscale(80%)';
+                btn.title = 'Complete your priority tasks or finish your session first.';
+                setTimeout(function() { btn.style.opacity = ''; btn.style.filter = ''; }, 2000);
+              } else {
+                send(pair[1]);
+              }
+            });
+          } catch(_) { send(pair[1]); }
+        });
+      } else {
+        btn.addEventListener('click', function() { send(pair[1]); });
+      }
     });
   }
 

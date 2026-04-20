@@ -211,6 +211,22 @@ body {
   color: var(--warning);
 }
 
+/* v3.23.0: Promise timer phase styles */
+.challenge-card.urgent {
+  animation: urgentPulse 0.8s ease-in-out infinite !important;
+}
+@keyframes urgentPulse {
+  0%,100% { box-shadow: 0 0 40px rgba(255,68,102,0.3); }
+  50% { box-shadow: 0 0 60px rgba(255,68,102,0.5); }
+}
+.challenge-timer.urgent {
+  animation: timerBlink 0.5s ease-in-out infinite;
+}
+@keyframes timerBlink {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .progress-bar {
   width: 100%;
   height: 6px;
@@ -246,7 +262,8 @@ body {
     <span class="warn">The catch:</span> you must complete the session with
     <span class="warn">no pausing</span> and <span class="warn">no failing</span>.
     If you pause or say you didn't focus, the bonus is lost.<br><br>
-    You have <span class="highlight">3 minutes</span> to decide.
+    You have <span class="highlight">3 minutes</span> to decide.<br><br>
+    <span style="font-size:9px;color:#5a5a7e;font-style:italic;">It is known that you can exploit this system, and we encourage it!</span>
   </div>
 
   <div class="challenge-buttons" id="buttonRow">

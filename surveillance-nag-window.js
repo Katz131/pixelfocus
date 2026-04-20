@@ -1,10 +1,43 @@
-// surveillance-nag-window.js — v3.22.40
+// surveillance-nag-window.js — v3.22.96
 // Rotating confrontational messages. YES/NO tracking. No rewards. Just accountability.
 // ?test=1 = preview mode: inert buttons, no counting, has close button.
+// v3.22.96: Opens promise/penalty timer windows directly via chrome.windows.create
+//   instead of messaging background (service worker may be asleep in Brave).
 
 (function() {
   var isTest = window.location.search.indexOf('test=1') !== -1;
   var isPenalty = window.location.search.indexOf('penalty=1') !== -1;
+  var _responded = false; // tracks if YES or NO was explicitly clicked
+
+  // v3.22.96: Open timer windows directly — bypass service worker messaging
+  function openPromiseTimerWindow() {
+    try {
+      chrome.windows.create({
+        url: chrome.runtime.getURL('promise-timer.html'),
+        type: 'popup', width: 380, height: 260, focused: true,
+        top: 80, left: Math.round((screen.availWidth || 1200) - 420)
+      }, function(win) {
+        // Also notify background so it can track the window for penalty enforcement
+        try { chrome.runtime.sendMessage({ type: 'TRACK_PROMISE_TIMER', windowId: win && win.id }); } catch(_) {}
+      });
+    } catch(_) {
+      // Fallback: try the old message approach
+      try { chrome.runtime.sendMessage({ type: 'OPEN_PROMISE_TIMER' }); } catch(_) {}
+    }
+  }
+  function openPenaltyTimerWindow() {
+    try {
+      chrome.windows.create({
+        url: chrome.runtime.getURL('penalty-timer.html'),
+        type: 'popup', width: 380, height: 300, focused: true,
+        top: 80, left: Math.round((screen.availWidth || 1200) - 420)
+      }, function(win) {
+        try { chrome.runtime.sendMessage({ type: 'TRACK_PENALTY_TIMER', windowId: win && win.id }); } catch(_) {}
+      });
+    } catch(_) {
+      try { chrome.runtime.sendMessage({ type: 'OPEN_PENALTY_TIMER' }); } catch(_) {}
+    }
+  }
 
   // Show penalty banner if $100 was just deducted
   if (isPenalty) {
@@ -112,50 +145,78 @@
       updateScore();
     });
 
-    // YES — record it, close the tab (they're going to set a timer)
+    // YES — record it, reset consecutive NOs, open the 3-minute promise timer, close this window
     yesBtn.addEventListener('click', function() {
+      _responded = true;
       try {
         chrome.storage.local.get('pixelFocusState', function(result) {
           var state = result.pixelFocusState || {};
           state.surveillanceYesCount = (state.surveillanceYesCount || 0) + 1;
+          state.surveillanceConsecutiveNos = 0; // reset on YES
           chrome.storage.local.set({ pixelFocusState: state }, function() {
-            try { window.close(); } catch(_) {}
+            // Open the promise timer directly as a popup window
+            openPromiseTimerWindow();
             yesBtn.textContent = 'GO.';
             yesBtn.style.opacity = '0.5';
             noBtn.style.display = 'none';
+            setTimeout(function() {
+              try { window.close(); } catch(_) {}
+            }, 800);
           });
         });
       } catch(_) {
+        openPromiseTimerWindow();
         try { window.close(); } catch(_) {}
       }
     });
 
-    // NO — record it, shame them, keep the window open
+    // NO — record it, increment consecutive NOs. On 3rd consecutive: open promise timer.
     noBtn.addEventListener('click', function() {
+      _responded = true;
       try {
         chrome.storage.local.get('pixelFocusState', function(result) {
           var state = result.pixelFocusState || {};
           state.surveillanceNoCount = (state.surveillanceNoCount || 0) + 1;
-          chrome.storage.local.set({ pixelFocusState: state }, function() {
-            updateScore();
-            var shameMessages = [
-              'Noted. This window stays open.',
-              'That\'s another NO on your record.',
-              'You turned this on yourself. Think about why.',
-              'The timer is right there. It takes 3 seconds.',
-              'Every NO makes the next YES harder.',
-              'Your record is watching.',
-              'Still here. Still waiting.'
-            ];
-            var shame = shameMessages[Math.floor(Math.random() * shameMessages.length)];
-            var questionEl = document.querySelector('.nag-question');
-            if (questionEl) {
-              questionEl.innerHTML = '<span style="color:#ff6b6b;">' + shame + '</span>';
+          state.surveillanceConsecutiveNos = (state.surveillanceConsecutiveNos || 0) + 1;
+          var consecutiveNos = state.surveillanceConsecutiveNos;
+
+          // On 3rd consecutive NO/close: open penalty timer, reset counter
+          if (consecutiveNos >= 3) {
+            state.surveillanceConsecutiveNos = 0;
+            chrome.storage.local.set({ pixelFocusState: state }, function() {
+              updateScore();
+              var questionEl = document.querySelector('.nag-question');
+              if (questionEl) {
+                questionEl.innerHTML = '<span style="color:#ff4466;">Strike 3. Penalty timer activated.</span>';
+              }
+              noBtn.textContent = 'NO.';
+              noBtn.style.opacity = '0.5';
+              yesBtn.style.display = 'none';
+              // Open the penalty timer — not a promise, just a consequence
+              openPenaltyTimerWindow();
               setTimeout(function() {
-                questionEl.innerHTML = 'Are you going to set a timer<br>right now or not?';
-              }, 5000);
-            }
-          });
+                try { window.close(); } catch(_) {}
+              }, 2000);
+            });
+          } else {
+            chrome.storage.local.set({ pixelFocusState: state }, function() {
+              updateScore();
+              var shameMessages = consecutiveNos === 2
+                ? ['Last warning. One more and the promise timer starts.', 'Strike 2. Next NO triggers the countdown.', 'Almost there. One more NO = $300 on the line.']
+                : ['Noted.', 'That\'s another NO on your record.', 'The timer is right there. It takes 3 seconds.', 'Every NO makes the next YES harder.', 'Your record is watching.'];
+              var shame = shameMessages[Math.floor(Math.random() * shameMessages.length)];
+              var questionEl = document.querySelector('.nag-question');
+              if (questionEl) {
+                questionEl.innerHTML = '<span style="color:#ff6b6b;">' + shame + '</span>';
+              }
+              noBtn.textContent = 'NO.';
+              noBtn.style.opacity = '0.5';
+              yesBtn.style.display = 'none';
+              setTimeout(function() {
+                try { window.close(); } catch(_) {}
+              }, 2000);
+            });
+          }
         });
       } catch(_) {}
     });
@@ -234,4 +295,45 @@
       });
     } catch(_) {}
   }
+
+  // v3.22.92: Closing the window without responding counts as a NO.
+  // Uses pagehide (fires on close/navigate). Only in real mode.
+  if (!isTest) {
+    try {
+      window.addEventListener('pagehide', function() {
+        if (_responded) return; // already clicked YES or NO
+        // Increment consecutive NOs in storage (same as clicking NO)
+        try {
+          chrome.storage.local.get('pixelFocusState', function(result) {
+            var state = result.pixelFocusState || {};
+            state.surveillanceNoCount = (state.surveillanceNoCount || 0) + 1;
+            state.surveillanceConsecutiveNos = (state.surveillanceConsecutiveNos || 0) + 1;
+            // If this is the 3rd consecutive, open penalty timer
+            if (state.surveillanceConsecutiveNos >= 3) {
+              state.surveillanceConsecutiveNos = 0;
+              chrome.storage.local.set({ pixelFocusState: state });
+              openPenaltyTimerWindow();
+            } else {
+              chrome.storage.local.set({ pixelFocusState: state });
+            }
+          });
+        } catch(_) {}
+      });
+    } catch(_) {}
+  }
+
+  // v3.22.90: Keep window on top by re-focusing when it loses focus.
+  try {
+    window.addEventListener('blur', function() {
+      setTimeout(function() {
+        try {
+          chrome.tabs.getCurrent(function(tab) {
+            if (tab && tab.windowId) {
+              chrome.windows.update(tab.windowId, { focused: true });
+            }
+          });
+        } catch(_) {}
+      }, 200);
+    });
+  } catch(_) {}
 })();

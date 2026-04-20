@@ -173,7 +173,7 @@
       title: 'Bandwidth Writs',
       short: 'WRITS',
       blurb: 'Thin-paper permits allowing the Computer a defined window of rumination. Printed on a press that rarely catches fire.',
-      baseCost: 5,
+      baseCost: 100,
       yieldPerUnit: 0.4,
       lifetimeKey: 'lifetimeWrits'
     },
@@ -688,7 +688,7 @@
       if (!cpMap[id] && state[a.key] >= cp.at) {
         cpMap[id] = Date.now();
         SFX.certify();
-        notify(cp.memo);
+        notify(cp.memo, '#9b59b6', { sticky: true });
       }
     });
     state.ratiocinatoryCheckpoints = cpMap;
@@ -729,7 +729,7 @@
       if (!cpMap[id] && state[a.key] >= cp.at) {
         cpMap[id] = Date.now();
         SFX.certify();
-        notify(cp.memo);
+        notify(cp.memo, '#9b59b6', { sticky: true });
       }
     });
     state.ratiocinatoryCheckpoints = cpMap;
@@ -804,7 +804,10 @@
     var html = '';
     RESERVES.forEach(function(res) {
       if (!(state.ratiocinatoryRevealed || {})[res.revealKey]) return;
-      html += '<div class="reserve-pill" title="Lifetime procured: ' + (state[res.lifetimeKey] || 0) + '.">' +
+      var pillTip = res.key === 'bandwidthWrits' ? 'Writs in stock. Basic training supply — spend on aspect panels. Lifetime bought: ' + (state[res.lifetimeKey] || 0) + '.'
+                 : res.key === 'dataSachets' ? 'Sachets in stock. Mid-tier supply — more aspect progress per click than Writs. Lifetime bought: ' + (state[res.lifetimeKey] || 0) + '.'
+                 : 'Tokens in stock. Premium supply — best aspect progress per click. Lifetime bought: ' + (state[res.lifetimeKey] || 0) + '.';
+      html += '<div class="reserve-pill" title="' + pillTip + '">' +
                 '<span class="pill-label">' + res.short + '</span>' +
                 '<span class="pill-val">' + (state[res.key] || 0) + '</span>' +
               '</div>';
@@ -832,7 +835,10 @@
       var cardClass = 'procure-card' + (procurable && canAfford ? ' affordable' : '');
       var btnLabel = procurable ? 'PROCURE (x1)  $' + fmtMoney(unitCost) : 'LINE CLOSED';
       var btnDisabled = (!procurable || !canAfford) ? ' disabled' : '';
-      html += '<div class="' + cardClass + '" title="Procure ' + res.title + '. Stored in the Clerisy Terminal until spent on an aspect panel.">' +
+      var cardTip = res.key === 'bandwidthWrits' ? 'Basic supply. Costs $' + unitCost + ' each. Yield: ' + res.yieldPerUnit + ' aspect progress per unit when training. Buy these, then click TRAIN on an aspect panel to spend them.'
+                  : res.key === 'dataSachets' ? 'Mid-tier supply. Costs $' + unitCost + ' each. Yield: ' + res.yieldPerUnit + ' per unit — much better than Writs. Unlocked by the Loom Semantician factory upgrade.'
+                  : 'Premium supply. Costs $' + unitCost + ' each. Yield: ' + res.yieldPerUnit + ' per unit — the best available. Unlocked by the Adjacent Reasoning factory upgrade.';
+      html += '<div class="' + cardClass + '" title="' + cardTip + '">' +
                 '<div class="card-title">' + res.title + '</div>' +
                 '<div class="card-desc">' + res.blurb + '</div>' +
                 '<div class="card-stats">OWNED: ' + (state[res.key] || 0) + '  &middot;  YIELD: ' + res.yieldPerUnit + '/unit</div>' +
@@ -881,7 +887,12 @@
         cpPipsHtml += '<span class="' + cls + '" title="' + cp.memo.replace(/"/g, '&quot;') + '">' + cp.label + '</span>';
       });
 
-      html += '<div class="' + cardClass + '" title="' + a.panelDesc.replace(/"/g, '&quot;') + '">' +
+      var aspectTip = a.key === 'aspectExegesis' ? 'Level ' + Math.floor(lvl) + '/100. Training this unlocks the Loom Semantician factory upgrade, which opens Data Sachets here. 5 checkpoint milestones.'
+                   : a.key === 'aspectChromatics' ? 'Level ' + Math.floor(lvl) + '/100. The visual/color aspect. Unlocks after Exegesis 20. Each checkpoint opens new capabilities.'
+                   : a.key === 'aspectDeftness' ? 'Level ' + Math.floor(lvl) + '/100. Training this unlocks the Adjacent Reasoning factory upgrade, which opens Cogitation Tokens here. Unlocks after Chromatics 25.'
+                   : a.key === 'aspectOmens' ? 'Level ' + Math.floor(lvl) + '/100. Training this unlocks the Observation Tower factory upgrade. Unlocks after Deftness 30 or Adjacent Reasoning.'
+                   : 'Level ' + Math.floor(lvl) + '/100. The final aspect. Unlocks when your other aspects total 180+. Deep-game progression.';
+      html += '<div class="' + cardClass + '" title="' + aspectTip + '">' +
                 '<div class="aspect-head">' +
                   '<div>' +
                     '<div class="aspect-name">' + a.title + '</div>' +
@@ -893,8 +904,8 @@
                 '<div class="aspect-desc">' + a.desc + '</div>' +
                 '<div class="aspect-checkpoints">' + cpPipsHtml + '</div>' +
                 '<div class="aspect-actions">' +
-                  '<button class="aspect-btn" data-aspect="' + a.key + '" data-mode="one">TRAIN (-2 WRITS)</button>' +
-                  '<button class="aspect-btn gold" data-aspect="' + a.key + '" data-mode="max">TRAIN ALL</button>' +
+                  '<button class="aspect-btn" data-aspect="' + a.key + '" data-mode="one" title="Spend 1 Token, 1 Sachet, or 2 Writs (best available used first) to gain aspect progress. Patsies multiply the gain.">TRAIN (-2 WRITS)</button>' +
+                  '<button class="aspect-btn gold" data-aspect="' + a.key + '" data-mode="max" title="Spend ALL available supplies at once on this aspect. Fastest way to level up.">TRAIN ALL</button>' +
                 '</div>' +
               '</div>';
     });
@@ -928,12 +939,14 @@
       var canAfford = (state.coins || 0) >= cost;
       var cardClass = 'patsy-card unlocked' + (canAfford ? ' affordable' : '');
       var totalBonus = Math.round((Math.pow(1 + p.yieldBonus, owned) - 1) * 100);
-      html += '<div class="' + cardClass + '">' +
+      var nextBonus = Math.round((Math.pow(1 + p.yieldBonus, owned + 1) - 1) * 100);
+      var patsyTip = 'Currently giving +' + totalBonus + '% training bonus. Hiring another raises it to +' + nextBonus + '%. Each ' + p.title + ' gives +' + Math.round(p.yieldBonus * 100) + '% compounding — the more you have, the bigger each hire\'s effect. Cost scales with each hire.';
+      html += '<div class="' + cardClass + '" title="' + patsyTip.replace(/"/g, '&quot;') + '">' +
                 '<div class="patsy-title">' + p.title + '</div>' +
                 '<div class="patsy-permit">Permit: ' + p.permit + '</div>' +
                 '<div class="patsy-count">ON STAFF: ' + owned + '  &middot;  +' + totalBonus + '% YIELD</div>' +
                 '<div class="patsy-desc">' + p.desc + '</div>' +
-                '<button class="patsy-btn" data-patsy="' + p.key + '"' + (canAfford ? '' : ' disabled') + '>COMMISSION &middot; $' + fmtMoney(cost) + '</button>' +
+                '<button class="patsy-btn" data-patsy="' + p.key + '"' + (canAfford ? '' : ' disabled') + ' title="Hire one for $' + fmtMoney(cost) + '. Permanently multiplies all aspect training gains.">COMMISSION &middot; $' + fmtMoney(cost) + '</button>' +
               '</div>';
     });
     if (visibleCount === 0) {
@@ -970,16 +983,20 @@
       var stamp = '[' + inst.codename + ']';
       // v3.20.13: loom-sale gate for the Standing Office.
       var needsSaleGate = (inst.key === SALE_GATE_INSTITUTION_KEY && !chartered && !isLoomSaleGateMet());
+      var instTip = inst.key === 'institutionStandingOffice' ? (chartered ? 'Chartered. Factory upgrades -6% cheaper, training yield +15%.' : 'One-time purchase. Makes Factory upgrades 6% cheaper and boosts all training yield by 15%. Requires selling artwork at the Gallery auction.')
+                  : inst.key === 'institutionEnquiryBureau' ? (chartered ? 'Chartered. Factory upgrades -8% cheaper (stacks with Standing Office). Aspect cap extended past 100.' : 'One-time purchase. Stacks another 8% Factory discount on top of the Standing Office. Also extends aspect level caps beyond 100 for bonus progression.')
+                  : inst.key === 'institutionPersonnelMin' ? (chartered ? 'Chartered. Employee hiring costs -25%. Streak trickle +10%.' : 'One-time purchase. Cuts all employee hiring costs by 25% and boosts your passive streak trickle by 10%.')
+                  : (chartered ? 'Chartered. End-of-day bonus +25%. Each maxed aspect gives +3% factory income.' : 'One-time purchase. Boosts end-of-day lump by 25% and every aspect at 100 gives the Factory +3% income.');
       var btnHtml;
       if (chartered) {
         btnHtml = '<button class="patsy-btn" disabled>CHARTERED</button>';
       } else if (needsSaleGate) {
-        btnHtml = '<button class="patsy-btn" disabled title="The Computer requires proof of artistic commerce before it will allow improvements to its own reasoning. Sell at least ' + SALE_GATE_MIN_SOLD + ' artwork at the Master Loom auction house to unlock this.">' +
+        btnHtml = '<button class="patsy-btn" disabled title="Sell at least ' + SALE_GATE_MIN_SOLD + ' artwork at the Gallery auction house to unlock this institution.">' +
                   'REQUIRES LOOM SALE</button>';
       } else {
-        btnHtml = '<button class="patsy-btn" data-inst="' + inst.key + '"' + (canAfford ? '' : ' disabled') + '>ESTABLISH &middot; $' + fmtMoney(inst.cost) + '</button>';
+        btnHtml = '<button class="patsy-btn" data-inst="' + inst.key + '"' + (canAfford ? '' : ' disabled') + ' title="Buy once for $' + fmtMoney(inst.cost) + '. Permanent bonus — never expires.">ESTABLISH &middot; $' + fmtMoney(inst.cost) + '</button>';
       }
-      html += '<div class="' + cardClass + '">' +
+      html += '<div class="' + cardClass + '" title="' + instTip.replace(/"/g, '&quot;') + '">' +
                 '<div class="patsy-title">' + titleLine + '</div>' +
                 '<div class="patsy-permit">' + stamp + '</div>' +
                 '<div class="patsy-desc">' + descLine + '</div>' +

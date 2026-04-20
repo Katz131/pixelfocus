@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<!--
+  Promise Timer Window — v3.22.82
+  A pop-out 3-minute countdown triggered when the player clicks YES on the
+  surveillance nag. They promised to start a focus timer. If they don't
+  follow through within 3 minutes, $300 is deducted. Window closes on
+  success (timer started) or on penalty (time expired).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo of the Loom — Promise Timer</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #08080f;
+  --surface: #12122a;
+  --accent: #00ff88;
+  --gold: #ffd700;
+  --danger: #ff4466;
+  --text: #e0e0e0;
+  --text-dim: #5a5a7e;
+  --border: #2a2a4a;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+.promise-card {
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  padding: 28px 32px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(0,255,136,0.15);
+  transition: all 0.4s;
+}
+.promise-card.urgent {
+  border-color: var(--danger);
+  box-shadow: 0 0 40px rgba(255,68,102,0.25);
+  animation: pulseCard 1s ease-in-out infinite;
+}
+@keyframes pulseCard {
+  0%,100% { box-shadow: 0 0 40px rgba(255,68,102,0.25); }
+  50% { box-shadow: 0 0 60px rgba(255,68,102,0.45); }
+}
+.promise-card.success {
+  border-color: var(--gold);
+  box-shadow: 0 0 50px rgba(255,215,0,0.35);
+}
+.promise-card.penalty {
+  border-color: var(--danger);
+  box-shadow: 0 0 50px rgba(255,68,102,0.4);
+}
+.promise-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+.timer-display {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 36px;
+  color: var(--accent);
+  margin: 16px 0;
+  text-shadow: 0 0 15px rgba(0,255,136,0.4);
+  transition: color 0.3s;
+}
+.timer-display.urgent {
+  color: var(--danger);
+  text-shadow: 0 0 15px rgba(255,68,102,0.5);
+  animation: timerPulse 0.5s ease-in-out infinite;
+}
+@keyframes timerPulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #15102a;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #4ecdc4);
+  transition: width 1s linear;
+  box-shadow: 0 0 8px rgba(0,255,136,0.4);
+}
+.progress-fill.urgent {
+  background: linear-gradient(90deg, var(--danger), #ff8866);
+  box-shadow: 0 0 8px rgba(255,68,102,0.4);
+}
+.promise-text {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.promise-text em {
+  color: var(--text);
+  font-style: normal;
+  font-weight: bold;
+}
+.penalty-warn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--danger);
+  letter-spacing: 1px;
+  margin-top: 12px;
+  opacity: 0.8;
+}
+.result-msg {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  line-height: 2;
+  display: none;
+}
+.result-msg.success { color: var(--gold); }
+.result-msg.penalty { color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="promise-card" id="promiseCard">
+  <div class="promise-title">YOU PROMISED</div>
+  <div class="timer-display" id="timerDisplay">3:00</div>
+  <div class="progress-bar">
+    <div class="progress-fill" id="progressFill" style="width:100%;"></div>
+  </div>
+  <div class="promise-text">
+    You clicked <em>YES</em> — you said you'd start a focus timer.<br>
+    Open your to-do list and start one before this runs out.
+  </div>
+  <div class="penalty-warn">$300 PENALTY IF YOU DON'T</div>
+  <div style="font-size:9px;color:#5a5a7e;margin-top:8px;font-style:italic;">Closing this window won't save you — the penalty still applies.</div>
+  <div class="result-msg" id="resultMsg"></div>
+</div>
+
+<script src="promise-timer.js"></script>
+</body>
+</html>

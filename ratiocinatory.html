@@ -603,13 +603,13 @@
   </div>
 </div>
 
-<div class="section-header" title="The Clerisy Terminal is the procurement console. Each tier unlocks as a factory upgrade is installed in the other room.">The Clerisy Terminal</div>
-<div class="section-sub" title="Spend money to procure the three official reserves. Writs are cheap and plentiful; Sachets are middle-grade; Tokens are premium cognition at cognition pricing.">Procurement console. Money in, reserves out. The Terminal does not audit the request, but the Terminal remembers.</div>
+<div class="section-header" title="Buy training supplies here with money from your treasury. Three tiers unlock as you install upgrades in the Factory. Higher tiers give more aspect progress per unit.">The Clerisy Terminal</div>
+<div class="section-sub" title="Writs are the basic supply (cheap, low yield). Sachets are mid-tier (unlocked via Loom Semantician factory upgrade). Tokens are premium (unlocked via Adjacent Reasoning factory upgrade). Buy supplies here, then spend them on the aspect panels below.">Procurement console. Money in, reserves out. The Terminal does not audit the request, but the Terminal remembers.</div>
 
 <div class="clerisy-terminal">
   <div class="terminal-frame">
     <div class="terminal-hero">
-      <div class="treasury-pill">
+      <div class="treasury-pill" title="Your current money. Earned from focus sessions. Spend it on supplies below or on employees in the Consultation Wing.">
         <span class="treasury-label">TREASURY</span>
         <span class="treasury-value" id="treasuryValue">0</span>
       </div>
@@ -619,35 +619,36 @@
   </div>
 </div>
 
-<div class="section-header" title="Each panel trains one aspect of the loom\u2019s mind. Feed reserves into a panel to climb its aspect level. Reaching each checkpoint unlocks new room capacity AND new factory upgrades next door.">The Chartered Panels</div>
-<div class="section-sub" title="Five panels, five aspects, five checkpoints each. Panels beyond the first are hidden until a prior aspect opens them.">Chartered directions of inquiry. Revealed progressively as each aspect demonstrates, to the satisfaction of the standing office, approved momentum.</div>
+<div class="section-header" title="Spend your supplies (Writs/Sachets/Tokens) here to level up five aspects. Each aspect has 5 checkpoint milestones that unlock new Factory upgrades. New panels appear as you level up earlier ones.">The Chartered Panels</div>
+<div class="section-sub" title="Click TRAIN to spend supplies and raise an aspect's level. TRAIN ALL spends everything at once. Higher-tier supplies give more progress per click. Patsies multiply your gains.">Chartered directions of inquiry. Revealed progressively as each aspect demonstrates, to the satisfaction of the standing office, approved momentum.</div>
 
 <div class="aspect-grid" id="aspectGrid"><!-- aspect cards rendered in ratiocinatory.js --></div>
 
-<div class="section-header" title="Patsies are commissioned from a clerical pool of unclear provenance to sit across from the computer and nod politely. Each class multiplies your aspect gains from procurement.">The Consultation Wing</div>
-<div class="section-sub" title="Patsy commissioning office. Each tier is a separate permit line, filed under a separate number, handled by a separate man who was unfortunately on his lunch.">Commission patsies to consult with the Computer on your behalf. Each class of patsy applies a compounding multiplier to the reserves-to-aspect conversion.</div>
+<div class="section-header" title="Hire employees to multiply how fast your aspects level up. Each hire gives a compounding percentage bonus to all training. More employees = much faster progress.">The Consultation Wing</div>
+<div class="section-sub" title="Each employee tier has a different bonus strength. Hiring multiples of the same tier compounds the bonus. Higher tiers cost more but give a bigger multiplier per hire. Employees are paid with money, not supplies.">Commission patsies to consult with the Computer on your behalf. Each class of patsy applies a compounding multiplier to the reserves-to-aspect conversion.</div>
 
 <div class="patsy-rows" id="patsyRows"><!-- patsy cards rendered in ratiocinatory.js --></div>
 
 <div id="institutionsSection" style="display:none;">
-  <div class="section-header" title="Pay to establish standing institutions. Each one is named in full only once it has been chartered. Each shapes both the factory and the Ratiocinatory.">Standing Institutions</div>
-  <div class="section-sub" title="Establishment orders the operator may, eventually, place. Each order names a standing office that has, until now, signed nothing out loud.">Establishment orders. Chartered in ink, eventually. Each institution is named in full only once purchased.</div>
+  <div class="section-header" title="Expensive one-time purchases that give powerful permanent bonuses to both the Factory and this room. Discount factory upgrades, boost training yield, cheapen employees, and more.">Standing Institutions</div>
+  <div class="section-sub" title="Each institution appears once you meet its requirements. Buy it once and the bonus is permanent. Institutions chain — later ones require earlier ones to be chartered first.">Establishment orders. Chartered in ink, eventually. Each institution is named in full only once purchased.</div>
   <div class="patsy-rows" id="institutionRows"><!-- institution cards rendered in ratiocinatory.js --></div>
 </div>
 
 <div id="annexSection" style="display:none;margin:26px auto 0;max-width:1300px;padding:0 24px;">
   <div class="annex-card">
-    <div class="annex-title">The Infinite Improbability Annex</div>
+    <div class="annex-title" title="Late-game bonus. Gives a flat +10% training yield on all aspects. Requires a recent focus session to stay active. Also has some... side effects at high aspect totals.">The Infinite Improbability Annex</div>
     <div class="annex-body" id="annexBody">The Annex is not online.</div>
   </div>
 </div>
 
-<div class="msg-console-header" title="Live feed from the Ratiocinatory floor. Procurement filings, patsy commissions, aspect certifications, and \u2014 past a point \u2014 activity that the operator did not personally authorize.">
+<div class="msg-console-header" title="Live activity log. Shows purchases, training milestones, employee commissions, and system messages. Watch this for checkpoint notifications and other events.">
   <span><span class="dot"></span>RATIOCINATORY FEED</span>
   <span style="color:#8a78c8;font-size:8px;letter-spacing:1.5px;" id="ratioClock">00:00:00</span>
 </div>
 <div class="msg-console" id="msgConsole"></div>
 
+<script src="lockout-guard.js"></script>
 <script src="tooltip.js"></script>
 <script src="msglog.js"></script>
 <script src="patsy-names.js"></script>

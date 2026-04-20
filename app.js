@@ -898,7 +898,7 @@ try {
     ratiocinatoryUnlocked: false,      // flipped by the factory upgrade
     hasSeenRatiocinatoryIntro: false,  // first visit charter modal
     // --- Procured resources (bought at the Clerisy Terminal) ---
-    bandwidthWrits: 0,                 // cheapest; $5 each
+    bandwidthWrits: 0,                 // cheapest; $100 each
     dataSachets: 0,                    // mid;      $40 each
     cogitationTokens: 0,               // premium;  $300 each
     // --- Lifetime procurement stats (for tooltips/flavor) ---
@@ -1458,16 +1458,25 @@ try {
       awardEndOfDayBonus(minsYesterday, state.streak);
 
       // v3.21.59: Archive yesterday's focus minutes into focusHistory
+      // v3.22.94: Also archive whatever dailySessionLog holds (even if date
+      // doesn't match lastActiveDate — covers edge cases like multi-day gaps).
       try {
         if (!state.focusHistory || typeof state.focusHistory !== 'object') state.focusHistory = {};
         var yDate = state.lastActiveDate; // yesterday's date string
-        if (yDate && state.dailySessionLog && state.dailySessionLog.date === yDate) {
-          var yMins = 0;
-          var ySessions = state.dailySessionLog.sessions || [];
-          for (var _yi = 0; _yi < ySessions.length; _yi++) yMins += (ySessions[_yi].min || 0);
-          state.focusHistory[yDate] = yMins;
-        } else if (yDate) {
-          // No session log for yesterday — record 0 or use block estimate
+
+        // Archive whatever is in dailySessionLog (regardless of date match)
+        if (state.dailySessionLog && state.dailySessionLog.date && state.dailySessionLog.sessions && state.dailySessionLog.sessions.length > 0) {
+          var logDate = state.dailySessionLog.date;
+          var logMins = 0;
+          var logSessions = state.dailySessionLog.sessions;
+          for (var _yi = 0; _yi < logSessions.length; _yi++) logMins += (logSessions[_yi].min || 0);
+          // Only overwrite if we have more than what's stored
+          if (!state.focusHistory[logDate] || state.focusHistory[logDate] < logMins) {
+            state.focusHistory[logDate] = logMins;
+            console.log('[DayRollover] Archived ' + logMins + ' min for ' + logDate + ' into focusHistory.');
+          }
+        } else if (yDate && !state.focusHistory[yDate]) {
+          // No session log at all — record block estimate
           state.focusHistory[yDate] = (state.todayBlocks || 0) * 10;
         }
         // Cap history to ~90 days to prevent unbounded growth
@@ -1553,8 +1562,10 @@ try {
   let notifQueue = [];
   let notifShowing = false;
 
-  function notify(msg, color) {
-    notifQueue.push({ msg, color });
+  function notify(msg, color, opts) {
+    // opts.sticky = true → stays until clicked
+    // opts.duration = ms → custom auto-dismiss time (default 2000)
+    notifQueue.push({ msg, color, opts: opts || {} });
     if (!notifShowing) showNextNotif();
     // Mirror important notifications into the loom console.
     try {
@@ -1567,15 +1578,27 @@ try {
   function showNextNotif() {
     if (notifQueue.length === 0) { notifShowing = false; return; }
     notifShowing = true;
-    const { msg, color } = notifQueue.shift();
+    const { msg, color, opts } = notifQueue.shift();
     notification.textContent = msg;
     notification.style.background = color || 'var(--accent)';
     notification.style.color = color ? '#fff' : 'var(--bg)';
     notification.classList.add('show');
-    setTimeout(() => {
-      notification.classList.remove('show');
-      setTimeout(showNextNotif, 300);
-    }, 2000);
+    if (opts && opts.sticky) {
+      // Click-to-dismiss
+      notification.style.cursor = 'pointer';
+      var dismissHandler = function() {
+        notification.removeEventListener('click', dismissHandler);
+        notification.style.cursor = '';
+        notification.classList.remove('show');
+        setTimeout(showNextNotif, 300);
+      };
+      notification.addEventListener('click', dismissHandler);
+    } else {
+      setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(showNextNotif, 300);
+      }, (opts && opts.duration) || 2000);
+    }
   }
 
   // ============== HOVER SOUNDS ==============
@@ -2910,6 +2933,12 @@ try {
 
   // Refresh do now banner every 30 seconds
   setInterval(function() { renderDoNowBanner(); checkDoNowExpiry(); }, 30000);
+
+  // v3.22.90: Periodic full re-render every 60 seconds so daily priority items,
+  // reminders, and time-based UI changes appear without manual page reload.
+  setInterval(function() {
+    try { render(); } catch(_) {}
+  }, 60000);
 
   // Wire modal close
   (function() {
@@ -5223,7 +5252,7 @@ try {
         elapsedEl.style.color = '#00ff88';
         return;
       }
-      var lastSession = state.lastStartedSessionAt || state.lastCompletedSessionAt || 0;
+      var lastSession = state.lastCompletedSessionAt || state.lastStartedSessionAt || 0;
       if (!lastSession) {
         elapsedEl.textContent = 'NO SESSIONS TODAY';
         elapsedEl.style.color = '#ff6b6b';
@@ -5270,12 +5299,20 @@ try {
               elapsedEl.textContent = txt + '  |  NEXT NAG: ' + nM + 'M ' + (nS < 10 ? '0' : '') + nS + 'S';
             } else {
               // Time's up — fire the nag right here
-              // Guard: don't fire if timer is running or recently completed
+              // v3.22.98: Comprehensive guard — check ALL states that mean "don't nag"
               var _timerOn = st.timerEndsAt && st.timerEndsAt > _now;
-              var _counting = st.timerState === 'countdown';
+              var _timerBusy = st.timerState === 'running' || st.timerState === 'countdown' || st.timerState === 'paused' || st.timerState === 'completed';
               var _recent = st.lastCompletedSessionAt && (_now - st.lastCompletedSessionAt) < 300000;
-              if (_timerOn || _counting || _recent) {
+              // Also check in-memory state (avoids stale-storage race on completion)
+              var _memBusy = state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed';
+              if (_timerOn || _timerBusy || _recent || _memBusy) {
                 elapsedEl.textContent = txt + '  |  NAG PAUSED (timer active)';
+                // v3.22.98: Reset the nag anchor so next nag is 5 min from NOW
+                // This prevents the nag from firing the instant the grace period ends
+                if (st.surveillanceLastNag && (_now - st.surveillanceLastNag) > _nagInterval) {
+                  st.surveillanceLastNag = _now;
+                  try { chrome.storage.local.set({ pixelFocusState: st }); } catch(_) {}
+                }
                 return;
               }
               // Lock to prevent re-fire on next tick
@@ -5362,10 +5399,12 @@ try {
       state.surveillanceEndsAt = Date.now() + (minutes * 60000);
       state.surveillanceStartedAt = Date.now();
       state.surveillanceNagCount = 0;
-      state.surveillanceLastNag = 0;
+      state.surveillanceLastNag = Date.now(); // anchor first nag 5 min from NOW (not 0, which races with stale storage)
       state.surveillancePenaltyApplied = false;
+      state.surveillanceConsecutiveNos = 0;
       save();
-      updateSurveillanceUI();
+      // Delay UI update to let save() flush — prevents stale-storage race that fires nag instantly
+      setTimeout(function() { updateSurveillanceUI(); }, 300);
       try {
         chrome.notifications.create('surveillance-started', {
           type: 'basic', iconUrl: 'icons/icon128.png',
@@ -5596,6 +5635,7 @@ try {
   function beginActualSession() {
     SFX.startTimer();
     _gameLockGraceUntil = 0; // v3.21.10: new session cancels any grace window
+    state.gameLockGraceUntil = 0;
     state.timerState = 'running';
     // Anchor the session to a wall-clock end time. Now + whatever is
     // left on the clock. The tick reads this directly rather than
@@ -5878,6 +5918,7 @@ try {
     // Also kill any in-progress 15-second pre-start countdown.
     cancelPreStartCountdown();
     _gameLockGraceUntil = 0; // v3.21.10: manual reset cancels grace window
+    state.gameLockGraceUntil = 0;
     state.timerState = 'idle';
     state.timerRemaining = state.sessionDurationSec || 600;
     state.timerEndsAt = 0;
@@ -6361,6 +6402,7 @@ try {
       var sessionSec = state.sessionDurationSec || 600;
       if (sessionSec >= 600) {
         _gameLockGraceUntil = Date.now() + (5 * 60 * 1000);
+        state.gameLockGraceUntil = _gameLockGraceUntil; // persist for other pages
       }
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
@@ -6397,6 +6439,21 @@ try {
     try {
       var today = todayStr();
       if (!state.dailySessionLog || state.dailySessionLog.date !== today) {
+        // v3.22.94: SAFETY — archive the old day's sessions before wiping.
+        // Prevents data loss if checkDayRollover hasn't run yet.
+        if (state.dailySessionLog && state.dailySessionLog.date && state.dailySessionLog.sessions && state.dailySessionLog.sessions.length > 0) {
+          if (!state.focusHistory || typeof state.focusHistory !== 'object') state.focusHistory = {};
+          var oldDate = state.dailySessionLog.date;
+          var oldMins = 0;
+          for (var _ai = 0; _ai < state.dailySessionLog.sessions.length; _ai++) {
+            oldMins += (state.dailySessionLog.sessions[_ai].min || 0);
+          }
+          // Only write if we have more minutes than what's already archived
+          if (!state.focusHistory[oldDate] || state.focusHistory[oldDate] < oldMins) {
+            state.focusHistory[oldDate] = oldMins;
+            console.log('[SessionLog] Archived ' + oldMins + ' min for ' + oldDate + ' before resetting dailySessionLog.');
+          }
+        }
         state.dailySessionLog = { date: today, sessions: [] };
       }
       var startAt = state._sessionStartedAt || (Date.now() - ((state.sessionDurationSec || 600) * 1000));
@@ -9437,6 +9494,90 @@ try {
 
           // Delay CT open so the popup/notification settle first
           setTimeout(function() { try { openColdTurkeyApp(); } catch (_) {} }, 600);
+        });
+      }
+
+      // v3.22.90: Challenge window preview button — opens challenge.html?test=1
+      // Opens as a popup window (same as the real idle challenge) so you see
+      // exactly what the player would see.
+      var challengeWindowTestBtn = $('challengeWindowTestBtn');
+      if (challengeWindowTestBtn) {
+        challengeWindowTestBtn.addEventListener('click', function() {
+          try {
+            var challengeUrl = chrome.runtime.getURL('challenge.html?test=1');
+            chrome.windows.create({
+              url: challengeUrl,
+              type: 'popup',
+              width: 520,
+              height: 620,
+              focused: true,
+              top: 80,
+              left: Math.round((screen.availWidth || 1200) / 2 - 260)
+            });
+          } catch (_) {}
+          challengeWindowTestBtn.textContent = 'OPENED!';
+          challengeWindowTestBtn.style.color = '#00ff88';
+          challengeWindowTestBtn.style.borderColor = '#00ff88';
+          setTimeout(function() {
+            challengeWindowTestBtn.textContent = 'TEST';
+            challengeWindowTestBtn.style.color = '#ff8c3a';
+            challengeWindowTestBtn.style.borderColor = '#ff8c3a';
+          }, 3000);
+        });
+      }
+
+      // v3.23.0: Promise timer preview — opens challenge.html?test=1&promise=1
+      // Auto-accepts the challenge so you skip straight to the promise timer phase.
+      var promiseTimerTestBtn = $('promiseTimerTestBtn');
+      if (promiseTimerTestBtn) {
+        promiseTimerTestBtn.addEventListener('click', function() {
+          try {
+            var promiseUrl = chrome.runtime.getURL('challenge.html?test=1&promise=1');
+            chrome.windows.create({
+              url: promiseUrl,
+              type: 'popup',
+              width: 520,
+              height: 620,
+              focused: true,
+              top: 80,
+              left: Math.round((screen.availWidth || 1200) / 2 - 260)
+            });
+          } catch (_) {}
+          promiseTimerTestBtn.textContent = 'OPENED!';
+          promiseTimerTestBtn.style.color = '#ffd700';
+          promiseTimerTestBtn.style.borderColor = '#ffd700';
+          setTimeout(function() {
+            promiseTimerTestBtn.textContent = 'TEST';
+            promiseTimerTestBtn.style.color = '#00ff88';
+            promiseTimerTestBtn.style.borderColor = '#00ff88';
+          }, 3000);
+        });
+      }
+
+      // v3.22.93: Penalty timer preview button — opens penalty-timer.html?test=1
+      var penaltyTimerTestBtn = $('penaltyTimerTestBtn');
+      if (penaltyTimerTestBtn) {
+        penaltyTimerTestBtn.addEventListener('click', function() {
+          try {
+            var penaltyUrl = chrome.runtime.getURL('penalty-timer.html?test=1');
+            chrome.windows.create({
+              url: penaltyUrl,
+              type: 'popup',
+              width: 380,
+              height: 300,
+              focused: true,
+              top: 80,
+              left: Math.round((screen.availWidth || 1200) - 420)
+            });
+          } catch (_) {}
+          penaltyTimerTestBtn.textContent = 'OPENED!';
+          penaltyTimerTestBtn.style.color = '#ffd700';
+          penaltyTimerTestBtn.style.borderColor = '#ffd700';
+          setTimeout(function() {
+            penaltyTimerTestBtn.textContent = 'TEST';
+            penaltyTimerTestBtn.style.color = '#ff4466';
+            penaltyTimerTestBtn.style.borderColor = '#ff4466';
+          }, 3000);
         });
       }
 

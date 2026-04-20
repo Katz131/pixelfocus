@@ -43,10 +43,277 @@ chrome.action.onClicked.addListener(function() {
   openPixelFocusWindow('popup.html');
 });
 
+// =============================================================================
+// v3.22.91: Promise Timer — background-enforced $300 penalty
+// =============================================================================
+// The penalty must fire even if the user closes the promise timer window.
+// background.js tracks the window, listens for close + alarm, and checks
+// whether a focus timer was started. If not → $300 penalty + notification.
+var _promiseTimerWindowId = null;
+var _promiseTimerResolved = false;
+var _promiseTimerStartedAt = 0; // epoch ms when promise timer was opened
+var PROMISE_PENALTY = 300;
+
+// v3.22.93: Penalty timer — separate from promise timer.
+// Triggered by 3rd consecutive NO/close on surveillance nag.
+var _penaltyTimerWindowId = null;
+var _penaltyTimerResolved = false;
+var _penaltyTimerStartedAt = 0;
+var PENALTY_TIMER_PENALTY = 300;
+
+function applyPromisePenalty() {
+  console.log('[PromiseTimer] applyPromisePenalty called. resolved=' + _promiseTimerResolved + ', windowId=' + _promiseTimerWindowId);
+  if (_promiseTimerResolved) {
+    console.log('[PromiseTimer] Already resolved (timer was started or penalty already applied). Skipping.');
+    return;
+  }
+  _promiseTimerResolved = true;
+  _promiseTimerWindowId = null;
+  try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+
+  chrome.storage.local.get('pixelFocusState', function(result) {
+    var state = result.pixelFocusState || {};
+
+    // SAFETY: Double-check if a focus timer is currently running.
+    // This catches edge cases where the storage listener didn't fire in time.
+    if (state.timerState === 'running' || state.timerState === 'countdown') {
+      console.log('[PromiseTimer] SAFETY CHECK: Timer is actually running (state=' + state.timerState + '). Penalty CANCELLED.');
+      return;
+    }
+
+    // SAFETY: If the promise timer was opened less than 10 seconds ago, skip.
+    // This prevents misfires from race conditions during window creation.
+    if (_promiseTimerStartedAt && (Date.now() - _promiseTimerStartedAt) < 10000) {
+      console.log('[PromiseTimer] SAFETY CHECK: Promise timer opened <10s ago. Possible misfire. Penalty CANCELLED.');
+      return;
+    }
+
+    var prevCoins = state.coins || 0;
+    state.coins = Math.max(0, prevCoins - PROMISE_PENALTY);
+    chrome.storage.local.set({ pixelFocusState: state });
+    console.log('[PromiseTimer] PENALTY APPLIED: $' + PROMISE_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
+
+    // Notification so the player knows what happened
+    try {
+      chrome.notifications.create('promise-penalty-' + Date.now(), {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'PROMISE BROKEN — $' + PROMISE_PENALTY + ' PENALTY',
+        message: 'You said YES to starting a focus timer but didn\'t follow through. $' + PROMISE_PENALTY + ' has been deducted. Closing the window doesn\'t save you.',
+        priority: 2
+      });
+    } catch(e) {
+      console.error('[PromiseTimer] Failed to create penalty notification:', e);
+    }
+  });
+}
+
+// v3.22.93: Penalty timer enforcement (3rd consecutive NO)
+function applyPenaltyTimerPenalty() {
+  console.log('[PenaltyTimer] applyPenaltyTimerPenalty called. resolved=' + _penaltyTimerResolved);
+  if (_penaltyTimerResolved) {
+    console.log('[PenaltyTimer] Already resolved. Skipping.');
+    return;
+  }
+  _penaltyTimerResolved = true;
+  _penaltyTimerWindowId = null;
+  try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
+
+  chrome.storage.local.get('pixelFocusState', function(result) {
+    var state = result.pixelFocusState || {};
+
+    if (state.timerState === 'running' || state.timerState === 'countdown') {
+      console.log('[PenaltyTimer] SAFETY CHECK: Timer is running (state=' + state.timerState + '). Penalty CANCELLED.');
+      return;
+    }
+    if (_penaltyTimerStartedAt && (Date.now() - _penaltyTimerStartedAt) < 10000) {
+      console.log('[PenaltyTimer] SAFETY CHECK: Opened <10s ago. Possible misfire. Penalty CANCELLED.');
+      return;
+    }
+
+    var prevCoins = state.coins || 0;
+    state.coins = Math.max(0, prevCoins - PENALTY_TIMER_PENALTY);
+    chrome.storage.local.set({ pixelFocusState: state });
+    console.log('[PenaltyTimer] PENALTY APPLIED: $' + PENALTY_TIMER_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
+
+    try {
+      chrome.notifications.create('penalty-timer-' + Date.now(), {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'STRIKE 3 — $' + PENALTY_TIMER_PENALTY + ' PENALTY',
+        message: 'You said NO three times and didn\'t start a focus timer. $' + PENALTY_TIMER_PENALTY + ' has been deducted. Closing the window doesn\'t help.',
+        priority: 2
+      });
+    } catch(e) {
+      console.error('[PenaltyTimer] Failed to create notification:', e);
+    }
+  });
+}
+
+// Cancel the penalty if the user starts a focus timer.
+// Also reset consecutive NO counter when a focus timer starts.
+chrome.storage.onChanged.addListener(function(changes, area) {
+  if (area !== 'local' || !changes.pixelFocusState) return;
+  var newState = changes.pixelFocusState.newValue || {};
+
+  if (newState.timerState === 'running' || newState.timerState === 'countdown') {
+    // v3.22.92: Reset consecutive NOs — they're focusing now
+    if (newState.surveillanceConsecutiveNos > 0) {
+      newState.surveillanceConsecutiveNos = 0;
+      chrome.storage.local.set({ pixelFocusState: newState });
+      console.log('[Surveillance] Consecutive NOs reset — focus timer started.');
+    }
+
+    // Cancel promise timer penalty if active
+    if (!_promiseTimerResolved && _promiseTimerWindowId) {
+      console.log('[PromiseTimer] Focus timer started (detected via storage change). Penalty CANCELLED. timerState=' + newState.timerState);
+      _promiseTimerResolved = true;
+      try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+      _promiseTimerWindowId = null;
+    }
+
+    // Cancel penalty timer if active
+    if (!_penaltyTimerResolved && _penaltyTimerWindowId) {
+      console.log('[PenaltyTimer] Focus timer started (detected via storage change). Penalty CANCELLED. timerState=' + newState.timerState);
+      _penaltyTimerResolved = true;
+      try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
+      _penaltyTimerWindowId = null;
+    }
+  }
+});
+
+// If the promise/penalty timer window is closed before resolving → penalty
+chrome.windows.onRemoved.addListener(function(windowId) {
+  if (windowId === _promiseTimerWindowId && !_promiseTimerResolved) {
+    console.log('[PromiseTimer] Window ' + windowId + ' was CLOSED before resolution. Applying penalty after 1s safety delay...');
+    setTimeout(function() {
+      if (_promiseTimerResolved) {
+        console.log('[PromiseTimer] Resolved during safety delay. Penalty skipped.');
+        return;
+      }
+      applyPromisePenalty();
+    }, 1000);
+  }
+  if (windowId === _penaltyTimerWindowId && !_penaltyTimerResolved) {
+    console.log('[PenaltyTimer] Window ' + windowId + ' was CLOSED before resolution. Applying penalty after 1s safety delay...');
+    setTimeout(function() {
+      if (_penaltyTimerResolved) {
+        console.log('[PenaltyTimer] Resolved during safety delay. Penalty skipped.');
+        return;
+      }
+      applyPenaltyTimerPenalty();
+    }, 1000);
+  }
+});
+
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   if (msg && msg.type === 'pf-open' && typeof msg.path === 'string') {
     openPixelFocusWindow(msg.path);
     sendResponse({ ok: true });
+  }
+  // v3.22.91: Open promise timer as a popup window AND track it in background
+  // so the $300 penalty fires even if the user closes the window.
+  if (msg && msg.type === 'OPEN_PROMISE_TIMER') {
+    var isTestPromise = msg.test === true;
+    var promiseUrl = chrome.runtime.getURL('promise-timer.html' + (isTestPromise ? '?test=1' : ''));
+    chrome.windows.create({
+      url: promiseUrl,
+      type: 'popup',
+      width: 380,
+      height: 260,
+      focused: true,
+      top: 80,
+      left: Math.round((screen.availWidth || 1200) - 420)
+    }, function(win) {
+      if (!isTestPromise && win && win.id) {
+        _promiseTimerWindowId = win.id;
+        _promiseTimerResolved = false;
+        _promiseTimerStartedAt = Date.now();
+        console.log('[PromiseTimer] Window opened. windowId=' + win.id + ', deadline in 3 minutes.');
+        // Set a 3-minute alarm as the hard deadline
+        chrome.alarms.create('pixelfocus-promise-deadline', { delayInMinutes: 3 });
+      } else if (!isTestPromise) {
+        console.warn('[PromiseTimer] Window creation returned no window or no ID. Penalty tracking NOT active.');
+      }
+    });
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.91: Promise timer window signals it expired (timer ran out inside the window)
+  if (msg && msg.type === 'PROMISE_TIMER_EXPIRED') {
+    console.log('[PromiseTimer] Window reported expiry. Applying penalty via background.');
+    applyPromisePenalty();
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.91: Promise timer window signals success (focus timer started, detected by window)
+  if (msg && msg.type === 'PROMISE_TIMER_RESOLVED') {
+    console.log('[PromiseTimer] Window reported success — focus timer started. Penalty cancelled.');
+    _promiseTimerResolved = true;
+    _promiseTimerWindowId = null;
+    try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.96: Track promise timer opened directly by surveillance-nag-window.js
+  if (msg && msg.type === 'TRACK_PROMISE_TIMER') {
+    var trackWinId = msg.windowId;
+    if (trackWinId) {
+      _promiseTimerWindowId = trackWinId;
+      _promiseTimerResolved = false;
+      _promiseTimerStartedAt = Date.now();
+      console.log('[PromiseTimer] Tracking window opened by nag. windowId=' + trackWinId);
+      chrome.alarms.create('pixelfocus-promise-deadline', { delayInMinutes: 3 });
+    }
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.96: Track penalty timer opened directly by surveillance-nag-window.js
+  if (msg && msg.type === 'TRACK_PENALTY_TIMER') {
+    var trackPenWinId = msg.windowId;
+    if (trackPenWinId) {
+      _penaltyTimerWindowId = trackPenWinId;
+      _penaltyTimerResolved = false;
+      _penaltyTimerStartedAt = Date.now();
+      console.log('[PenaltyTimer] Tracking window opened by nag. windowId=' + trackPenWinId);
+      chrome.alarms.create('pixelfocus-penalty-deadline', { delayInMinutes: 3 });
+    }
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.93: Open penalty timer (3rd consecutive NO on surveillance nag)
+  if (msg && msg.type === 'OPEN_PENALTY_TIMER') {
+    var isTestPenalty = msg.test === true;
+    var penaltyUrl = chrome.runtime.getURL('penalty-timer.html' + (isTestPenalty ? '?test=1' : ''));
+    chrome.windows.create({
+      url: penaltyUrl,
+      type: 'popup',
+      width: 380,
+      height: 300,
+      focused: true,
+      top: 80,
+      left: Math.round((screen.availWidth || 1200) - 420)
+    }, function(win) {
+      if (!isTestPenalty && win && win.id) {
+        _penaltyTimerWindowId = win.id;
+        _penaltyTimerResolved = false;
+        _penaltyTimerStartedAt = Date.now();
+        console.log('[PenaltyTimer] Window opened. windowId=' + win.id + ', deadline in 3 minutes.');
+        chrome.alarms.create('pixelfocus-penalty-deadline', { delayInMinutes: 3 });
+      } else if (!isTestPenalty) {
+        console.warn('[PenaltyTimer] Window creation returned no window or no ID. Penalty tracking NOT active.');
+      }
+    });
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.93: Penalty timer window signals it expired
+  if (msg && msg.type === 'PENALTY_TIMER_EXPIRED') {
+    console.log('[PenaltyTimer] Window reported expiry. Applying penalty via background.');
+    applyPenaltyTimerPenalty();
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
+  // v3.22.93: Penalty timer window signals success (focus timer started)
+  if (msg && msg.type === 'PENALTY_TIMER_RESOLVED') {
+    console.log('[PenaltyTimer] Window reported success — focus timer started. Penalty cancelled.');
+    _penaltyTimerResolved = true;
+    _penaltyTimerWindowId = null;
+    try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
+    try { sendResponse({ ok: true }); } catch(_) {}
   }
   // v3.21.60: Ensure site-nag alarm exists (sent from app.js when watchlist changes)
   if (msg && msg.type === 'ENSURE_SITE_NAG_ALARM') {
@@ -209,6 +476,19 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 });
 
 chrome.alarms.onAlarm.addListener(function(alarm) {
+  // v3.22.91: Promise timer deadline expired — apply penalty
+  if (alarm.name === 'pixelfocus-promise-deadline') {
+    console.log('[PromiseTimer] 3-minute alarm fired. resolved=' + _promiseTimerResolved);
+    applyPromisePenalty();
+    return;
+  }
+  // v3.22.93: Penalty timer deadline expired
+  if (alarm.name === 'pixelfocus-penalty-deadline') {
+    console.log('[PenaltyTimer] 3-minute alarm fired. resolved=' + _penaltyTimerResolved);
+    applyPenaltyTimerPenalty();
+    return;
+  }
+
   // v3.21.44: Cold Turkey idle reminder — check every 15 min
   // This one opens challenge.html + Cold Turkey blocker (requires CT toggle)
   if (alarm.name === 'pixelfocus-ct-idle') {
@@ -218,8 +498,11 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       var now = Date.now();
 
-      // Timer currently running? Don't nag.
+      // Timer currently running or in countdown/paused? Don't nag.
+      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused') return;
       if (state.timerEndsAt && state.timerEndsAt > now) return;
+      // Grace period: don't nag within 5 min of completing a session
+      if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) return;
 
       // Last STARTED session within 2 hours? All good.
       var TWO_HOURS = 2 * 60 * 60 * 1000;
@@ -232,6 +515,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       // Fire! Open the challenge window + Cold Turkey + notification
       state.coldTurkeyLastIdleOpen = now;
+      state.challengeOfferedAt = now; // v3.22.89: gate so manual navigation can't exploit
       chrome.storage.local.set({ pixelFocusState: state });
 
       // v3.21.51: Open challenge window (3-min countdown for 1.5x bonus)
@@ -302,13 +586,13 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
     return;
   }
 
-  // v3.22.27: Surveillance Mode — nag every 5 min, escalate after 3 ignored
+  // v3.22.77: Surveillance Mode alarm — backup for when popup.html isn't open.
+  // Page-side (app.js) is the primary; this fires when service worker wakes from alarm.
   if (alarm.name === 'pixelfocus-surveillance') {
-    console.log('[Surveillance] Alarm fired at', new Date().toLocaleTimeString());
     chrome.storage.local.get('pixelFocusState', function(result) {
       var state = result.pixelFocusState;
-      if (!state) { console.log('[Surveillance] No state'); return; }
-      if (!state.surveillanceActive) { console.log('[Surveillance] Not active'); return; }
+      if (!state) return;
+      if (!state.surveillanceActive) return;
 
       var now = Date.now();
 
@@ -320,83 +604,70 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
         return;
       }
 
-      console.log('[Surveillance] Active, endsAt:', state.surveillanceEndsAt, 'now:', now, 'nagCount:', state.surveillanceNagCount, 'lastStart:', state.lastStartedSessionAt, 'timerEndsAt:', state.timerEndsAt);
-
-      // Timer currently running? Reset nag count and skip.
-      if (state.timerEndsAt && state.timerEndsAt > now) {
-        if (state.surveillanceNagCount > 0) {
-          state.surveillanceNagCount = 0;
+      // Timer running, in countdown, completed, or recently completed? Skip.
+      // v3.22.98: Also check 'completed' state — fires between timer end and user clicking confirmation
+      if (state.timerEndsAt && state.timerEndsAt > now) return;
+      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
+        // Reset nag anchor so it doesn't fire the SECOND the timer ends
+        if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+          state.surveillanceLastNag = now;
+          chrome.storage.local.set({ pixelFocusState: state });
+        }
+        return;
+      }
+      if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) {
+        // Grace period — also reset nag anchor so nag is 5 min from NOW, not from session start
+        if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+          state.surveillanceLastNag = now;
           chrome.storage.local.set({ pixelFocusState: state });
         }
         return;
       }
 
-      // Recently started a timer? (within last 5 min) Reset and skip.
-      var lastStart = state.lastStartedSessionAt || 0;
-      if (lastStart && (now - lastStart) < 300000) {
-        if (state.surveillanceNagCount > 0) {
-          state.surveillanceNagCount = 0;
-          chrome.storage.local.set({ pixelFocusState: state });
-        }
-        return;
-      }
+      // Respect the 5-min nag interval — don't double-fire with page-side
+      var lastNag = state.surveillanceLastNag || 0;
+      if (lastNag && (now - lastNag) < 280000) return; // 4m40s to avoid edge races with page-side 5m
 
       // Increment nag count
       state.surveillanceNagCount = (state.surveillanceNagCount || 0) + 1;
       state.surveillanceLastNag = now;
-      chrome.storage.local.set({ pixelFocusState: state });
-
       var nagNum = state.surveillanceNagCount;
 
-      // Escalation: 1-2 = notification only, 3+ = surveillance nag window + Cold Turkey
-      if (nagNum >= 3) {
-        // ESCALATION: Close all extension tabs except popup.html, then open surveillance nag
-        var extOrigin = chrome.runtime.getURL('');
-        try {
-          chrome.tabs.query({}, function(tabs) {
-            var toClose = [];
-            for (var t = 0; t < tabs.length; t++) {
-              var tUrl = tabs[t].url || '';
-              if (tUrl.indexOf(extOrigin) === 0 && tUrl.indexOf('popup.html') === -1) {
-                toClose.push(tabs[t].id);
-              }
-            }
-            if (toClose.length > 0) chrome.tabs.remove(toClose);
-          });
-        } catch(_){}
-        // Open surveillance nag window after brief delay for tab cleanup
-        setTimeout(function() {
-          try { openPixelFocusWindow('surveillance-nag.html'); } catch(_){}
-        }, 300);
-        setTimeout(function() {
-          try {
-            chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {
-              if (chrome.runtime.lastError) {}
-            });
-          } catch(_){}
-        }, 3000);
-        try {
-          chrome.notifications.create('surveillance-nag', {
-            type: 'basic', iconUrl: 'icons/icon128.png',
-            title: 'SURVEILLANCE: Start focusing!',
-            message: 'Strike ' + nagNum + '! Cold Turkey opened. Start a focus timer NOW.',
-            priority: 2, requireInteraction: false
-          });
-        } catch(_){}
-        // Reset nag count after escalation so it cycles: 3 nags -> escalation -> reset -> 3 nags -> escalation...
-        state.surveillanceNagCount = 0;
-        chrome.storage.local.set({ pixelFocusState: state });
-      } else {
-        // Normal nag: notification (uses same ID to replace previous, no pileup)
-        try {
-          chrome.notifications.create('surveillance-nag', {
-            type: 'basic', iconUrl: 'icons/icon128.png',
-            title: 'Surveillance: No focus timer running!',
-            message: 'Nag ' + nagNum + '/3 — Start a focus timer! Next escalation opens Cold Turkey.',
-            priority: 2, requireInteraction: false
-          });
-        } catch(_){}
+      // Nag 3: $100 penalty (once per session)
+      if (nagNum >= 3 && !state.surveillancePenaltyApplied) {
+        state.coins = Math.max(0, (state.coins || 0) - 100);
+        state.surveillancePenaltyApplied = true;
       }
+      if (nagNum >= 3) {
+        state.surveillanceNagCount = 0;
+      }
+      chrome.storage.local.set({ pixelFocusState: state });
+
+      // Notification with escalating messages
+      var nagTitle = nagNum >= 3 && !state.surveillancePenaltyApplied ? 'STRIKE 3 \u2014 $100 PENALTY'
+                   : nagNum >= 3 ? 'STRIKE 3 \u2014 No focus timer running!'
+                   : nagNum === 2 ? 'STRIKE 2 \u2014 Next one costs $100!'
+                   : 'Surveillance: No focus timer running!';
+      var nagMsg = nagNum >= 3 && !state.surveillancePenaltyApplied ? 'You just lost $100. Start a focus timer.'
+                 : nagNum >= 3 ? 'Penalty already applied. Start a timer.'
+                 : nagNum === 2 ? 'This is your warning. Strike 3 deducts $100.'
+                 : 'Nag 1/3 \u2014 Start a focus timer! Ignoring this costs you.';
+      try {
+        chrome.notifications.create('surveillance-nag-' + Date.now(), {
+          type: 'basic', iconUrl: 'icons/icon128.png',
+          title: nagTitle, message: nagMsg,
+          priority: 2, requireInteraction: false
+        });
+      } catch(_){}
+
+      // Every nag: open surveillance window + Cold Turkey
+      var nagPath = 'surveillance-nag.html' + (nagNum >= 3 && state.surveillancePenaltyApplied ? '?penalty=1' : '');
+      try { openPixelFocusWindow(nagPath); } catch(_){}
+      setTimeout(function() {
+        try {
+          chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {});
+        } catch(_){}
+      }, 3000);
     });
     return;
   }
@@ -749,3 +1020,96 @@ chrome.runtime.onStartup.addListener(function() {
     }
   });
 });
+
+// =============================================================================
+// v3.22.78: Opportunistic surveillance check — piggybacks on browser events
+// that wake the service worker. Every tab switch, page load, or window focus
+// triggers a lightweight check: "is surveillance active and is a nag overdue?"
+// This ensures surveillance works even when popup.html isn't open, without
+// relying on chrome.alarms (which Brave doesn't wake the SW for).
+// =============================================================================
+var _lastSurvCheck = 0; // throttle: max once per 30 seconds
+function opportunisticSurveillanceCheck() {
+  var now = Date.now();
+  if (now - _lastSurvCheck < 30000) return; // don't hammer storage
+  _lastSurvCheck = now;
+
+  chrome.storage.local.get('pixelFocusState', function(result) {
+    var state = result.pixelFocusState;
+    if (!state || !state.surveillanceActive) return;
+    if (state.surveillanceEndsAt && state.surveillanceEndsAt <= now) return;
+    if (state.timerEndsAt && state.timerEndsAt > now) return;
+    if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
+      // v3.22.98: Reset nag anchor while timer is active so nag doesn't fire the instant it ends
+      if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+        state.surveillanceLastNag = now;
+        chrome.storage.local.set({ pixelFocusState: state });
+      }
+      return;
+    }
+    // Buffer: skip if timer ended less than 60s ago (completion flow still writing)
+    if (state.timerEndsAt && (now - state.timerEndsAt) < 60000) return;
+    if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) {
+      // v3.22.98: Grace period — reset anchor so nag is 5 min from now
+      if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+        state.surveillanceLastNag = now;
+        chrome.storage.local.set({ pixelFocusState: state });
+      }
+      return;
+    }
+
+    // Is a nag overdue? (5 min since last nag or surveillance start)
+    var lastNag = state.surveillanceLastNag || 0;
+    var anchor = lastNag || state.surveillanceStartedAt || now;
+    if ((now - anchor) < 300000) return; // not yet due
+
+    // Fire the nag — same logic as the alarm handler
+    state.surveillanceNagCount = (state.surveillanceNagCount || 0) + 1;
+    state.surveillanceLastNag = now;
+    var nagNum = state.surveillanceNagCount;
+
+    var penaltyJustApplied = false;
+    if (nagNum >= 3 && !state.surveillancePenaltyApplied) {
+      state.coins = Math.max(0, (state.coins || 0) - 100);
+      state.surveillancePenaltyApplied = true;
+      penaltyJustApplied = true;
+    }
+    if (nagNum >= 3) {
+      state.surveillanceNagCount = 0;
+    }
+    chrome.storage.local.set({ pixelFocusState: state });
+
+    // Notification
+    var nagTitle = penaltyJustApplied ? 'STRIKE 3 \u2014 $100 PENALTY'
+                 : nagNum >= 3 ? 'STRIKE 3 \u2014 No focus timer running!'
+                 : nagNum === 2 ? 'STRIKE 2 \u2014 Next one costs $100!'
+                 : 'Surveillance: No focus timer running!';
+    var nagMsg = penaltyJustApplied ? 'You just lost $100. Start a focus timer.'
+               : nagNum >= 3 ? 'Penalty already applied. Start a timer.'
+               : nagNum === 2 ? 'This is your warning. Strike 3 deducts $100.'
+               : 'Nag 1/3 \u2014 Start a focus timer! Ignoring this costs you.';
+    try {
+      chrome.notifications.create('surveillance-opp-' + Date.now(), {
+        type: 'basic', iconUrl: 'icons/icon128.png',
+        title: nagTitle, message: nagMsg,
+        priority: 2, requireInteraction: false
+      });
+    } catch(_){}
+
+    // Open surveillance window + Cold Turkey
+    var nagPath = 'surveillance-nag.html' + (penaltyJustApplied ? '?penalty=1' : '');
+    try { openPixelFocusWindow(nagPath); } catch(_){}
+    setTimeout(function() {
+      try {
+        chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {});
+      } catch(_){}
+    }, 3000);
+  });
+}
+
+// Wire into browser events that wake the service worker
+chrome.tabs.onActivated.addListener(function() { opportunisticSurveillanceCheck(); });
+chrome.tabs.onUpdated.addListener(function(tabId, info) {
+  if (info.status === 'complete') opportunisticSurveillanceCheck();
+});
+chrome.windows.onFocusChanged.addListener(function() { opportunisticSurveillanceCheck(); });

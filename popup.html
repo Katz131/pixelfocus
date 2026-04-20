@@ -905,6 +905,16 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
         </label>
         <button id="coldTurkeyIdleTestBtn" class="btn btn-small" type="button" style="font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-color:var(--accent);color:var(--accent);">TEST</button>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;margin-left:26px;flex-wrap:wrap;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ff8c3a;">&#9876; Challenge:</span>
+        <button id="challengeWindowTestBtn" class="btn btn-small" type="button" style="font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 6px;border-color:#ff8c3a;color:#ff8c3a;" title="Preview the idle challenge window. No rewards — just tests the UI.">TEST</button>
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;">|</span>
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#00ff88;">&#9200; Promise:</span>
+        <button id="promiseTimerTestBtn" class="btn btn-small" type="button" style="font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 6px;border-color:#00ff88;color:#00ff88;" title="Preview the promise timer (YES on surveillance nag). 30s test countdown, no penalty.">TEST</button>
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;">|</span>
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ff4466;">&#9888; Penalty:</span>
+        <button id="penaltyTimerTestBtn" class="btn btn-small" type="button" style="font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 6px;border-color:#ff4466;color:#ff4466;" title="Preview the penalty timer (3rd consecutive NO on surveillance nag). 30s test countdown, no penalty.">TEST</button>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;" title="During your wind-down period (before sleep), opens Cold Turkey and asks you to confirm you turned on your blockers. Earns XP + coins with a streak bonus. Requires sleep time to be set.">
           <input type="checkbox" id="windDownCTToggle" style="width:16px;height:16px;accent-color:#6b6bff;cursor:pointer;">
