@@ -11720,24 +11720,96 @@ try {
         if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
           window.ProfileSync.sync(state);
         } else {
-          // v3.23.23: Inline fallback if firebase-sync.js failed to load.
-          // Pushes a minimal profile to Firestore so the user appears on the leaderboard.
+          // v3.23.24: Full fallback sync if firebase-sync.js failed to load.
+          // Pushes complete profile to Firestore including daily tasks & sessions.
           (function() {
             if (!state.profileId) return;
             var PID = 'todo-of-the-loom';
             var KEY = 'AIzaSyCd200oa970-M-sDbcEn4U7dfENVBm4FOA';
             var url = 'https://firestore.googleapis.com/v1/projects/' + PID + '/databases/(default)/documents/profiles/' + state.profileId + '?key=' + KEY;
             var lvl = getLevelFromXP(state.xp || 0);
+            // Helper: convert JS value to Firestore REST format
+            function _toFV(val) {
+              if (val === null || val === undefined) return {nullValue: null};
+              if (typeof val === 'boolean') return {booleanValue: val};
+              if (typeof val === 'number') {
+                if (Number.isInteger(val)) return {integerValue: String(val)};
+                return {doubleValue: val};
+              }
+              if (typeof val === 'string') return {stringValue: val};
+              if (Array.isArray(val)) {
+                return {arrayValue: {values: val.map(_toFV)}};
+              }
+              if (typeof val === 'object') {
+                var f = {};
+                Object.keys(val).forEach(function(k) { f[k] = _toFV(val[k]); });
+                return {mapValue: {fields: f}};
+              }
+              return {stringValue: String(val)};
+            }
+            // Build today's date string
+            var _d = new Date(), _mm = _d.getMonth() + 1, _dd = _d.getDate();
+            var _today = _d.getFullYear() + '-' + (_mm < 10 ? '0' : '') + _mm + '-' + (_dd < 10 ? '0' : '') + _dd;
+            // Daily task log
+            var taskLog = (state.dailyTaskLog && state.dailyTaskLog.date === _today)
+              ? state.dailyTaskLog : {date: _today, tasks: {}};
+            // Daily session log
+            var sessionLog = (state.dailySessionLog && state.dailySessionLog.date === _today)
+              ? state.dailySessionLog : {date: _today, sessions: []};
+            // Avatar
+            var avatarDataURL = '';
+            var pfp = state.profilePicture;
+            if (pfp && pfp.pixels && pfp.size) {
+              try {
+                var c = document.createElement('canvas');
+                c.width = pfp.size; c.height = pfp.size;
+                var cx = c.getContext('2d');
+                cx.fillStyle = '#08080f';
+                cx.fillRect(0, 0, pfp.size, pfp.size);
+                Object.keys(pfp.pixels).forEach(function(k) {
+                  var parts = k.split(',');
+                  cx.fillStyle = pfp.pixels[k];
+                  cx.fillRect(parseInt(parts[0], 10), parseInt(parts[1], 10), 1, 1);
+                });
+                avatarDataURL = c.toDataURL('image/png');
+              } catch (_) {}
+            }
+            // Personnel count
+            var roster = 0;
+            if (state.personnel) {
+              try { roster = Object.keys(state.personnel).filter(function(k) { return state.personnel[k] && state.personnel[k].hired; }).length; } catch(_) {}
+            }
+            // Lives lost
+            var livesLost = 0;
+            if (typeof state.maxLives === 'number' && typeof state.lives === 'number') {
+              livesLost = Math.max(0, state.maxLives - state.lives);
+            }
             var fields = {
               displayName: {stringValue: state.displayName || 'Anonymous Weaver'},
+              tagline: {stringValue: state.tagline || ''},
               level: {integerValue: String(lvl.level)},
+              currentXP: {integerValue: String(lvl.currentXP || 0)},
+              nextLevelXP: {integerValue: String(lvl.nextLevelXP || 50)},
               xp: {integerValue: String(state.xp || 0)},
+              title: {stringValue: lvl.level >= 100 ? 'Omnifabric Singularity' : (state.title || 'Would-Be Weaver')},
               streak: {integerValue: String(state.streak || 0)},
               longestStreak: {integerValue: String(Math.max(state.longestStreak || 0, state.streak || 0))},
               lifetimeBlocks: {integerValue: String(state.totalLifetimeBlocks || 0)},
               focusMinutes: {integerValue: String(state.lifetimeFocusMinutes || 0)},
+              tasksCompleted: {integerValue: String(state.tasksCompletedLifetime || 0)},
+              lifetimeCoins: {integerValue: String(state.lifetimeCoins || 0)},
               wallet: {integerValue: String(state.coins || 0)},
-              updatedAt: {stringValue: new Date().toISOString()}
+              combo: {integerValue: String(state.combo || 0)},
+              maxCombo: {integerValue: String(state.maxCombo || 0)},
+              personnel: {integerValue: String(roster)},
+              loomsSaved: {integerValue: String((state.savedArtworks && state.savedArtworks.length) || 0)},
+              loomsSold: {integerValue: String(state.loomsSold || 0)},
+              livesLost: {integerValue: String(livesLost)},
+              avatarDataURL: {stringValue: avatarDataURL},
+              dailyTaskLog: _toFV(taskLog),
+              dailySessionLog: _toFV(sessionLog),
+              updatedAt: {stringValue: new Date().toISOString()},
+              profileCreated: {stringValue: state.profileCreated ? new Date(state.profileCreated).toISOString() : new Date().toISOString()}
             };
             fetch(url, {
               method: 'PATCH',
