@@ -6654,8 +6654,14 @@ try {
       state.timerState = 'idle';
       save();
       render();
-      // v3.23.21: Show celebration overlay instead of just SFX
-      try { showPostSessionCelebration(_celebSnapshot); } catch(_) { SFX.blockEarned(); }
+      // v3.23.31: Show streak only once per day, rewards every time
+      var _todayStr = (function() { var d = new Date(), mm = d.getMonth()+1, dd = d.getDate(); return d.getFullYear()+'-'+(mm<10?'0':'')+mm+'-'+(dd<10?'0':'')+dd; })();
+      var _skipStreak = (state.celebShownDate === _todayStr);
+      try {
+        showPostSessionCelebration(_celebSnapshot, {skipStreak: _skipStreak});
+        state.celebShownDate = _todayStr;
+        save();
+      } catch(_) { SFX.blockEarned(); }
     });
     noBtn.addEventListener('click', function() {
       if (!_focusConfirmArmed) { closeModal(); return; }
@@ -9192,7 +9198,9 @@ try {
     }
   }
 
-  function showPostSessionCelebration(snapshot) {
+  // v3.23.31: options.skipStreak skips screen 1, options.streakOnly skips screens 2+3
+  function showPostSessionCelebration(snapshot, options) {
+    var opts = options || {};
     var overlay = $('streakOverlay');
     if (!overlay) return;
     var screen1 = $('celebScreen1');
@@ -9217,12 +9225,14 @@ try {
     }
 
     // Reset all screens
-    screen1.style.display = 'block';
-    screen2.style.display = 'none';
+    // v3.23.31: skipStreak starts on screen 2, streakOnly starts on screen 1
+    screen1.style.display = opts.skipStreak ? 'none' : 'block';
+    screen2.style.display = opts.skipStreak ? 'block' : 'none';
     screen3.style.display = 'none';
 
     // Reset streak screen
     var streakRing = $('streakRing');
+    var streakRingToday = $('streakRingToday');
     var streakCount = $('streakCount');
     var streakMsg = $('streakMessage');
     var streakFlames = $('streakFlames');
@@ -9236,6 +9246,12 @@ try {
       streakRing.setAttribute('stroke-dashoffset', '427');
       streakRing.setAttribute('stroke', _getStreakColor(streak));
     }
+    // v3.23.24: Reset today-arc overlay
+    if (streakRingToday) {
+      streakRingToday.style.opacity = '0';
+      streakRingToday.style.animation = 'none';
+      streakRingToday.setAttribute('stroke-dasharray', '0 427');
+    }
 
     // Show overlay
     overlay.style.display = 'flex';
@@ -9244,17 +9260,19 @@ try {
     // Animate streak ring + counter after fade-in
     setTimeout(function() {
       if (streakRing) {
+        // Ring fills to streak-1, today's gold arc added after counter lands
         var maxRing = 60;
-        var pct = Math.min(streak / maxRing, 1);
-        var off = 427 - (427 * pct);
+        var prevDays = Math.max(streak - 1, 0);
+        var pctPrev = Math.min(prevDays / maxRing, 1);
+        var offPrev = 427 - (427 * pctPrev);
         streakRing.style.transition = 'stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1), stroke 0.5s';
-        streakRing.setAttribute('stroke-dashoffset', String(Math.round(off)));
+        streakRing.setAttribute('stroke-dashoffset', String(Math.round(offPrev)));
       }
       // Animate number
       var dur = 1200;
       var st = performance.now();
       var lastTick = -1;
-      var tickInt = streak <= 10 ? 1 : streak <= 30 ? 3 : 5;
+      var tickInt = 1;
       function tick(now) {
         var elapsed = now - st;
         var prog = Math.min(elapsed / dur, 1);
@@ -9272,22 +9290,95 @@ try {
           streakMsg.textContent = _getStreakMessage(streak);
           streakMsg.style.opacity = '1';
           _celebLandSound(streak);
-          // Build flames
-          var fc = Math.min(streak, 7);
-          for (var fi = 0; fi < fc; fi++) {
-            var fl = document.createElement('span');
-            fl.style.cssText = 'display:inline-block;width:8px;height:16px;border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;background:' + _getStreakColor(streak) + ';opacity:0;transform:scale(0);transition:opacity 0.3s,transform 0.3s cubic-bezier(0.34,1.56,0.64,1);';
-            streakFlames.appendChild(fl);
-            (function(el, idx) {
-              setTimeout(function() { el.style.opacity = '1'; el.style.transform = 'scale(1)'; }, idx * 100);
-            })(fl, fi);
+          // v3.23.24: Show today's gold arc on the ring
+          if (streakRingToday && streak > 0) {
+            var _maxR = 60;
+            var _oneDayArc = 427 / _maxR;
+            var _prevPct = Math.min((streak - 1) / _maxR, 1);
+            var _rotDeg = -90 + _prevPct * 360;
+            streakRingToday.setAttribute('stroke-dasharray', _oneDayArc.toFixed(1) + ' ' + (427 - _oneDayArc).toFixed(1));
+            streakRingToday.style.transform = 'rotate(' + _rotDeg.toFixed(1) + 'deg)';
+            streakRingToday.style.transformOrigin = 'center';
+            streakRingToday.style.opacity = '1';
+            streakRingToday.style.animation = 'celebRingBlink 1.2s ease-in-out infinite';
+            // Also extend main ring to include today
+            if (streakRing) {
+              var _fullPct = Math.min(streak / 60, 1);
+              var _fullOff = 427 - (427 * _fullPct);
+              streakRing.style.transition = 'stroke-dashoffset 0.5s ease-out';
+              streakRing.setAttribute('stroke-dashoffset', String(Math.round(_fullOff)));
+            }
           }
-          if (streak > 7) {
-            var more = document.createElement('span');
-            more.style.cssText = 'font-size:11px;color:var(--text-dim);opacity:0;transition:opacity 0.4s;margin-left:4px;';
-            more.textContent = '+' + (streak - 7);
-            streakFlames.appendChild(more);
-            setTimeout(function() { more.style.opacity = '1'; }, 800);
+          // v3.23.24: Build flame rows — day/month/year tiers.
+          // Crowns for years, stars for months, flames for days.
+          var _sYears = Math.floor(streak / 365);
+          var _sRem = streak % 365;
+          var _sMonths = Math.floor(_sRem / 30);
+          var _sDays = _sRem % 30;
+          var _tiers = [];
+          if (_sYears > 0) _tiers.push({count: _sYears, icon: '\uD83D\uDC51', label: _sYears === 1 ? 'year' : 'years', baseFreq: 784, size: 18});
+          if (_sMonths > 0) _tiers.push({count: _sMonths, icon: '\u2B50', label: _sMonths === 1 ? 'month' : 'months', baseFreq: 523, size: 16});
+          if (_sDays > 0 || _tiers.length === 0) _tiers.push({count: _sDays, icon: '\uD83D\uDD25', label: _sDays === 1 ? 'day' : 'days', baseFreq: 330, size: 14});
+          // Show breakdown text
+          var _bdParts = [];
+          if (_sYears > 0) _bdParts.push(_sYears + (_sYears === 1 ? ' year' : ' years'));
+          if (_sMonths > 0) _bdParts.push(_sMonths + (_sMonths === 1 ? ' month' : ' months'));
+          if (_sDays > 0) _bdParts.push(_sDays + (_sDays === 1 ? ' day' : ' days'));
+          if (_bdParts.length > 1 && streakMsg) {
+            var _bdEl = document.createElement('div');
+            _bdEl.style.cssText = 'font-size:11px;color:var(--text-dim);margin-top:6px;font-family:Courier New,monospace;opacity:0;transition:opacity 0.4s;';
+            _bdEl.textContent = _bdParts.join(', ');
+            streakMsg.parentNode.insertBefore(_bdEl, streakMsg.nextSibling);
+            setTimeout(function() { _bdEl.style.opacity = '1'; }, 200);
+          }
+          streakFlames.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;';
+          var _delayBase = 0;
+          for (var _di = 0; _di < _tiers.length; _di++) {
+            var _t = _tiers[_di];
+            if (_t.count === 0) continue;
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:center;flex-wrap:wrap;max-width:300px;';
+            var _popSpeed = _t.count > 15 ? 40 : _t.count > 8 ? 60 : 80;
+            var _isLastTier = (_di === _tiers.length - 1);
+            for (var _ei = 0; _ei < _t.count; _ei++) {
+              var _isToday = _isLastTier && (_ei === _t.count - 1);
+              var egg = document.createElement('span');
+              egg.textContent = _t.icon;
+              if (_isToday) {
+                egg.style.cssText = 'display:inline-block;font-size:' + (_t.size + 4) + 'px;opacity:0;transform:scale(0);transition:opacity 0.25s,transform 0.4s cubic-bezier(0.34,1.56,0.64,1);';
+              } else {
+                egg.style.cssText = 'display:inline-block;font-size:' + _t.size + 'px;opacity:0;transform:scale(0);transition:opacity 0.25s,transform 0.3s cubic-bezier(0.34,1.56,0.64,1);';
+              }
+              row.appendChild(egg);
+              if (_isToday) {
+                (function(el, delay) {
+                  setTimeout(function() {
+                    el.style.opacity = '1';
+                    el.style.transform = 'scale(1.15)';
+                    el.style.animation = 'celebFlameGlow 1.5s ease-in-out infinite';
+                  }, delay + 300);
+                })(egg, _delayBase + _ei * _popSpeed);
+              } else {
+                (function(el, delay) {
+                  setTimeout(function() {
+                    el.style.opacity = '1';
+                    el.style.transform = 'scale(1)';
+                  }, delay);
+                })(egg, _delayBase + _ei * _popSpeed);
+              }
+            }
+            // Label
+            var lbl = document.createElement('span');
+            lbl.style.cssText = 'font-size:8px;color:var(--text-dim);opacity:0;transition:opacity 0.3s;margin-left:3px;font-family:\'Press Start 2P\',monospace;letter-spacing:1px;';
+            lbl.textContent = _t.label;
+            row.appendChild(lbl);
+            (function(el, delay) {
+              setTimeout(function() {
+                el.style.opacity = '0.7';
+              }, delay);
+            })(lbl, _delayBase + _t.count * _popSpeed + 50);
+            streakFlames.appendChild(row);
+            _delayBase += _t.count * _popSpeed + 200;
           }
           if (streak >= 7) _spawnCelebParticles(particles, Math.min(streak, 30));
         }
@@ -9295,10 +9386,53 @@ try {
       requestAnimationFrame(tick);
     }, 400);
 
-    var currentScreen = 1;
+    // v3.23.31: Start on screen 2 if skipping streak, handle streakOnly dismiss
+    var currentScreen = opts.skipStreak ? 2 : 1;
+
+    // If skipStreak, immediately animate screen 2
+    if (opts.skipStreak) {
+      tapHint.textContent = 'tap to continue';
+      setTimeout(function() {
+        var focusNum = $('focusTimeNum');
+        var focusSessions = $('focusSessionCount');
+        var focusBar = $('focusBarFill');
+        var focusLabel = $('focusBarLabel');
+        focusSessions.textContent = todaySessions + ' session' + (todaySessions !== 1 ? 's' : '') + ' today';
+        var goalMin = 120;
+        if (focusBar) {
+          setTimeout(function() { focusBar.style.width = Math.min(todayMin / goalMin * 100, 100) + '%'; }, 100);
+        }
+        if (focusLabel) focusLabel.textContent = todayMin + ' / ' + goalMin + ' min goal';
+        _celebFocusSound();
+        var fDur = 800;
+        var fStart = performance.now();
+        function fTick2(now) {
+          var prog = Math.min((now - fStart) / fDur, 1);
+          var eased = 1 - Math.pow(1 - prog, 3);
+          var curMin = Math.round(eased * sessionMin);
+          var h = Math.floor(curMin / 60);
+          var m = curMin % 60;
+          focusNum.textContent = h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+          if (prog < 1) requestAnimationFrame(fTick2);
+          else {
+            var fh = Math.floor(sessionMin / 60);
+            var fm = sessionMin % 60;
+            focusNum.textContent = fh > 0 ? fh + 'h ' + fm + 'm' : fm + 'm';
+          }
+        }
+        requestAnimationFrame(fTick2);
+      }, 400);
+    }
 
     overlay.onclick = function() {
       currentScreen++;
+      // v3.23.31: streakOnly — dismiss after screen 1
+      if (opts.streakOnly && currentScreen >= 2) {
+        overlay.style.opacity = '0';
+        setTimeout(function() { overlay.style.display = 'none'; particles.innerHTML = ''; }, 400);
+        overlay.onclick = null;
+        return;
+      }
       if (currentScreen === 2) {
         // Transition to focus time screen
         screen1.style.display = 'none';
@@ -11224,6 +11358,34 @@ try {
           } catch (_) {
             focusIdleTestBtn.textContent = 'FAILED';
             setTimeout(function() { focusIdleTestBtn.textContent = 'TEST'; }, 3000);
+          }
+        });
+      }
+
+      // v3.23.31: Separate test buttons for streak and rewards
+      var testStreakBtn = $('testStreakBtn');
+      if (testStreakBtn) {
+        testStreakBtn.addEventListener('click', function() {
+          try {
+            var sm = $('settingsModal');
+            if (sm) sm.style.display = 'none';
+            var fakeSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1 };
+            showPostSessionCelebration(fakeSnapshot, {streakOnly: true});
+          } catch (e) {
+            console.error('[TestStreak] Error:', e);
+          }
+        });
+      }
+      var testRewardsBtn = $('testRewardsBtn');
+      if (testRewardsBtn) {
+        testRewardsBtn.addEventListener('click', function() {
+          try {
+            var sm = $('settingsModal');
+            if (sm) sm.style.display = 'none';
+            var fakeSnapshot = { coins: Math.max(0, (state.coins || 0) - 15), xp: Math.max(0, (state.xp || 0) - 25), level: state.level || 1 };
+            showPostSessionCelebration(fakeSnapshot, {skipStreak: true});
+          } catch (e) {
+            console.error('[TestRewards] Error:', e);
           }
         });
       }
