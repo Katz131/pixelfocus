@@ -321,7 +321,10 @@
     // Once an employee is gone they are gone — the standing office does
     // not replace them automatically, only a new upgrade level does.
     var departures = state.personnelDepartures || 0;
-    var target = Math.max(0, targetRosterSize(state.employeesLevel || 0) - departures);
+    // v3.23.18: Include pending free hires from events (e.g. plant layoffs).
+    // These are one-time additions on top of the normal employeesLevel target.
+    var freeHires = state.pendingFreeHires || 0;
+    var target = Math.max(0, targetRosterSize(state.employeesLevel || 0) - departures + freeHires);
     if (roster.length >= target) return 0;
     var hiredNow = 0;
     var baseSeed = 'r' + (state.lifetimeCoins || 0) + ':' + roster.length;
@@ -382,6 +385,10 @@
         if (empFirst) usedNames.add(empFirst);
       }
       hiredNow++;
+      // v3.23.18: Consume free hires as they're used
+      if (freeHires > 0 && hiredNow <= freeHires) {
+        state.pendingFreeHires = Math.max(0, (state.pendingFreeHires || 0) - 1);
+      }
     }
     return hiredNow;
   }
@@ -554,6 +561,7 @@
       return state.personnelRoster;
     },
     reconcileRoster: reconcileRoster,
+    describeEmployee: describeEmployee,
     describeEmployee: describeEmployee,
     tenureDays: tenureDays,
     targetRosterSize: targetRosterSize,

@@ -61,39 +61,186 @@ var _penaltyTimerResolved = false;
 var _penaltyTimerStartedAt = 0;
 var PENALTY_TIMER_PENALTY = 300;
 
+// v3.23.12: Setter helpers — update in-memory var + sync to storage in one call.
+// Use these instead of direct assignment to avoid forgetting to sync.
+function _setPromiseTimer(windowId, resolved, startedAt) {
+  if (windowId !== undefined) _promiseTimerWindowId = windowId;
+  if (resolved !== undefined) _promiseTimerResolved = resolved;
+  if (startedAt !== undefined) _promiseTimerStartedAt = startedAt;
+  _syncPenaltyTracking();
+}
+function _setPenaltyTimer(windowId, resolved, startedAt) {
+  if (windowId !== undefined) _penaltyTimerWindowId = windowId;
+  if (resolved !== undefined) _penaltyTimerResolved = resolved;
+  if (startedAt !== undefined) _penaltyTimerStartedAt = startedAt;
+  _syncPenaltyTracking();
+}
+
+// Persist penalty tracking state so it survives service worker restarts.
+function _syncPenaltyTracking() {
+  try {
+    chrome.storage.local.set({
+      pixelPenaltyTracking: {
+        promiseWindowId: _promiseTimerWindowId,
+        promiseResolved: _promiseTimerResolved,
+        promiseStartedAt: _promiseTimerStartedAt,
+        penaltyWindowId: _penaltyTimerWindowId,
+        penaltyResolved: _penaltyTimerResolved,
+        penaltyStartedAt: _penaltyTimerStartedAt
+      }
+    });
+  } catch(_) {}
+}
+
+// Restore on startup (service worker wake)
+try {
+  chrome.storage.local.get('pixelPenaltyTracking', function(result) {
+    var t = result.pixelPenaltyTracking;
+    if (!t) return;
+    _promiseTimerWindowId = t.promiseWindowId || null;
+    _promiseTimerResolved = !!t.promiseResolved;
+    _promiseTimerStartedAt = t.promiseStartedAt || 0;
+    _penaltyTimerWindowId = t.penaltyWindowId || null;
+    _penaltyTimerResolved = !!t.penaltyResolved;
+    _penaltyTimerStartedAt = t.penaltyStartedAt || 0;
+    console.log('[PenaltyTracking] Restored from storage: promise=' +
+      (_promiseTimerResolved ? 'resolved' : 'active(win=' + _promiseTimerWindowId + ')') +
+      ' penalty=' + (_penaltyTimerResolved ? 'resolved' : 'active(win=' + _penaltyTimerWindowId + ')'));
+
+    // v3.23.12: If we restored an active (unresolved) timer but the window is gone,
+    // verify the window still exists. If not, the penalty would have been handled
+    // by the alarm already — just clean up.
+    if (_promiseTimerWindowId && !_promiseTimerResolved) {
+      chrome.windows.get(_promiseTimerWindowId, function(win) {
+        if (chrome.runtime.lastError || !win) {
+          console.log('[PenaltyTracking] Promise timer window ' + _promiseTimerWindowId + ' no longer exists.');
+          // Don't penalize here — the alarm or apply function will handle it
+          // with proper timerState checks. Just note it's gone.
+          _promiseTimerWindowId = null;
+          _syncPenaltyTracking();
+        }
+      });
+    }
+    if (_penaltyTimerWindowId && !_penaltyTimerResolved) {
+      chrome.windows.get(_penaltyTimerWindowId, function(win) {
+        if (chrome.runtime.lastError || !win) {
+          console.log('[PenaltyTracking] Penalty timer window ' + _penaltyTimerWindowId + ' no longer exists.');
+          _penaltyTimerWindowId = null;
+          _syncPenaltyTracking();
+        }
+      });
+    }
+  });
+} catch(_) {}
+
+// v3.23.14: On service worker wake, if a focus timer is running, make sure
+// idle challenge alarms are cleared. Handles the case where the SW dies and
+// restarts mid-session — the onChanged listener wouldn't fire again.
+try {
+  chrome.storage.local.get('pixelFocusState', function(result) {
+    var st = result.pixelFocusState || {};
+    if (st.timerState === 'running' || st.timerState === 'countdown') {
+      console.log('[Startup] Focus timer is ' + st.timerState + ' — clearing idle alarms.');
+      try { chrome.alarms.clear('pixelfocus-ct-idle'); } catch(_) {}
+      try { chrome.alarms.clear('pixelfocus-focus-idle'); } catch(_) {}
+    }
+  });
+} catch(_) {}
+
+// v3.23.2: Clear the penaltyCountdownActive flag when both timers are resolved
+function clearPenaltyActiveFlag() {
+  if (_promiseTimerResolved && _penaltyTimerResolved) {
+    // Both resolved — but only clear if neither has an active window
+    if (!_promiseTimerWindowId && !_penaltyTimerWindowId) {
+      chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {};
+        if (s.penaltyCountdownActive) {
+          s.penaltyCountdownActive = false;
+          chrome.storage.local.set({ pixelFocusState: s });
+          console.log('[Penalty] penaltyCountdownActive cleared.');
+        }
+      });
+    }
+  }
+}
+
 function applyPromisePenalty() {
   console.log('[PromiseTimer] applyPromisePenalty called. resolved=' + _promiseTimerResolved + ', windowId=' + _promiseTimerWindowId);
   if (_promiseTimerResolved) {
     console.log('[PromiseTimer] Already resolved (timer was started or penalty already applied). Skipping.');
     return;
   }
-  _promiseTimerResolved = true;
-  _promiseTimerWindowId = null;
+
+  // v3.23.11: Don't apply yet — read storage FIRST to check timer state.
+  // Previous versions set _promiseTimerResolved=true here before the async read,
+  // which meant if the penalty was wrongly applied, the session-completed listener
+  // couldn't un-do it. Now we only set resolved=true after confirming penalty is warranted.
   try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
 
   chrome.storage.local.get('pixelFocusState', function(result) {
     var state = result.pixelFocusState || {};
 
-    // SAFETY: Double-check if a focus timer is currently running.
-    // This catches edge cases where the storage listener didn't fire in time.
-    if (state.timerState === 'running' || state.timerState === 'countdown') {
-      console.log('[PromiseTimer] SAFETY CHECK: Timer is actually running (state=' + state.timerState + '). Penalty CANCELLED.');
+    // v3.23.11: FULL DEBUG — log the state we read so we can trace misfires
+    console.log('[PromiseTimer] Storage state: timerState=' + (state.timerState || 'undefined') +
+      ' timerEndsAt=' + (state.timerEndsAt ? new Date(state.timerEndsAt).toLocaleTimeString() : 'none') +
+      ' penaltyCountdownActive=' + !!state.penaltyCountdownActive +
+      ' lastStartedSessionAt=' + (state.lastStartedSessionAt ? new Date(state.lastStartedSessionAt).toLocaleTimeString() : 'none'));
+
+    // SAFETY: If the focus timer is running, in countdown, paused, or completed,
+    // the user IS engaging. Don't penalize.
+    // v3.23.11: Previously only checked 'completed'. This was the bug — the 3-minute
+    // background alarm would fire while the focus timer was running because only
+    // the window paused its countdown, not the background alarm.
+    if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'completed') {
+      console.log('[PromiseTimer] SAFETY CHECK: timerState=' + state.timerState + '. Penalty CANCELLED. User is engaging.');
+      _setPromiseTimer(null, true);
+      // Clear the flag
+      state.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: state });
+      return;
+    }
+
+    // SAFETY: Also check timerEndsAt — belt and suspenders in case timerState is stale
+    if (state.timerEndsAt && state.timerEndsAt > Date.now()) {
+      console.log('[PromiseTimer] SAFETY CHECK: timerEndsAt is in the future (' +
+        Math.round((state.timerEndsAt - Date.now()) / 1000) + 's left). Penalty CANCELLED.');
+      _setPromiseTimer(null, true);
+      state.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: state });
+      return;
+    }
+
+    // SAFETY: If a session was started recently (within 5 min), don't penalize.
+    // Handles race where timerState hasn't flushed but the session clearly started.
+    if (state.lastStartedSessionAt && (Date.now() - state.lastStartedSessionAt) < 300000) {
+      console.log('[PromiseTimer] SAFETY CHECK: Session started ' +
+        Math.round((Date.now() - state.lastStartedSessionAt) / 1000) + 's ago. Penalty CANCELLED.');
+      _setPromiseTimer(null, true);
+      state.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: state });
       return;
     }
 
     // SAFETY: If the promise timer was opened less than 10 seconds ago, skip.
-    // This prevents misfires from race conditions during window creation.
     if (_promiseTimerStartedAt && (Date.now() - _promiseTimerStartedAt) < 10000) {
       console.log('[PromiseTimer] SAFETY CHECK: Promise timer opened <10s ago. Possible misfire. Penalty CANCELLED.');
       return;
     }
 
+    // If we're here, penalty is actually warranted — paused timer doesn't save you
+    if (state.timerState === 'paused') {
+      console.log('[PromiseTimer] Timer is PAUSED — penalty still applies (pausing = not following through).');
+    }
+
+    // NOW set resolved
+    _setPromiseTimer(null, true);
+
     var prevCoins = state.coins || 0;
     state.coins = Math.max(0, prevCoins - PROMISE_PENALTY);
+    state.penaltyCountdownActive = false;
     chrome.storage.local.set({ pixelFocusState: state });
     console.log('[PromiseTimer] PENALTY APPLIED: $' + PROMISE_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
-    // Notification so the player knows what happened
     try {
       chrome.notifications.create('promise-penalty-' + Date.now(), {
         type: 'basic',
@@ -115,15 +262,36 @@ function applyPenaltyTimerPenalty() {
     console.log('[PenaltyTimer] Already resolved. Skipping.');
     return;
   }
-  _penaltyTimerResolved = true;
-  _penaltyTimerWindowId = null;
   try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
 
   chrome.storage.local.get('pixelFocusState', function(result) {
     var state = result.pixelFocusState || {};
 
-    if (state.timerState === 'running' || state.timerState === 'countdown') {
-      console.log('[PenaltyTimer] SAFETY CHECK: Timer is running (state=' + state.timerState + '). Penalty CANCELLED.');
+    console.log('[PenaltyTimer] Storage state: timerState=' + (state.timerState || 'undefined') +
+      ' timerEndsAt=' + (state.timerEndsAt ? new Date(state.timerEndsAt).toLocaleTimeString() : 'none') +
+      ' lastStartedSessionAt=' + (state.lastStartedSessionAt ? new Date(state.lastStartedSessionAt).toLocaleTimeString() : 'none'));
+
+    // v3.23.11: If the focus timer is running, in countdown, or completed, don't penalize.
+    if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'completed') {
+      console.log('[PenaltyTimer] SAFETY CHECK: timerState=' + state.timerState + '. Penalty CANCELLED.');
+      _setPenaltyTimer(null, true);
+      state.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: state });
+      return;
+    }
+    if (state.timerEndsAt && state.timerEndsAt > Date.now()) {
+      console.log('[PenaltyTimer] SAFETY CHECK: timerEndsAt in future. Penalty CANCELLED.');
+      _setPenaltyTimer(null, true);
+      state.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: state });
+      return;
+    }
+    if (state.lastStartedSessionAt && (Date.now() - state.lastStartedSessionAt) < 300000) {
+      console.log('[PenaltyTimer] SAFETY CHECK: Session started ' +
+        Math.round((Date.now() - state.lastStartedSessionAt) / 1000) + 's ago. Penalty CANCELLED.');
+      _setPenaltyTimer(null, true);
+      state.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: state });
       return;
     }
     if (_penaltyTimerStartedAt && (Date.now() - _penaltyTimerStartedAt) < 10000) {
@@ -131,8 +299,15 @@ function applyPenaltyTimerPenalty() {
       return;
     }
 
+    if (state.timerState === 'paused') {
+      console.log('[PenaltyTimer] Timer is PAUSED — penalty still applies.');
+    }
+
+    _setPenaltyTimer(null, true);
+
     var prevCoins = state.coins || 0;
     state.coins = Math.max(0, prevCoins - PENALTY_TIMER_PENALTY);
+    state.penaltyCountdownActive = false;
     chrome.storage.local.set({ pixelFocusState: state });
     console.log('[PenaltyTimer] PENALTY APPLIED: $' + PENALTY_TIMER_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
@@ -156,52 +331,133 @@ chrome.storage.onChanged.addListener(function(changes, area) {
   if (area !== 'local' || !changes.pixelFocusState) return;
   var newState = changes.pixelFocusState.newValue || {};
 
+  // v3.23.11: When the focus timer starts running or enters countdown, CLEAR the
+  // background deadline alarms. The window handles its own pause/resume, but
+  // the background alarm is a separate 3-minute fuse that doesn't know the
+  // window paused. Without clearing it, the alarm fires and applies the penalty
+  // even though the user is actively focusing. THIS WAS THE BUG.
+  //
+  // The alarms are re-created if the user pauses or resets (the window sends
+  // PROMISE_TIMER_EXPIRED / PENALTY_TIMER_EXPIRED, or we detect idle→resume below).
   if (newState.timerState === 'running' || newState.timerState === 'countdown') {
-    // v3.22.92: Reset consecutive NOs — they're focusing now
+    console.log('[Storage] timerState=' + newState.timerState + ' — clearing deadline + idle alarms (user is engaging).');
+    try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+    try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
+    // v3.23.14: Kill idle challenge alarms entirely while focusing. The guards
+    // inside the alarm handler SHOULD block notifications, but a race condition
+    // (service worker wake-up reading stale storage) has allowed them through
+    // three separate times. If the alarm doesn't fire, the notification can't
+    // be created. Alarms are re-created when timerState goes idle/completed.
+    try { chrome.alarms.clear('pixelfocus-ct-idle'); } catch(_) {}
+    try { chrome.alarms.clear('pixelfocus-focus-idle'); } catch(_) {}
+    console.log('[Storage] Idle challenge alarms CLEARED for duration of focus session.');
+
+    // Reset consecutive NOs — they're at least trying
     if (newState.surveillanceConsecutiveNos > 0) {
       newState.surveillanceConsecutiveNos = 0;
       chrome.storage.local.set({ pixelFocusState: newState });
       console.log('[Surveillance] Consecutive NOs reset — focus timer started.');
     }
+  }
 
-    // Cancel promise timer penalty if active
+  // v3.23.11: If the user pauses or goes idle while a promise/penalty window is still
+  // open (not resolved), re-create the deadline alarm for the REMAINING time.
+  // The window's resume handler will resume its own countdown; the background alarm
+  // is the belt-and-suspenders enforcement.
+  if (newState.timerState === 'paused' || newState.timerState === 'idle') {
+    // v3.23.14: Recreate idle challenge alarms that were cleared during focus
+    chrome.alarms.create('pixelfocus-ct-idle', { periodInMinutes: 5 });
+    chrome.alarms.create('pixelfocus-focus-idle', { periodInMinutes: 5 });
+    console.log('[Storage] timerState=' + newState.timerState + ' — idle alarms re-created.');
+
     if (!_promiseTimerResolved && _promiseTimerWindowId) {
-      console.log('[PromiseTimer] Focus timer started (detected via storage change). Penalty CANCELLED. timerState=' + newState.timerState);
-      _promiseTimerResolved = true;
-      try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
-      _promiseTimerWindowId = null;
+      console.log('[Storage] timerState=' + newState.timerState + ' — promise timer still active, re-arming alarm.');
+      // We don't know exact remaining time, so give a fresh 3 minutes.
+      // The window tracks real remaining time independently.
+      chrome.alarms.create('pixelfocus-promise-deadline', { delayInMinutes: 3 });
     }
-
-    // Cancel penalty timer if active
     if (!_penaltyTimerResolved && _penaltyTimerWindowId) {
-      console.log('[PenaltyTimer] Focus timer started (detected via storage change). Penalty CANCELLED. timerState=' + newState.timerState);
-      _penaltyTimerResolved = true;
+      console.log('[Storage] timerState=' + newState.timerState + ' — penalty timer still active, re-arming alarm.');
+      chrome.alarms.create('pixelfocus-penalty-deadline', { delayInMinutes: 3 });
+    }
+  }
+
+  if (newState.timerState === 'completed') {
+    // v3.23.14: Recreate idle challenge alarms (session is done, idle tracking resumes)
+    chrome.alarms.create('pixelfocus-ct-idle', { periodInMinutes: 5 });
+    chrome.alarms.create('pixelfocus-focus-idle', { periodInMinutes: 5 });
+    console.log('[Storage] timerState=completed — idle alarms re-created.');
+
+    // Session completed — cancel any active promise/penalty timers for good
+    var anyCancelled = false;
+    if (!_promiseTimerResolved && _promiseTimerWindowId) {
+      console.log('[PromiseTimer] Session COMPLETED. Penalty CANCELLED.');
+      _setPromiseTimer(null, true);
+      try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+      anyCancelled = true;
+    }
+    if (!_penaltyTimerResolved && _penaltyTimerWindowId) {
+      console.log('[PenaltyTimer] Session COMPLETED. Penalty CANCELLED.');
+      _setPenaltyTimer(null, true);
       try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
-      _penaltyTimerWindowId = null;
+      anyCancelled = true;
+    }
+    if (anyCancelled) {
+      newState.penaltyCountdownActive = false;
+      chrome.storage.local.set({ pixelFocusState: newState });
     }
   }
 });
 
 // If the promise/penalty timer window is closed before resolving → penalty
+// v3.23.11: But NOT if the focus timer is currently running — the user may have
+// closed the minimized window from the taskbar while focusing. applyPromisePenalty
+// and applyPenaltyTimerPenalty now check timerState themselves, but we also
+// read storage here first to avoid even calling them unnecessarily.
 chrome.windows.onRemoved.addListener(function(windowId) {
   if (windowId === _promiseTimerWindowId && !_promiseTimerResolved) {
-    console.log('[PromiseTimer] Window ' + windowId + ' was CLOSED before resolution. Applying penalty after 1s safety delay...');
+    console.log('[PromiseTimer] Window ' + windowId + ' was CLOSED before resolution. Checking timer state...');
     setTimeout(function() {
       if (_promiseTimerResolved) {
         console.log('[PromiseTimer] Resolved during safety delay. Penalty skipped.');
         return;
       }
-      applyPromisePenalty();
+      // Check if focus timer is running before penalizing
+      chrome.storage.local.get('pixelFocusState', function(result) {
+        var st = (result.pixelFocusState || {});
+        if (st.timerState === 'running' || st.timerState === 'countdown' || st.timerState === 'completed') {
+          console.log('[PromiseTimer] Window closed but timer is ' + st.timerState + '. NOT penalizing.');
+          // Don't resolve — the session might still fail. But don't penalize now.
+          // The alarm was already cleared when timerState went to running.
+          return;
+        }
+        if (st.timerEndsAt && st.timerEndsAt > Date.now()) {
+          console.log('[PromiseTimer] Window closed but timerEndsAt in future. NOT penalizing.');
+          return;
+        }
+        applyPromisePenalty();
+      });
     }, 1000);
   }
   if (windowId === _penaltyTimerWindowId && !_penaltyTimerResolved) {
-    console.log('[PenaltyTimer] Window ' + windowId + ' was CLOSED before resolution. Applying penalty after 1s safety delay...');
+    console.log('[PenaltyTimer] Window ' + windowId + ' was CLOSED before resolution. Checking timer state...');
     setTimeout(function() {
       if (_penaltyTimerResolved) {
         console.log('[PenaltyTimer] Resolved during safety delay. Penalty skipped.');
         return;
       }
-      applyPenaltyTimerPenalty();
+      chrome.storage.local.get('pixelFocusState', function(result) {
+        var st = (result.pixelFocusState || {});
+        if (st.timerState === 'running' || st.timerState === 'countdown' || st.timerState === 'completed') {
+          console.log('[PenaltyTimer] Window closed but timer is ' + st.timerState + '. NOT penalizing.');
+          return;
+        }
+        if (st.timerEndsAt && st.timerEndsAt > Date.now()) {
+          console.log('[PenaltyTimer] Window closed but timerEndsAt in future. NOT penalizing.');
+          return;
+        }
+        applyPenaltyTimerPenalty();
+      });
     }, 1000);
   }
 });
@@ -226,12 +482,15 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       left: Math.round((screen.availWidth || 1200) - 420)
     }, function(win) {
       if (!isTestPromise && win && win.id) {
-        _promiseTimerWindowId = win.id;
-        _promiseTimerResolved = false;
-        _promiseTimerStartedAt = Date.now();
+        _setPromiseTimer(win.id, false, Date.now());
         console.log('[PromiseTimer] Window opened. windowId=' + win.id + ', deadline in 3 minutes.');
-        // Set a 3-minute alarm as the hard deadline
         chrome.alarms.create('pixelfocus-promise-deadline', { delayInMinutes: 3 });
+        // v3.23.2: Flag for pause/reset warning
+        chrome.storage.local.get('pixelFocusState', function(r) {
+          var s = r.pixelFocusState || {};
+          s.penaltyCountdownActive = true;
+          chrome.storage.local.set({ pixelFocusState: s });
+        });
       } else if (!isTestPromise) {
         console.warn('[PromiseTimer] Window creation returned no window or no ID. Penalty tracking NOT active.');
       }
@@ -247,8 +506,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // v3.22.91: Promise timer window signals success (focus timer started, detected by window)
   if (msg && msg.type === 'PROMISE_TIMER_RESOLVED') {
     console.log('[PromiseTimer] Window reported success — focus timer started. Penalty cancelled.');
-    _promiseTimerResolved = true;
-    _promiseTimerWindowId = null;
+    _setPromiseTimer(null, true);
     try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
     try { sendResponse({ ok: true }); } catch(_) {}
   }
@@ -256,11 +514,15 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   if (msg && msg.type === 'TRACK_PROMISE_TIMER') {
     var trackWinId = msg.windowId;
     if (trackWinId) {
-      _promiseTimerWindowId = trackWinId;
-      _promiseTimerResolved = false;
-      _promiseTimerStartedAt = Date.now();
+      _setPromiseTimer(trackWinId, false, Date.now());
       console.log('[PromiseTimer] Tracking window opened by nag. windowId=' + trackWinId);
       chrome.alarms.create('pixelfocus-promise-deadline', { delayInMinutes: 3 });
+      // v3.23.2: Set flag so app.js can warn before pause/reset
+      chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {};
+        s.penaltyCountdownActive = true;
+        chrome.storage.local.set({ pixelFocusState: s });
+      });
     }
     try { sendResponse({ ok: true }); } catch(_) {}
   }
@@ -268,11 +530,15 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   if (msg && msg.type === 'TRACK_PENALTY_TIMER') {
     var trackPenWinId = msg.windowId;
     if (trackPenWinId) {
-      _penaltyTimerWindowId = trackPenWinId;
-      _penaltyTimerResolved = false;
-      _penaltyTimerStartedAt = Date.now();
+      _setPenaltyTimer(trackPenWinId, false, Date.now());
       console.log('[PenaltyTimer] Tracking window opened by nag. windowId=' + trackPenWinId);
       chrome.alarms.create('pixelfocus-penalty-deadline', { delayInMinutes: 3 });
+      // v3.23.2: Set flag so app.js can warn before pause/reset
+      chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {};
+        s.penaltyCountdownActive = true;
+        chrome.storage.local.set({ pixelFocusState: s });
+      });
     }
     try { sendResponse({ ok: true }); } catch(_) {}
   }
@@ -290,11 +556,14 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       left: Math.round((screen.availWidth || 1200) - 420)
     }, function(win) {
       if (!isTestPenalty && win && win.id) {
-        _penaltyTimerWindowId = win.id;
-        _penaltyTimerResolved = false;
-        _penaltyTimerStartedAt = Date.now();
+        _setPenaltyTimer(win.id, false, Date.now());
         console.log('[PenaltyTimer] Window opened. windowId=' + win.id + ', deadline in 3 minutes.');
         chrome.alarms.create('pixelfocus-penalty-deadline', { delayInMinutes: 3 });
+        chrome.storage.local.get('pixelFocusState', function(r) {
+          var s = r.pixelFocusState || {};
+          s.penaltyCountdownActive = true;
+          chrome.storage.local.set({ pixelFocusState: s });
+        });
       } else if (!isTestPenalty) {
         console.warn('[PenaltyTimer] Window creation returned no window or no ID. Penalty tracking NOT active.');
       }
@@ -310,8 +579,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // v3.22.93: Penalty timer window signals success (focus timer started)
   if (msg && msg.type === 'PENALTY_TIMER_RESOLVED') {
     console.log('[PenaltyTimer] Window reported success — focus timer started. Penalty cancelled.');
-    _penaltyTimerResolved = true;
-    _penaltyTimerWindowId = null;
+    _setPenaltyTimer(null, true);
     try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
     try { sendResponse({ ok: true }); } catch(_) {}
   }
@@ -498,28 +766,97 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       var now = Date.now();
 
-      // Timer currently running or in countdown/paused? Don't nag.
-      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused') return;
-      if (state.timerEndsAt && state.timerEndsAt > now) return;
+      // v3.23.8: FULL DEBUG — log every check so we can trace false fires
+      var _dbg = '[CT-Idle] ';
+      console.log(_dbg + 'ALARM FIRED at ' + new Date(now).toLocaleTimeString());
+
+      // v3.23.15: Stamp every alarm fire so wake-from-sleep detection works.
+      // Must be BEFORE guards so it updates even when blocked.
+      state._ctIdleLastAlarmAt = now;
+      chrome.storage.local.set({ pixelFocusState: state });
+
+      console.log(_dbg + 'timerState=' + (state.timerState || 'undefined') +
+        ' timerEndsAt=' + (state.timerEndsAt ? new Date(state.timerEndsAt).toLocaleTimeString() : 'none') +
+        ' timerRemaining=' + (state.timerRemaining || 0));
+
+      // Timer currently running or in countdown/paused/completed? Don't nag.
+      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
+        console.log(_dbg + 'BLOCKED by timerState=' + state.timerState);
+        return;
+      }
+      if (state.timerEndsAt && state.timerEndsAt > now) {
+        console.log(_dbg + 'BLOCKED by timerEndsAt (still in future, ' + Math.round((state.timerEndsAt - now) / 1000) + 's left)');
+        return;
+      }
       // Grace period: don't nag within 5 min of completing a session
-      if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) return;
+      if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) {
+        console.log(_dbg + 'BLOCKED by grace period (' + Math.round((now - state.lastCompletedSessionAt) / 1000) + 's since completion)');
+        return;
+      }
+
+      // v3.23.8: Also block if penaltyCountdownActive (user is dealing with a penalty)
+      if (state.penaltyCountdownActive) {
+        console.log(_dbg + 'BLOCKED by penaltyCountdownActive');
+        return;
+      }
 
       // Last STARTED session within 2 hours? All good.
       var TWO_HOURS = 2 * 60 * 60 * 1000;
       var lastSession = state.lastStartedSessionAt || state.lastCompletedSessionAt || 0;
-      if (lastSession && (now - lastSession) < TWO_HOURS) return;
+      if (lastSession && (now - lastSession) < TWO_HOURS) {
+        console.log(_dbg + 'BLOCKED by lastSession (' + Math.round((now - lastSession) / 60000) + 'min ago)');
+        return;
+      }
 
       // Don't spam — only open once per 2h window
       var lastIdleOpen = state.coldTurkeyLastIdleOpen || 0;
-      if (lastIdleOpen && (now - lastIdleOpen) < TWO_HOURS) return;
+      if (lastIdleOpen && (now - lastIdleOpen) < TWO_HOURS) {
+        console.log(_dbg + 'BLOCKED by lastIdleOpen (' + Math.round((now - lastIdleOpen) / 60000) + 'min ago)');
+        return;
+      }
+
+      // v3.23.8: Also block if there's an active challenge window already
+      if (state.challengeActive) {
+        console.log(_dbg + 'BLOCKED by challengeActive');
+        return;
+      }
+
+      // ALL GUARDS PASSED — about to fire
+      console.warn(_dbg + 'ALL GUARDS PASSED — FIRING idle challenge!' +
+        ' lastStartedSessionAt=' + (state.lastStartedSessionAt ? new Date(state.lastStartedSessionAt).toLocaleTimeString() + ' (' + Math.round((now - state.lastStartedSessionAt) / 60000) + 'min ago)' : 'NEVER') +
+        ' lastCompletedSessionAt=' + (state.lastCompletedSessionAt ? new Date(state.lastCompletedSessionAt).toLocaleTimeString() + ' (' + Math.round((now - state.lastCompletedSessionAt) / 60000) + 'min ago)' : 'NEVER') +
+        ' coldTurkeyLastIdleOpen=' + (lastIdleOpen ? new Date(lastIdleOpen).toLocaleTimeString() + ' (' + Math.round((now - lastIdleOpen) / 60000) + 'min ago)' : 'NEVER'));
+
+      // v3.23.15: Don't fire on wake from sleep/hibernate. If the computer was
+      // off for hours, the 2h idle check passes but the user wasn't actually idle
+      // at their desk — they were away. Check if the LAST alarm fire was recent
+      // enough to prove the computer has been continuously awake. The alarm fires
+      // every 5 minutes, so if the gap since last fire is >10 minutes, the machine
+      // was probably sleeping.
+      var lastAlarmFire = state._ctIdleLastAlarmAt || 0;
+      if (lastAlarmFire && (now - lastAlarmFire) > 600000) {
+        console.log(_dbg + 'BLOCKED by wake-from-sleep (last alarm was ' + Math.round((now - lastAlarmFire) / 60000) + 'min ago, gap > 10min)');
+        state._ctIdleLastAlarmAt = now;
+        chrome.storage.local.set({ pixelFocusState: state });
+        return;
+      }
+      state._ctIdleLastAlarmAt = now;
 
       // Fire! Open the challenge window + Cold Turkey + notification
       state.coldTurkeyLastIdleOpen = now;
       state.challengeOfferedAt = now; // v3.22.89: gate so manual navigation can't exploit
       chrome.storage.local.set({ pixelFocusState: state });
 
-      // v3.21.51: Open challenge window (3-min countdown for 1.5x bonus)
-      openPixelFocusWindow('challenge.html');
+      // v3.23.15: Open challenge as a popup window (not a tab)
+      chrome.windows.create({
+        url: chrome.runtime.getURL('challenge.html'),
+        type: 'popup',
+        width: 480,
+        height: 520,
+        focused: true,
+        top: 60,
+        left: Math.round((screen.availWidth || 1200) - 520)
+      });
 
       // Also open Cold Turkey if native messaging is set up
       try {
@@ -556,19 +893,56 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       if (state.focusIdleReminder === false) return;
 
       var now = Date.now();
+      var _dbg = '[Focus-Idle] ';
+      console.log(_dbg + 'ALARM FIRED at ' + new Date(now).toLocaleTimeString());
 
-      // Timer currently running, counting down, or paused? Don't nag.
-      if (state.timerEndsAt && state.timerEndsAt > now) return;
-      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused') return;
+      // v3.23.15: Stamp + wake-from-sleep detection (same as CT-Idle)
+      var lastFocusAlarm = state._focusIdleLastAlarmAt || 0;
+      state._focusIdleLastAlarmAt = now;
+      chrome.storage.local.set({ pixelFocusState: state });
+      if (lastFocusAlarm && (now - lastFocusAlarm) > 600000) {
+        console.log(_dbg + 'BLOCKED by wake-from-sleep (gap ' + Math.round((now - lastFocusAlarm) / 60000) + 'min)');
+        return;
+      }
+
+      console.log(_dbg + 'timerState=' + (state.timerState || 'undefined') +
+        ' timerEndsAt=' + (state.timerEndsAt ? new Date(state.timerEndsAt).toLocaleTimeString() : 'none'));
+
+      // Timer currently running, counting down, paused, or completed? Don't nag.
+      if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
+        console.log(_dbg + 'BLOCKED by timerState=' + state.timerState);
+        return;
+      }
+      if (state.timerEndsAt && state.timerEndsAt > now) {
+        console.log(_dbg + 'BLOCKED by timerEndsAt');
+        return;
+      }
+      // Grace period
+      if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) {
+        console.log(_dbg + 'BLOCKED by grace period');
+        return;
+      }
+      if (state.penaltyCountdownActive) {
+        console.log(_dbg + 'BLOCKED by penaltyCountdownActive');
+        return;
+      }
 
       // Last STARTED session within 2 hours? All good.
       var TWO_HOURS = 2 * 60 * 60 * 1000;
       var lastSession = state.lastStartedSessionAt || state.lastCompletedSessionAt || 0;
-      if (lastSession && (now - lastSession) < TWO_HOURS) return;
+      if (lastSession && (now - lastSession) < TWO_HOURS) {
+        console.log(_dbg + 'BLOCKED by lastSession (' + Math.round((now - lastSession) / 60000) + 'min ago)');
+        return;
+      }
 
       // Don't spam — only nudge once per 2h window
       var lastNudge = state.focusIdleLastNudge || 0;
-      if (lastNudge && (now - lastNudge) < TWO_HOURS) return;
+      if (lastNudge && (now - lastNudge) < TWO_HOURS) {
+        console.log(_dbg + 'BLOCKED by lastNudge');
+        return;
+      }
+
+      console.warn(_dbg + 'ALL GUARDS PASSED — FIRING idle nudge!');
 
       state.focusIdleLastNudge = now;
       chrome.storage.local.set({ pixelFocusState: state });
@@ -677,6 +1051,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
     chrome.storage.local.get('pixelFocusState', function(result) {
       var state = result.pixelFocusState;
       if (!state) return;
+      if (state.siteNagEnabled === false) return;
       var sites = state.coldTurkeyNagSites;
       if (!sites || !sites.length) return;
 
@@ -1080,14 +1455,14 @@ function opportunisticSurveillanceCheck() {
     chrome.storage.local.set({ pixelFocusState: state });
 
     // Notification
-    var nagTitle = penaltyJustApplied ? 'STRIKE 3 \u2014 $100 PENALTY'
-                 : nagNum >= 3 ? 'STRIKE 3 \u2014 No focus timer running!'
-                 : nagNum === 2 ? 'STRIKE 2 \u2014 Next one costs $100!'
+    var nagTitle = penaltyJustApplied ? 'STRIKE 3 — $100 PENALTY'
+                 : nagNum >= 3 ? 'STRIKE 3 — No focus timer running!'
+                 : nagNum === 2 ? 'STRIKE 2 — Next one costs $100!'
                  : 'Surveillance: No focus timer running!';
     var nagMsg = penaltyJustApplied ? 'You just lost $100. Start a focus timer.'
                : nagNum >= 3 ? 'Penalty already applied. Start a timer.'
                : nagNum === 2 ? 'This is your warning. Strike 3 deducts $100.'
-               : 'Nag 1/3 \u2014 Start a focus timer! Ignoring this costs you.';
+               : 'Nag 1/3 — Start a focus timer! Ignoring this costs you.';
     try {
       chrome.notifications.create('surveillance-opp-' + Date.now(), {
         type: 'basic', iconUrl: 'icons/icon128.png',

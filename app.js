@@ -1507,7 +1507,7 @@ try {
       state.dustCompletedToday = 0;
 
       // v3.20.21: Populate recurring tasks for the new day.
-      populateRecurringTasks();
+      populateRecurringTasks(true);
 
       // v3.21.45: Reset recurrent aqueduct stages for the new day.
       resetRecurrentAqueducts();
@@ -2479,6 +2479,31 @@ try {
   // ============== FOCUS TIMELINE (6-hour sliding window) ==============
   // Default: 2 hours before now, 4 hours after. Nav shifts by 1 hour.
   var _tlOffset = 0; // manual offset in hours from default position
+  var _tlPreviewDurationSec = 0; // v3.23.6: hypothetical session preview (seconds, 0 = none)
+
+  // v3.23.6: Create a small time label positioned below a timeline segment
+  function _tlTimeLabel(text, leftPct, align) {
+    var el = document.createElement('div');
+    el.style.cssText = 'position:absolute;top:26px;font-family:"Press Start 2P",monospace;font-size:5px;color:#8a8aaa;white-space:nowrap;z-index:3;pointer-events:none;';
+    if (align === 'right') {
+      el.style.left = leftPct + '%';
+      el.style.transform = 'translateX(-100%)';
+    } else {
+      el.style.left = leftPct + '%';
+    }
+    el.textContent = text;
+    return el;
+  }
+
+  // v3.23.6: Format a timestamp for timeline labels (compact)
+  function _tlFmtMs(ms) {
+    var d = new Date(ms);
+    var h = d.getHours(), m = d.getMinutes();
+    if (state.use24Hour) return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    var ampm = h < 12 ? 'a' : 'p';
+    var dh = h % 12; if (dh === 0) dh = 12;
+    return dh + ':' + (m < 10 ? '0' : '') + m + ampm;
+  }
 
   function renderFocusTimeline() {
     var bar = document.getElementById('focusTimelineBar');
@@ -2562,13 +2587,62 @@ try {
       block.title = startTime.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + ' - ' +
                      endTime.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + ' (' + (s.min || '?') + ' min)';
       bar.appendChild(block);
+
+      // v3.23.6: Time labels below segment
+      var endPct = leftPct + widthPct;
+      bar.appendChild(_tlTimeLabel(_tlFmtMs(s.start), leftPct, 'left'));
+      bar.appendChild(_tlTimeLabel(_tlFmtMs(s.end), endPct, 'right'));
     }
 
     // Blocked-out time zones (v3.21.30)
     _renderBlockedZones(bar, windowStartMs, windowEndMs, windowMs);
 
-    // Now marker (if in this window)
+    // v3.23.6: Hypothetical session preview (ghost block)
     var nowMs = now.getTime();
+    if (_tlPreviewDurationSec > 0 && (state.timerState === 'idle' || !state.timerState)) {
+      var previewStartMs = nowMs;
+      var previewEndMs = nowMs + (COUNTDOWN_SECONDS * 1000) + (_tlPreviewDurationSec * 1000);
+      var pvStart = Math.max(previewStartMs, windowStartMs);
+      var pvEnd = Math.min(previewEndMs, windowEndMs);
+      if (pvStart < pvEnd) {
+        var pvLeftPct = ((pvStart - windowStartMs) / windowMs) * 100;
+        var pvWidthPct = ((pvEnd - pvStart) / windowMs) * 100;
+        if (pvWidthPct < 0.5) pvWidthPct = 0.5;
+
+        // Prep/countdown phase (striped)
+        var countdownEndMs = Math.min(nowMs + (COUNTDOWN_SECONDS * 1000), windowEndMs);
+        if (countdownEndMs > pvStart) {
+          var cdLeft = pvLeftPct;
+          var cdWidth = ((Math.min(countdownEndMs, pvEnd) - pvStart) / windowMs) * 100;
+          var cdEl = document.createElement('div');
+          cdEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px 0 0 3px;left:' + cdLeft + '%;width:' + cdWidth + '%;z-index:1;opacity:0.5;background:repeating-linear-gradient(45deg,#4ecdc422,#4ecdc422 3px,#4ecdc444 3px,#4ecdc444 6px);border:1px dashed #4ecdc455;';
+          cdEl.title = 'Prep countdown (' + COUNTDOWN_SECONDS + 's)';
+          bar.appendChild(cdEl);
+        }
+
+        // Focus phase (ghost)
+        var focusStartMs = Math.max(countdownEndMs, windowStartMs);
+        if (focusStartMs < pvEnd) {
+          var fLeft = ((focusStartMs - windowStartMs) / windowMs) * 100;
+          var fWidth = ((pvEnd - focusStartMs) / windowMs) * 100;
+          var ghostEl = document.createElement('div');
+          ghostEl.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:0 3px 3px 0;left:' + fLeft + '%;width:' + fWidth + '%;z-index:1;opacity:0.35;background:linear-gradient(180deg,#4ecdc4,#26a69a);border:1px dashed #4ecdc488;';
+          ghostEl.title = 'Preview: ' + (_tlPreviewDurationSec / 60) + ' min session (starts after ' + COUNTDOWN_SECONDS + 's countdown)';
+          bar.appendChild(ghostEl);
+        }
+
+        // Time labels for preview
+        var pvEndPct = pvLeftPct + pvWidthPct;
+        var startLabel = _tlTimeLabel(_tlFmtMs(previewStartMs), pvLeftPct, 'left');
+        startLabel.style.color = '#4ecdc4';
+        bar.appendChild(startLabel);
+        var endLabel = _tlTimeLabel(_tlFmtMs(previewEndMs), pvEndPct, 'right');
+        endLabel.style.color = '#4ecdc4';
+        bar.appendChild(endLabel);
+      }
+    }
+
+    // Now marker (if in this window)
     if (nowMs >= windowStartMs && nowMs < windowEndMs) {
       var nowPct = ((nowMs - windowStartMs) / windowMs) * 100;
       var marker = document.createElement('div');
@@ -2675,7 +2749,14 @@ try {
       // Minute label on top of bar
       var valSpan = document.createElement('div');
       valSpan.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#ff9f43;margin-bottom:2px;';
-      valSpan.textContent = day.isFuture ? '' : (day.mins > 0 ? day.mins + 'm' : '');
+      // v3.23.18: Show hours + minutes (e.g. "4h 35m") instead of just total minutes
+      var _barLabel = '';
+      if (!day.isFuture && day.mins > 0) {
+        var _bh = Math.floor(day.mins / 60);
+        var _bm = day.mins % 60;
+        _barLabel = _bh > 0 ? _bh + 'h' + (_bm > 0 ? ' ' + _bm + 'm' : '') : _bm + 'm';
+      }
+      valSpan.textContent = _barLabel;
       barWrap.appendChild(valSpan);
 
       // The bar itself
@@ -3256,6 +3337,15 @@ try {
         }
         bar.appendChild(evEl);
       }
+
+      // v3.23.6: Time labels for blocked zones
+      var labelColor = isSleep ? '#6b6bff' : '#ff6b6b';
+      var startLbl = _tlTimeLabel(_tlFmtMs(bt.startMs), leftPct, 'left');
+      startLbl.style.color = labelColor;
+      bar.appendChild(startLbl);
+      var endLbl = _tlTimeLabel(_tlFmtMs(bt.endMs), leftPct + widthPct, 'right');
+      endLbl.style.color = labelColor;
+      bar.appendChild(endLbl);
     }
   }
 
@@ -3568,7 +3658,7 @@ try {
 
     // Next XP preview
     const nextXP = calculateXPGain(state.combo + (state.timerState === 'running' ? 1 : 0), state.streak);
-    $('nextXPPreview').textContent = state.timerState === 'running' ? `+${nextXP} XP on completion` : `Next block: +${nextXP} XP`;
+    $('nextXPPreview').textContent = state.timerState === 'running' ? `+${nextXP} XP on completion` : `Next textile: +${nextXP} XP`;
 
     // Streak bonus display
     const streakPct = Math.round((getStreakBonus(state.streak) - 1) * 100);
@@ -3629,8 +3719,10 @@ try {
     if (![600, 1200, 1800, 3600].includes(sec)) return;
     state.sessionDurationSec = sec;
     state.timerRemaining = sec;
+    _tlPreviewDurationSec = sec; // v3.23.6: show preview on timeline
     save();
     renderTimer();
+    renderFocusTimeline(); // v3.23.6: update preview
     try {
       if (typeof MsgLog !== 'undefined') {
         var label = (sec / 60) + '-minute';
@@ -5354,6 +5446,23 @@ try {
       }
     }
 
+    // v3.23.16: Quick-add time buttons
+    var addBtnsContainer = document.getElementById('surveillanceAddBtns');
+    var addBtns = addBtnsContainer ? addBtnsContainer.querySelectorAll('.surv-add-btn') : [];
+    addBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var addMin = parseInt(btn.getAttribute('data-min')) || 0;
+        if (!addMin || !state.surveillanceActive) return;
+        state.surveillanceEndsAt = Math.max(state.surveillanceEndsAt, Date.now()) + (addMin * 60000);
+        save();
+        updateSurveillanceUI();
+        // Flash the button
+        btn.style.background = '#ff6b6b';
+        btn.style.color = '#0a0a14';
+        setTimeout(function() { btn.style.background = 'none'; btn.style.color = '#ff6b6b'; }, 300);
+      });
+    });
+
     function updateSurveillanceUI() {
       var now = Date.now();
       var active = state.surveillanceActive && state.surveillanceEndsAt > now;
@@ -5363,6 +5472,7 @@ try {
         durSelect.style.display = 'none';
         stopBtn.style.display = '';
         timerEl.style.display = '';
+        if (addBtnsContainer) addBtnsContainer.style.display = 'flex';
         panel.style.borderColor = '#ff4444';
         panel.style.boxShadow = '0 0 15px rgba(255,68,68,0.2)';
         // Show remaining time with seconds
@@ -5385,6 +5495,7 @@ try {
         durSelect.style.display = '';
         stopBtn.style.display = 'none';
         timerEl.style.display = 'none';
+        if (addBtnsContainer) addBtnsContainer.style.display = 'none';
         panel.style.borderColor = '#ff6b6b';
         panel.style.boxShadow = 'none';
         statusEl.textContent = 'OFF';
@@ -5512,6 +5623,8 @@ try {
         chrome.storage.local.get('pixelFocusState', function(result) {
           var st = result.pixelFocusState;
           if (!st) return;
+          // v3.23.19: Respect the on/off toggle
+          if (st.siteNagEnabled === false) { _updateSiteNagDisplay(null); return; }
           var sites = st.coldTurkeyNagSites;
           if (!sites || !sites.length) {
             _updateSiteNagDisplay(null);
@@ -5648,6 +5761,25 @@ try {
     state.timerEndsAt = Date.now() + (state.timerRemaining * 1000);
     // v3.22.25: Record when a focus timer was last started (for idle reminders)
     state.lastStartedSessionAt = Date.now();
+    // v3.23.8: Preemptively stamp idle-challenge spam guards so even if a background
+    // alarm reads stale timerState, the spam guard blocks the notification.
+    state.coldTurkeyLastIdleOpen = Date.now();
+    state.focusIdleLastNudge = Date.now();
+    // v3.23.14: Kill the idle challenge alarms entirely. The storage.onChanged
+    // listener in background.js does this too, but clearing from both sides
+    // eliminates any race window. Alarms are recreated when the session ends.
+    try { chrome.alarms.clear('pixelfocus-ct-idle'); } catch(_) {}
+    try { chrome.alarms.clear('pixelfocus-focus-idle'); } catch(_) {}
+    // v3.23.8: Also clear any stale idle challenge notifications from the OS tray
+    try {
+      chrome.notifications.getAll(function(all) {
+        Object.keys(all).forEach(function(id) {
+          if (id.indexOf('ct-idle') === 0 || id === 'focus-idle-nudge') {
+            chrome.notifications.clear(id);
+          }
+        });
+      });
+    } catch(_) {}
     // v3.21.17: Record session start for the daily timeline.
     state._sessionStartedAt = Date.now();
     save();
@@ -5800,6 +5932,60 @@ try {
     if (modal) modal.addEventListener('click', function(e) { if (e.target === modal) dismiss(); });
   })();
 
+  // v3.23.2: Penalty countdown confirmation modal
+  function showPenaltyConfirm(title, message, onConfirm) {
+    // Remove any existing modal
+    var existing = document.getElementById('penaltyConfirmModal');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'penaltyConfirmModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#12122a;border:2px solid #ff4466;border-radius:14px;padding:24px 28px;max-width:360px;width:90%;text-align:center;box-shadow:0 0 40px rgba(255,68,102,0.3);';
+
+    var titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:10px;color:#ff4466;letter-spacing:2px;margin-bottom:14px;';
+    titleEl.textContent = title;
+
+    var msgEl = document.createElement('div');
+    msgEl.style.cssText = 'font-size:12px;color:#e0e0e0;line-height:1.6;margin-bottom:20px;font-family:"Segoe UI",sans-serif;';
+    msgEl.textContent = message;
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+
+    var yesBtn = document.createElement('button');
+    yesBtn.textContent = 'YES, DO IT';
+    yesBtn.style.cssText = 'background:linear-gradient(135deg,#ff4466,#ff6b6b);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;letter-spacing:1px;';
+    yesBtn.addEventListener('click', function() {
+      overlay.remove();
+      onConfirm();
+    });
+
+    var noBtn = document.createElement('button');
+    noBtn.textContent = 'KEEP GOING';
+    noBtn.style.cssText = 'background:none;border:1px solid #00ff88;color:#00ff88;border-radius:8px;padding:10px 20px;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;letter-spacing:1px;';
+    noBtn.addEventListener('click', function() {
+      overlay.remove();
+    });
+
+    btnRow.appendChild(noBtn);
+    btnRow.appendChild(yesBtn);
+    box.appendChild(titleEl);
+    box.appendChild(msgEl);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+
+    // Click outside to dismiss (same as "KEEP GOING")
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
   function startTimer() {
     // Abort an in-progress pre-start countdown — user tapped START again
     // during the grace period, they want out.
@@ -5811,6 +5997,20 @@ try {
       return;
     }
     if (state.timerState === 'running') {
+      // v3.23.2: Warn if a penalty countdown is active — pausing resumes the penalty timer
+      if (state.penaltyCountdownActive && !window._penaltyPauseConfirmed) {
+        showPenaltyConfirm(
+          'PAUSE — ARE YOU SURE?',
+          'A penalty countdown is active. Pausing this session will resume the $300 penalty timer.',
+          function() {
+            window._penaltyPauseConfirmed = true;
+            startTimer(); // re-enter, this time it'll skip the confirm
+            window._penaltyPauseConfirmed = false;
+          }
+        );
+        return;
+      }
+      window._penaltyPauseConfirmed = false;
       // Snapshot the true wall-clock remaining time BEFORE clearing
       // timerEndsAt, otherwise a paused-then-resumed long session would
       // resume with a stale pre-pause count.
@@ -5856,6 +6056,26 @@ try {
     cancelPreStartCountdown();
     countdownRemaining = COUNTDOWN_SECONDS;
     state.timerState = 'countdown';
+    _tlPreviewDurationSec = 0; // v3.23.6: clear preview — real session takes over
+    // v3.23.8: Stamp idle-challenge spam guards early (countdown phase)
+    state.coldTurkeyLastIdleOpen = Date.now();
+    state.focusIdleLastNudge = Date.now();
+    state.lastStartedSessionAt = Date.now();
+    // v3.23.14: Kill idle alarms during countdown too (belt-and-suspenders)
+    try { chrome.alarms.clear('pixelfocus-ct-idle'); } catch(_) {}
+    try { chrome.alarms.clear('pixelfocus-focus-idle'); } catch(_) {}
+    // v3.23.9: Clear any stale idle-challenge notifications sitting in the tray.
+    // The notification may have fired BEFORE the user started the timer, but it
+    // lingers in the OS notification tray and feels like it fired during the session.
+    try {
+      chrome.notifications.getAll(function(notifs) {
+        for (var id in notifs) {
+          if (id.indexOf('ct-idle-') === 0 || id === 'focus-idle-nudge') {
+            chrome.notifications.clear(id);
+          }
+        }
+      });
+    } catch(_) {}
     try { SFX.tick(); } catch (_) {}
     save();
     render();
@@ -5913,6 +6133,20 @@ try {
   }
 
   function resetTimer() {
+    // v3.23.2: Warn if a penalty countdown is active — resetting triggers the $300 penalty
+    if (state.penaltyCountdownActive && (state.timerState === 'running' || state.timerState === 'paused' || state.timerState === 'countdown') && !window._penaltyResetConfirmed) {
+      showPenaltyConfirm(
+        'RESET — ARE YOU SURE?',
+        'A penalty countdown is active. Resetting will trigger the $300 penalty.',
+        function() {
+          window._penaltyResetConfirmed = true;
+          resetTimer();
+          window._penaltyResetConfirmed = false;
+        }
+      );
+      return;
+    }
+    window._penaltyResetConfirmed = false;
     clearInterval(timerInterval);
     timerInterval = null;
     // Also kill any in-progress 15-second pre-start countdown.
@@ -6258,7 +6492,7 @@ try {
 
     // Notifications
     let comboText = state.combo >= 2 ? ` 🔥 ${state.combo}x Combo!` : '';
-    notify(`+1 Block earned! +${xpGain} XP${comboText}`, 'var(--accent)');
+    notify(`+1 Textile earned! +${xpGain} XP${comboText}`, 'var(--accent)');
 
     if (state.combo >= 2) SFX.comboUp();
 
@@ -6280,7 +6514,7 @@ try {
       type: 'basic',
       iconUrl: 'icons/icon128.png',
       title: 'Todo of the Loom - Textile Earned!',
-      message: `+${xpGain} XP (${state.combo}x combo) | Total blocks today: ${state.todayBlocks}`
+      message: `+${xpGain} XP (${state.combo}x combo) | Total textiles today: ${state.todayBlocks}`
     });
 
     save();
@@ -6547,15 +6781,30 @@ try {
 
   // Called during checkDayRollover — populates today's task list with
   // any recurring templates that aren't already present.
-  function populateRecurringTasks() {
+  function populateRecurringTasks(forceFresh) {
     var templates = getRecurringTasks();
     if (templates.length === 0) return;
+    var today = todayStr();
     templates.forEach(function(tmpl) {
       var pid = tmpl.project || 'default';
       if (!state.tasks[pid]) state.tasks[pid] = [];
       var lc = tmpl.text.toLowerCase();
+      // Check if a copy (completed or not) already exists for today.
+      // Previously only checked !t.completed, which caused completed recurring
+      // tasks to be re-added on every page refresh instead of once per day.
       var alreadyExists = state.tasks[pid].some(function(t) {
-        return !t.completed && t.text.toLowerCase() === lc;
+        if (t.text.toLowerCase() !== lc) return false;
+        if (!t.completed) return true; // uncompleted copy still there
+        // Completed copy: only counts as "already exists" if completed today
+        // (so it won't be re-added on refresh, but WILL be re-added tomorrow).
+        // v3.23.14: forceFresh (day rollover) ignores completed copies.
+        if (forceFresh) return false;
+        if (t.completedAt) {
+          var d = new Date(t.completedAt);
+          var completedDate = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+          return completedDate === today;
+        }
+        return false; // no timestamp (pre-v3.23.15 task) — re-add to be safe
       });
       if (alreadyExists) return;
       state.tasks[pid].push({
@@ -6687,10 +6936,10 @@ try {
     node.appendChild(stopBtn);
     host.appendChild(node);
 
-    // Auto-dismiss after 20 seconds.
+    // Auto-dismiss after 11 seconds.
     setTimeout(function() {
       if (node.parentNode) node.parentNode.removeChild(node);
-    }, 20000);
+    }, 11000);
   }
 
   // ============== HIGH PRIORITY TASKS (v3.20.25) ==============
@@ -8328,6 +8577,9 @@ try {
     if (!task) return;
     task.completed = !task.completed;
     if (task.completed) {
+      // v3.23.14: Stamp completion time so recurring tasks know whether
+      // they were completed today (prevents re-adding on page refresh).
+      task.completedAt = Date.now();
       SFX.completeTask();
       // v3.20.26: bump lifetime task-completion count for the profile page.
       state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
@@ -8360,6 +8612,7 @@ try {
         state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
       }
     } else {
+      task.completedAt = null; // v3.23.14: clear timestamp on un-complete
       SFX.click();
     }
     save();
@@ -9503,6 +9756,8 @@ try {
       var challengeWindowTestBtn = $('challengeWindowTestBtn');
       if (challengeWindowTestBtn) {
         challengeWindowTestBtn.addEventListener('click', function() {
+          // v3.23.3: Set flag so pause/reset confirmation shows during test
+          state.penaltyCountdownActive = true; save();
           try {
             var challengeUrl = chrome.runtime.getURL('challenge.html?test=1');
             chrome.windows.create({
@@ -9531,6 +9786,7 @@ try {
       var promiseTimerTestBtn = $('promiseTimerTestBtn');
       if (promiseTimerTestBtn) {
         promiseTimerTestBtn.addEventListener('click', function() {
+          state.penaltyCountdownActive = true; save();
           try {
             var promiseUrl = chrome.runtime.getURL('challenge.html?test=1&promise=1');
             chrome.windows.create({
@@ -9558,6 +9814,7 @@ try {
       var penaltyTimerTestBtn = $('penaltyTimerTestBtn');
       if (penaltyTimerTestBtn) {
         penaltyTimerTestBtn.addEventListener('click', function() {
+          state.penaltyCountdownActive = true; save();
           try {
             var penaltyUrl = chrome.runtime.getURL('penalty-timer.html?test=1');
             chrome.windows.create({
@@ -9590,6 +9847,23 @@ try {
             coldTurkeyStatus.textContent = 'Block name saved.';
             setTimeout(function() { if (coldTurkeyStatus) coldTurkeyStatus.textContent = ''; }, 2000);
           }
+        });
+      }
+
+      // v3.23.19: Distraction watchlist on/off toggle
+      var siteNagToggle = $('siteNagToggle');
+      var siteNagToggleLabel = $('siteNagToggleLabel');
+      if (siteNagToggle) {
+        // Default to ON if never set
+        if (typeof state.siteNagEnabled === 'undefined') state.siteNagEnabled = true;
+        siteNagToggle.checked = state.siteNagEnabled;
+        siteNagToggleLabel.textContent = state.siteNagEnabled ? 'ON' : 'OFF';
+        siteNagToggleLabel.style.color = state.siteNagEnabled ? '#4ecdc4' : '#5a5a7e';
+        siteNagToggle.addEventListener('change', function() {
+          state.siteNagEnabled = siteNagToggle.checked;
+          siteNagToggleLabel.textContent = state.siteNagEnabled ? 'ON' : 'OFF';
+          siteNagToggleLabel.style.color = state.siteNagEnabled ? '#4ecdc4' : '#5a5a7e';
+          save();
         });
       }
 
@@ -11142,18 +11416,10 @@ try {
 
   // v3.21.15: Show Cold Turkey daily prompt after init (delayed so UI is ready).
   setTimeout(function() { try { maybeColdTurkeyDailyPrompt(); } catch (_) {} }, 1500);
-
-  // v3.22.11: Wind-down Cold Turkey check-in (delayed a bit more so daily prompt goes first).
   setTimeout(function() { try { maybeWindDownCTCheckin(); } catch (_) {} }, 2500);
-
-  // v3.21.25: Daily reminders pop-up (after cold turkey, before incrementalization).
   setTimeout(function() { try { maybeDailyRemindersPopup(); } catch (_) {} }, 1800);
-
-  // v3.21.22: Check for stale today-tasks that need incrementalization.
   setTimeout(function() { try { checkIncrementalization(); } catch (_) {} }, 2000);
 
-  // v3.21.18: Auto-sync profile to Firestore on every extension open (delayed).
-  // v3.21.76: Mirror mode skips auto-push to avoid overwriting main browser data.
   if (!state.mirrorMode) {
     setTimeout(function() {
       try {

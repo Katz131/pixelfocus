@@ -102,14 +102,66 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  function checkTimerStarted() {
+  var promisePaused = false; // true while focus timer is running (countdown paused)
+
+  function checkTimerState() {
     if (promiseResolved) return;
     try {
       chrome.storage.local.get('pixelFocusState', function(result) {
         if (promiseResolved) return;
         var s = result.pixelFocusState || {};
-        if (s.timerState === 'running' || s.timerState === 'countdown') {
+        if (s.timerState === 'completed') {
           promiseSuccess();
+        } else if (s.timerState === 'running') {
+          pausePromise();
+        } else if (promisePaused) {
+          // Was running but now paused/idle/reset — resume countdown
+          resumePromise();
+        }
+      });
+    } catch(_) {}
+  }
+
+  function pausePromise() {
+    if (promisePaused || promiseResolved) return;
+    promisePaused = true;
+    clearInterval(promiseIntervalId);
+    promiseIntervalId = null;
+    timerEl.textContent = 'FOCUSING...';
+    timerEl.style.fontSize = '20px';
+    timerEl.style.color = '#00ff88';
+    timerEl.classList.remove('urgent');
+    cardEl.classList.remove('urgent');
+    cardEl.style.borderColor = '#00ff88';
+    document.querySelector('.timer-label').textContent = 'COMPLETE THE SESSION TO CANCEL PENALTY';
+    var explEl = document.getElementById('explanationText');
+    if (explEl) explEl.style.display = 'none';
+    // v3.23.7: Minimize — get out of the way while focusing
+    try {
+      chrome.tabs.getCurrent(function(tab) {
+        if (tab && tab.windowId) {
+          chrome.windows.update(tab.windowId, { state: 'minimized' });
+        }
+      });
+    } catch(_) {}
+  }
+
+  function resumePromise() {
+    if (!promisePaused || promiseResolved) return;
+    promisePaused = false;
+    timerEl.style.fontSize = '';
+    timerEl.style.color = '#00ff88';
+    timerEl.textContent = promiseFmt(promiseRemaining);
+    cardEl.style.borderColor = '#00ff88';
+    document.querySelector('.timer-label').textContent = 'START A FOCUS TIMER BEFORE TIME RUNS OUT';
+    var explEl = document.getElementById('explanationText');
+    if (explEl) explEl.style.display = '';
+    promiseIntervalId = setInterval(promiseTick, 1000);
+    // v3.23.7: Restore + focus — user paused/reset, penalty countdown resumes
+    try {
+      chrome.tabs.getCurrent(function(tab) {
+        if (tab && tab.windowId) {
+          chrome.windows.update(tab.windowId, { state: 'normal', focused: true });
         }
       });
     } catch(_) {}
@@ -123,6 +175,12 @@
 
     if (!isTest) {
       try { chrome.runtime.sendMessage({ type: 'PROMISE_TIMER_RESOLVED' }); } catch(_) {}
+    } else {
+      // Test mode: clear the flag so pause/reset confirmation stops showing
+      try { chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
+        chrome.storage.local.set({ pixelFocusState: s });
+      }); } catch(_) {}
     }
 
     // Transform to success state
@@ -133,11 +191,13 @@
     timerEl.style.display = 'none';
     document.querySelector('.timer-label').style.display = 'none';
     document.querySelector('.progress-bar').style.display = 'none';
+    var explEl = document.getElementById('explanationText');
+    if (explEl) explEl.style.display = 'none';
     resultEl.className = 'result-msg accepted';
     resultEl.style.display = 'block';
-    resultEl.innerHTML = '&#10003; TIMER STARTED — PENALTY CANCELLED<br><br>'
+    resultEl.innerHTML = '&#10003; SESSION COMPLETE — PENALTY CANCELLED<br><br>'
       + '<span style="font-size:9px;color:#e0e0e0;font-family:\'Courier New\',monospace;">'
-      + '1.5x rewards active. No pausing. Go get it.</span><br><br>'
+      + '1.5x rewards earned. Well done.</span><br><br>'
       + '<span style="font-size:8px;color:#5a5a7e;">Closing in 3 seconds...</span>';
     setTimeout(function() { killTab(); }, 3000);
   }
@@ -150,6 +210,11 @@
 
     if (!isTest) {
       try { chrome.runtime.sendMessage({ type: 'PROMISE_TIMER_EXPIRED' }); } catch(_) {}
+    } else {
+      try { chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
+        chrome.storage.local.set({ pixelFocusState: s });
+      }); } catch(_) {}
     }
 
     cardEl.style.borderColor = '#ff2244';
@@ -181,7 +246,7 @@
       cardEl.classList.add('urgent');
     }
     if (promiseRemaining % 3 === 0) {
-      checkTimerStarted();
+      checkTimerState();
     }
   }
 
@@ -251,14 +316,19 @@
       } catch(_) {}
     }
 
-    // Listen for focus timer start via storage changes (instant detection)
+    // Listen for focus timer state changes (instant detection)
     try {
       chrome.storage.onChanged.addListener(function(changes, area) {
         if (promiseResolved) return;
         if (area !== 'local' || !changes.pixelFocusState) return;
         var ns = changes.pixelFocusState.newValue || {};
-        if (ns.timerState === 'running' || ns.timerState === 'countdown') {
+        if (ns.timerState === 'completed') {
           promiseSuccess();
+        } else if (ns.timerState === 'running') {
+          pausePromise();
+        } else if (promisePaused && (ns.timerState === 'idle' || ns.timerState === 'paused')) {
+          // They paused or reset — resume the penalty countdown
+          resumePromise();
         }
       });
     } catch(_) {}
@@ -266,8 +336,8 @@
     // Start promise countdown
     promiseIntervalId = setInterval(promiseTick, 1000);
 
-    // Initial check — maybe they already started
-    checkTimerStarted();
+    // Initial check
+    checkTimerState();
   }
 
   function decline() {
@@ -330,9 +400,11 @@
 
   // v3.22.90: Keep window on top by re-focusing when it loses focus.
   // v3.23.0: Also stays on top during promise timer phase (promiseResolved check).
+  // v3.23.7: Skip re-focus when paused (minimized while user is focusing).
   try {
     window.addEventListener('blur', function() {
       if (decided && promiseResolved) return; // both phases done
+      if (promisePaused) return; // minimized while focusing — don't steal focus
       setTimeout(function() {
         try {
           chrome.tabs.getCurrent(function(tab) {

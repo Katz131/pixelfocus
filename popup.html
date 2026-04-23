@@ -262,7 +262,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <span class="block-count" id="blockCountDisplay">0</span>
       <span class="daily-label">TODAY</span>
     </div>
-    <span class="tip" style="margin-left:2px;" data-tip="Textiles produced today (one per 10-min focus session). Each 10-min focus session = 1 block. Spend blocks to paint on the pixel canvas.">?</span>
+    <span class="tip" style="margin-left:2px;" data-tip="Textiles produced today (one per 10-min focus session). Each 10-min focus session = 1 textile. Spend textiles to paint on the pixel canvas.">?</span>
   </div>
 </div>
 
@@ -278,7 +278,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <button id="sleepTimeBtn" style="background:none;border:1px solid #6b6bff;color:#6b6bff;font-family:'Press Start 2P',monospace;font-size:8px;padding:2px 6px;border-radius:4px;cursor:pointer;margin-left:2px;" title="Set your sleep time — blocks out bedtime + wind-down on the timeline.">&#x1F319;</button>
     </div>
   </div>
-  <div id="focusTimelineBar" style="position:relative;height:24px;background:#1a1a3a;border:1px solid #2a2a4a;border-radius:5px;overflow:hidden;margin-bottom:4px;"></div>
+  <div id="focusTimelineBar" style="position:relative;height:24px;background:#1a1a3a;border:1px solid #2a2a4a;border-radius:5px;overflow:visible;margin-bottom:14px;"></div>
   <div id="focusTimelineLabels" style="display:flex;justify-content:space-between;font-family:'Press Start 2P',monospace;font-size:6px;color:#5a5a7e;padding:0 2px;"></div>
   <div id="focusTimelineSummary" style="font-size:10px;color:#5a5a7e;text-align:center;margin-top:4px;font-family:'Courier New',monospace;">No focus sessions yet today.</div>
 </div>
@@ -298,12 +298,22 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <button id="surveillanceStartBtn" style="background:linear-gradient(135deg,#ff6b6b,#ff8c8c);color:#0a0a14;border:none;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;" title="Start surveillance mode for the selected duration. You'll be nagged every 5 minutes unless a focus timer is running.">START</button>
     <button id="surveillanceStopBtn" style="display:none;background:transparent;border:1px solid #ff6b6b;color:#ff6b6b;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;" title="Turn off surveillance mode early. Nags stop immediately.">STOP</button>
     <select id="surveillanceDuration" style="background:var(--surface2,#1a1a3a);border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:6px 8px;border-radius:4px;cursor:pointer;" title="How long surveillance mode stays active. After this time it turns off automatically.">
+      <option value="5">5 MIN</option>
+      <option value="15">15 MIN</option>
+      <option value="30">30 MIN</option>
+      <option value="45">45 MIN</option>
       <option value="60">1 HOUR</option>
       <option value="120">2 HOURS</option>
       <option value="240">4 HOURS</option>
       <option value="480" selected>8 HOURS</option>
       <option value="720">12 HOURS</option>
     </select>
+    <span id="surveillanceAddBtns" style="display:none;gap:3px;flex-wrap:wrap;">
+      <button class="surv-add-btn" data-min="5" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 5 minutes to surveillance">+5m</button>
+      <button class="surv-add-btn" data-min="15" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 15 minutes to surveillance">+15m</button>
+      <button class="surv-add-btn" data-min="30" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 30 minutes to surveillance">+30m</button>
+      <button class="surv-add-btn" data-min="45" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 45 minutes to surveillance">+45m</button>
+    </span>
     <div id="surveillanceTimer" style="display:none;font-family:'Press Start 2P',monospace;font-size:9px;color:#ff6b6b;" title="Time remaining in this surveillance session."></div>
     <button id="surveillanceTestBtn" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-radius:4px;cursor:pointer;margin-left:auto;" title="Test: simulates a full strike-3 escalation — opens the confrontational nag window + Cold Turkey. Does not affect your YES/NO score.">TEST</button>
   </div>
@@ -470,7 +480,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   <div id="mirrorBanner" style="background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(78,205,196,0.08));border:1px solid #a855f7;border-radius:6px;padding:8px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#a855f7;letter-spacing:1px;line-height:1.8;">&#128225; MIRROR MODE &mdash; READ ONLY<br><span style="font-family:'Courier New',monospace;font-size:9px;color:#5a5a7e;">Viewing stats from main browser. Use Brave to make changes.</span></div>
   <div id="challengeBanner" style="display:none;background:linear-gradient(135deg,rgba(255,140,58,0.12),rgba(255,215,0,0.08));border:1px solid #ff8c3a;border-radius:6px;padding:6px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Idle Challenge active! Complete this session without pausing for 1.5x rewards.">&#9876; IDLE CHALLENGE ACTIVE &mdash; 1.5x REWARDS &#9876;</div>
   <div class="timer-display" id="timerDisplay" title="Counts down to 00:00. Tab away or close the window if you need a break &mdash; the timer keeps running.">10:00</div>
-  <div class="block-progress-row" id="blockProgress" title="Visual progress: each segment fills as a 10-minute block completes within the current session."></div>
+  <div class="block-progress-row" id="blockProgress" title="Visual progress: each segment fills as a 10-minute textile completes within the current session."></div>
   <div class="timer-controls">
     <button class="btn btn-primary" id="startBtn" title="Start or pause the focus timer for the selected duration. Click again while running to pause.">START</button>
     <button class="btn btn-danger" id="resetBtn" style="display:none" title="Reset the timer back to the full selected duration. You will NOT earn textiles if you reset before completion.">RESET</button>
@@ -931,7 +941,13 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 
       <!-- v3.21.56: Nag sites — websites that trigger a Cold Turkey reminder every 10 min -->
       <div style="margin-top:14px;padding-top:12px;border-top:1px dashed rgba(78,205,196,0.2);">
-        <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--accent3);letter-spacing:1px;margin-bottom:6px;">DISTRACTION WATCHLIST</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--accent3);letter-spacing:1px;">DISTRACTION WATCHLIST</div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);" title="Turn the distraction watchlist nags on or off. Your site list is preserved when off.">
+            <input type="checkbox" id="siteNagToggle" style="cursor:pointer;">
+            <span id="siteNagToggleLabel">ON</span>
+          </label>
+        </div>
         <div style="font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;">
           Add websites you tend to waste time on. If you're browsing one, Cold Turkey opens every 10 minutes as a nudge to get back on track. Only active during wake hours (6 AM – 11:40 PM).
         </div>

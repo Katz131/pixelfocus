@@ -33,16 +33,62 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  // Check if a focus timer is now running
-  function checkTimerStarted() {
+  // v3.23.1: Check timer state — pause countdown while running, resolve on completed
+  var paused = false;
+
+  function checkTimerState() {
     if (resolved) return;
     try {
       chrome.storage.local.get('pixelFocusState', function(result) {
         if (resolved) return;
         var state = result.pixelFocusState || {};
-        var running = state.timerState === 'running' || state.timerState === 'countdown';
-        if (running) {
+        if (state.timerState === 'completed') {
           success();
+        } else if (state.timerState === 'running') {
+          pauseCountdown();
+        } else if (paused) {
+          resumeCountdown();
+        }
+      });
+    } catch(_) {}
+  }
+
+  function pauseCountdown() {
+    if (paused || resolved) return;
+    paused = true;
+    clearInterval(intervalId);
+    intervalId = null;
+    timerEl.textContent = 'FOCUSING...';
+    timerEl.style.fontSize = '20px';
+    timerEl.classList.remove('urgent');
+    cardEl.classList.remove('urgent');
+    var titleEl = document.querySelector('.promise-title');
+    if (titleEl) titleEl.textContent = 'TIMER RUNNING';
+    var textEl = document.querySelector('.promise-text');
+    if (textEl) textEl.innerHTML = 'Complete the session to cancel the penalty.<br>Pausing or resetting resumes the countdown.';
+    // v3.23.7: Minimize — get out of the way while focusing
+    try {
+      chrome.tabs.getCurrent(function(tab) {
+        if (tab && tab.windowId) {
+          chrome.windows.update(tab.windowId, { state: 'minimized' });
+        }
+      });
+    } catch(_) {}
+  }
+
+  function resumeCountdown() {
+    if (!paused || resolved) return;
+    paused = false;
+    timerEl.style.fontSize = '';
+    timerEl.textContent = fmt(remaining);
+    var titleEl = document.querySelector('.promise-title');
+    if (titleEl) { titleEl.textContent = 'PROMISE TIMER'; titleEl.style.color = '#00ff88'; }
+    intervalId = setInterval(tick, 1000);
+    // v3.23.7: Restore + focus — user paused/reset, penalty countdown resumes
+    try {
+      chrome.tabs.getCurrent(function(tab) {
+        if (tab && tab.windowId) {
+          chrome.windows.update(tab.windowId, { state: 'normal', focused: true });
         }
       });
     } catch(_) {}
@@ -54,21 +100,25 @@
     clearInterval(intervalId);
     intervalId = null;
 
-    // v3.22.91: Tell background to cancel the penalty
     if (!isTest) {
       try { chrome.runtime.sendMessage({ type: 'PROMISE_TIMER_RESOLVED' }); } catch(_) {}
+    } else {
+      try { chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
+        chrome.storage.local.set({ pixelFocusState: s });
+      }); } catch(_) {}
     }
 
     cardEl.className = 'promise-card success';
     timerEl.style.display = 'none';
     document.querySelector('.progress-bar').style.display = 'none';
-    document.querySelector('.promise-text').style.display = 'none';
-    document.querySelector('.penalty-warn').style.display = 'none';
-    document.querySelector('.promise-title').textContent = 'PROMISE KEPT';
+    try { document.querySelector('.promise-text').style.display = 'none'; } catch(_) {}
+    try { document.querySelector('.penalty-warn').style.display = 'none'; } catch(_) {}
+    document.querySelector('.promise-title').textContent = 'SESSION COMPLETE';
     document.querySelector('.promise-title').style.color = '#ffd700';
     resultEl.className = 'result-msg success';
     resultEl.style.display = 'block';
-    resultEl.innerHTML = 'Timer started. Good.<br><br>' +
+    resultEl.innerHTML = 'Penalty cancelled. Well done.<br><br>' +
       '<span style="font-size:8px;color:#5a5a7e;">Closing in 3 seconds...</span>';
     setTimeout(function() { killTab(); }, 3000);
   }
@@ -87,8 +137,12 @@
       try {
         chrome.runtime.sendMessage({ type: 'PROMISE_TIMER_EXPIRED' });
       } catch(_) {}
+    } else {
+      try { chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
+        chrome.storage.local.set({ pixelFocusState: s });
+      }); } catch(_) {}
     }
-
     cardEl.className = 'promise-card penalty';
     timerEl.style.display = 'none';
     document.querySelector('.progress-bar').style.display = 'none';
@@ -139,28 +193,31 @@
 
     // Check timer every 3 seconds
     if (remaining % 3 === 0) {
-      checkTimerStarted();
+      checkTimerState();
     }
   }
 
-  // Also listen for storage changes (instant detection)
+  // Listen for storage changes (instant detection)
   try {
     chrome.storage.onChanged.addListener(function(changes, area) {
       if (resolved) return;
       if (area !== 'local' || !changes.pixelFocusState) return;
       var newState = changes.pixelFocusState.newValue || {};
-      if (newState.timerState === 'running' || newState.timerState === 'countdown') {
+      if (newState.timerState === 'completed') {
         success();
+      } else if (newState.timerState === 'running') {
+        pauseCountdown();
+      } else if (paused && (newState.timerState === 'idle' || newState.timerState === 'paused')) {
+        resumeCountdown();
       }
     });
   } catch(_) {}
 
   // v3.22.90: Keep window on top by re-focusing when it loses focus.
-  // This keeps it above other browser windows (can't float above other apps —
-  // that's a browser limitation; only Document PiP can do that).
+  // v3.23.7: Skip re-focus when paused (minimized while user is focusing).
   try {
     window.addEventListener('blur', function() {
-      if (resolved) return;
+      if (resolved || paused) return;
       setTimeout(function() {
         try {
           chrome.tabs.getCurrent(function(tab) {
@@ -177,6 +234,6 @@
   timerEl.textContent = fmt(remaining);
   intervalId = setInterval(tick, 1000);
 
-  // Initial check — maybe they already started a timer
-  checkTimerStarted();
+  // Initial check
+  checkTimerState();
 })();

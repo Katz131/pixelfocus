@@ -32,16 +32,62 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  // Check if a focus timer is now running
-  function checkTimerStarted() {
+  // v3.23.1: Check timer state — pause countdown while running, resolve on completed
+  var paused = false;
+
+  function checkTimerState() {
     if (resolved) return;
     try {
       chrome.storage.local.get('pixelFocusState', function(result) {
         if (resolved) return;
         var state = result.pixelFocusState || {};
-        var running = state.timerState === 'running' || state.timerState === 'countdown';
-        if (running) {
+        if (state.timerState === 'completed') {
           success();
+        } else if (state.timerState === 'running') {
+          pauseCountdown();
+        } else if (paused) {
+          resumeCountdown();
+        }
+      });
+    } catch(_) {}
+  }
+
+  function pauseCountdown() {
+    if (paused || resolved) return;
+    paused = true;
+    clearInterval(intervalId);
+    intervalId = null;
+    timerEl.textContent = 'FOCUSING...';
+    timerEl.style.fontSize = '20px';
+    timerEl.classList.remove('urgent');
+    cardEl.classList.remove('urgent');
+    document.getElementById('penaltyTitle').textContent = 'TIMER RUNNING';
+    document.getElementById('penaltyTitle').style.color = '#ffd700';
+    document.getElementById('penaltyText').innerHTML = 'Complete the session to cancel the penalty.<br>Pausing or resetting resumes the countdown.';
+    // v3.23.7: Minimize — get out of the way while focusing
+    try {
+      chrome.tabs.getCurrent(function(tab) {
+        if (tab && tab.windowId) {
+          chrome.windows.update(tab.windowId, { state: 'minimized' });
+        }
+      });
+    } catch(_) {}
+  }
+
+  function resumeCountdown() {
+    if (!paused || resolved) return;
+    paused = false;
+    timerEl.style.fontSize = '';
+    timerEl.textContent = fmt(remaining);
+    document.getElementById('penaltyTitle').textContent = 'PENALTY INCOMING';
+    document.getElementById('penaltyTitle').style.color = '#ff4466';
+    document.getElementById('penaltyText').innerHTML = 'You said <em>NO</em> three times. That\'s your limit.<br>Start a focus timer before this runs out or lose the money.';
+    intervalId = setInterval(tick, 1000);
+    // v3.23.7: Restore + focus — user paused/reset, penalty countdown resumes
+    try {
+      chrome.tabs.getCurrent(function(tab) {
+        if (tab && tab.windowId) {
+          chrome.windows.update(tab.windowId, { state: 'normal', focused: true });
         }
       });
     } catch(_) {}
@@ -53,9 +99,13 @@
     clearInterval(intervalId);
     intervalId = null;
 
-    // Tell background to cancel the penalty
     if (!isTest) {
       try { chrome.runtime.sendMessage({ type: 'PENALTY_TIMER_RESOLVED' }); } catch(_) {}
+    } else {
+      try { chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
+        chrome.storage.local.set({ pixelFocusState: s });
+      }); } catch(_) {}
     }
 
     cardEl.className = 'penalty-card success';
@@ -64,11 +114,11 @@
     document.getElementById('penaltyText').style.display = 'none';
     document.querySelector('.penalty-amount').style.display = 'none';
     document.querySelector('.escape-hint').style.display = 'none';
-    document.getElementById('penaltyTitle').textContent = 'PENALTY CANCELLED';
+    document.getElementById('penaltyTitle').textContent = 'SESSION COMPLETE';
     document.getElementById('penaltyTitle').style.color = '#ffd700';
     resultEl.className = 'result-msg success';
     resultEl.style.display = 'block';
-    resultEl.innerHTML = 'Timer started. You\'re off the hook.<br><br>' +
+    resultEl.innerHTML = 'Penalty cancelled. You\'re off the hook.<br><br>' +
       '<span style="font-size:8px;color:#5a5a7e;">Closing in 3 seconds...</span>';
     setTimeout(function() { killTab(); }, 3000);
   }
@@ -82,6 +132,11 @@
     // Tell background the timer expired (it handles the actual penalty)
     if (!isTest) {
       try { chrome.runtime.sendMessage({ type: 'PENALTY_TIMER_EXPIRED' }); } catch(_) {}
+    } else {
+      try { chrome.storage.local.get('pixelFocusState', function(r) {
+        var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
+        chrome.storage.local.set({ pixelFocusState: s });
+      }); } catch(_) {}
     }
 
     cardEl.className = 'penalty-card applied';
@@ -130,26 +185,31 @@
 
     // Check timer every 3 seconds
     if (remaining % 3 === 0) {
-      checkTimerStarted();
+      checkTimerState();
     }
   }
 
-  // Listen for storage changes (instant detection of focus timer start)
+  // Listen for storage changes (instant detection)
   try {
     chrome.storage.onChanged.addListener(function(changes, area) {
       if (resolved) return;
       if (area !== 'local' || !changes.pixelFocusState) return;
       var newState = changes.pixelFocusState.newValue || {};
-      if (newState.timerState === 'running' || newState.timerState === 'countdown') {
+      if (newState.timerState === 'completed') {
         success();
+      } else if (newState.timerState === 'running') {
+        pauseCountdown();
+      } else if (paused && (newState.timerState === 'idle' || newState.timerState === 'paused')) {
+        resumeCountdown();
       }
     });
   } catch(_) {}
 
   // Keep window on top
+  // v3.23.7: Skip re-focus when paused (minimized while user is focusing).
   try {
     window.addEventListener('blur', function() {
-      if (resolved) return;
+      if (resolved || paused) return;
       setTimeout(function() {
         try {
           chrome.tabs.getCurrent(function(tab) {
@@ -166,6 +226,6 @@
   timerEl.textContent = fmt(remaining);
   intervalId = setInterval(tick, 1000);
 
-  // Initial check — maybe they already started a timer
-  checkTimerStarted();
+  // Initial check
+  checkTimerState();
 })();

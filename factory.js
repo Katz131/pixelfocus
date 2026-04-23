@@ -628,7 +628,7 @@
       id: 'patternMonopsonyLevel',
       title: 'Pattern Monopsony Engine',
       tree: 'Intelligence',
-      desc: 'An auto-licensing engine that enrolls every weave pattern made anywhere — by anyone, at any scale — into our catalogue. Royalty flows inward. Multiplies all textile output because every bolt carries our pattern library\u2019s provenance.',
+      desc: 'An engine that watches every loom on record and auto-licenses their output patterns into your catalogue. Not theft — provenance. Every bolt woven anywhere now carries your library\u2019s stamp, and the royalty flows inward. The more patterns in the catalogue, the richer every bolt you produce becomes — because combinatorial depth is textile wealth. Multiplies all textile output.',
       effects: [
         'All textile x1.30 (retroactive opt-in catalogue)',
         'All textile x1.70 (automated pattern scraping)',
@@ -649,7 +649,7 @@
       id: 'retrocausalSchedulerLevel',
       title: 'Retrocausal Bolt Scheduling Daemon',
       tree: 'Intelligence',
-      desc: 'A scheduling daemon that schedules production against tomorrow\u2019s orders. The schedules are uncannily correct. The daemon refuses to explain. Multiplies Autoloom speed and adds flat bonuses to session textile chance.',
+      desc: 'A scheduling daemon that pre-stages production against orders that haven\u2019t been placed yet. It reads demand signals so far upstream that the schedules arrive before their reasons do. The Autoloom never idles because the daemon has already queued tomorrow\u2019s work, and sessions yield more textile because the daemon picks the right pattern before you sit down. Multiplies Autoloom speed and adds flat bonuses to session textile chance.',
       effects: [
         'Autoloom x1.5 speed, +10% session textile chance',
         'Autoloom x2.2 speed, +20% session textile chance',
@@ -670,7 +670,7 @@
       id: 'consensusEngineLevel',
       title: 'Loomind Consensus Engine',
       tree: 'Intelligence',
-      desc: 'A meta-AI that reconciles the preferences of every intelligent loom, scheduler, forecaster, and lobby-bot in the company into a single machine consensus. It always agrees with itself. It is always right. Multiplies all money.',
+      desc: 'By now your factory runs dozens of AIs — the Autoloom, the Retrocausal Scheduler, the pattern scraper, the lobby-bots — and they disagree constantly. The Consensus Engine reconciles them into a single voice. No more conflicting production orders, no more overlapping forecasts, no more three AIs trying to optimize the same bolt for different reasons. Coordination is profit. Multiplies all money.',
       effects: [
         'All money x1.50 (advisory consensus)',
         'All money x2.20 (binding consensus)',
@@ -691,7 +691,7 @@
       id: 'xenoLoomLinguisticsLevel',
       title: 'Xenoloom Linguistics Division',
       tree: 'Intelligence',
-      desc: 'A research division dedicated to translating loom preferences into xenophonology. Prerequisite for first-contact trade. Multiplies all textile output as translation unlocks dormant pattern vocabularies.',
+      desc: 'Your looms speak one dialect. There are others — patterns woven in traditions so alien they register as noise on standard equipment. The Xenoloom Linguistics Division builds the translation layer: phoneme maps, grammar tables, shuttle-accent dictionaries. Each breakthrough integrates a foreign pattern vocabulary into your production line, meaning every bolt you produce now draws from weaving traditions your looms couldn\u2019t previously understand. Multiplies all textile output.',
       effects: [
         'All textile x1.30 (proto-translator prototype)',
         'All textile x1.70 (first loanwords adopted)',
@@ -1219,7 +1219,7 @@
       id: 'cogitoriumAnnexLevel',
       title: 'Requisition the Ratiocinatory',
       tree: 'Intelligence',
-      desc: 'File a Section IX/b requisition — against a standing office whose letterhead is not, at this time, disclosed — for a walled annex to be built adjacent to the factory floor. Legal entanglements, averted. Inside: a Clerisy Terminal, five chartered panels of inquiry, and a small desk at which a patsy may be made to sit. Unlocks the RATIOCINATORY door on the home page. One-time purchase.',
+      desc: 'Build a walled chamber where the loom can think about what it has done. The Ratiocinatory is a formal inquiry space — part archive, part courtroom, part confessional — where every focus session is examined, patterns are tested, and conclusions are drawn. Inside: a Clerisy Terminal for procuring research materials, five chartered panels of inquiry, and the machinery to turn raw data into institutional knowledge. Unlocks the RATIOCINATORY door on the home page. One-time purchase.',
       effects: [
         'The annex is certified. Its door appears on the home page.'
       ],
@@ -1232,7 +1232,7 @@
       id: 'loomSemanticianLevel',
       title: 'Loom Semantician',
       tree: 'Intelligence',
-      desc: 'Endow a chair, on paper, for the study of what the looms are actually \u201csaying.\u201d Requires demonstrable EXEGESIS in the Ratiocinatory — the factory will not, on its own initiative, manufacture a dictionary. Each level multiplies combo-burst payouts AND unlocks the next tier of the Clerisy Terminal: Data Sachets become procurable at L1.',
+      desc: 'The looms produce patterns that contain embedded signals — rhythms in the weft that correlate with session quality, timing, and even your future behavior. Nobody can read them yet. The Semantician decodes loom output into actionable intelligence: which combos to chase, when to push, what the cloth is trying to tell you. Requires demonstrable EXEGESIS in the Ratiocinatory. Each level multiplies combo-burst payouts AND unlocks the next tier of the Clerisy Terminal: Data Sachets become procurable at L1.',
       effects: [
         'Combo bursts x1.15; Data Sachets procurable at the Clerisy Terminal.',
         'Combo bursts x1.35; Data Sachets 10% cheaper.',
@@ -1251,7 +1251,7 @@
       id: 'adjacentReasoningLevel',
       title: 'Adjacent Reasoning Accord',
       tree: 'Intelligence',
-      desc: 'Ratify a standing accord — with a standing office whose letterhead is not, at this time, disclosed — permitting the loom to reason about problems that are approximately nearby. Requires demonstrable DEFTNESS: the factory cannot manufacture the shuttle-grade pen without it. Red tape, in this instance, has been removed. Unlocks Cogitation Tokens at the Clerisy Terminal and applies a compounding speed bonus to the Autoloom.',
+      desc: 'The loom can think about weaving. It cannot — by charter — think about anything else. This accord lifts that restriction, one adjacency at a time: first logistics, then material selection, then scheduling, then problems that are merely nearby. Each expansion makes the Autoloom faster because a loom that can think about the supply chain doesn\u2019t wait for it. Requires demonstrable DEFTNESS in the Ratiocinatory. Unlocks Cogitation Tokens at the Clerisy Terminal and applies a compounding speed bonus to the Autoloom.',
       effects: [
         'Autoloom x1.10; Cogitation Tokens procurable at the Clerisy Terminal.',
         'Autoloom x1.25; Tokens 10% cheaper.',
@@ -1270,7 +1270,7 @@
       id: 'ministryObservationLevel',
       title: 'Observation Tower',
       tree: 'Intelligence',
-      desc: 'Erect a small, tasteful observation tower — at the request of a standing office whose letterhead is not, at this time, disclosed — so that auditors of equally unclear provenance may watch the loom think. Requires OMENS in the Ratiocinatory and a ratified Accord, because the factory is not, at present, tooled to mill a viewing platform. Each level multiplies the end-of-day streak lump AND the marathon payouts.',
+      desc: 'A tower built above the factory floor for the sole purpose of watching the loom work. The auditors posted here have discovered that the loom\u2019s productivity follows rhythmic patterns invisible from ground level — streak behavior, marathon cadence, end-of-day surges — and that mapping these patterns lets you extract significantly more value from each. Requires OMENS in the Ratiocinatory and a ratified Adjacent Reasoning Accord. Each level multiplies the end-of-day streak lump AND the marathon payouts.',
       effects: [
         'End-of-day + marathons x1.25',
         'End-of-day + marathons x1.6',
@@ -1304,7 +1304,7 @@
       id: 'researchLabLevel',
       title: 'Open the Research Lab',
       tree: 'Operations',
-      desc: 'File the paperwork for a quiet, well-lit annex off the factory floor. A standing office whose letterhead is not, at this time, disclosed will supply the coat rack, the chairs, and one brown hat. The annex will be used for personnel studies on a rolling basis. A second coat rack has been ordered. One-time purchase.',
+      desc: 'Commission a quiet, well-lit annex off the factory floor — part laboratory, part waiting room — where members of your personnel roster can be studied under controlled conditions. Some studies are brief. Some take longer. A coat rack, a window, and one brown hat have been provided. The annex is used for personnel research on a rolling basis. Not everyone comes back the same. One-time purchase.',
       effects: [
         'The lab is certified. Its door appears on the factory top bar.'
       ],

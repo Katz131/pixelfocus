@@ -949,7 +949,14 @@
       // Minute label on top of bar
       var valSpan = document.createElement('div');
       valSpan.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#ff9f43;margin-bottom:2px;';
-      valSpan.textContent = day.isFuture ? '' : (day.mins > 0 ? day.mins + 'm' : '');
+      // v3.23.18: Show hours + minutes (e.g. "3h 20m") instead of just total minutes
+      var _barLabel = '';
+      if (!day.isFuture && day.mins > 0) {
+        var _bh = Math.floor(day.mins / 60);
+        var _bm = day.mins % 60;
+        _barLabel = _bh > 0 ? _bh + 'h' + (_bm > 0 ? ' ' + _bm + 'm' : '') : _bm + 'm';
+      }
+      valSpan.textContent = _barLabel;
       barWrap.appendChild(valSpan);
 
       // The bar itself
