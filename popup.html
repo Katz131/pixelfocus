@@ -246,6 +246,53 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 </style>
 </head>
 <body>
+<!-- v3.23.21: Daily return streak celebration overlay (multi-screen) -->
+<div id="streakOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:9999;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.4s;">
+  <div id="streakParticles" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;"></div>
+  <!-- Screen 1: Streak -->
+  <div id="celebScreen1" style="text-align:center;position:relative;z-index:1;">
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Daily streak</div>
+    <div style="position:relative;width:160px;height:160px;margin:0 auto 20px;">
+      <svg viewBox="0 0 160 160" width="160" height="160">
+        <circle cx="80" cy="80" r="68" fill="none" stroke="var(--border)" stroke-width="5"/>
+        <circle id="streakRing" cx="80" cy="80" r="68" fill="none" stroke="#4ecdc4" stroke-width="5" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="427" transform="rotate(-90 80 80)" style="transition:stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1),stroke 0.5s;"/>
+      </svg>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+        <div id="streakCount" style="font-size:48px;font-weight:700;color:var(--text);line-height:1;">0</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">days</div>
+      </div>
+    </div>
+    <div id="streakMessage" style="font-size:14px;color:var(--text-dim);opacity:0;transition:opacity 0.5s;min-height:22px;"></div>
+    <div id="streakFlames" style="margin-top:14px;display:flex;justify-content:center;gap:5px;min-height:24px;"></div>
+  </div>
+  <!-- Screen 2: Yesterday's focus time -->
+  <div id="celebScreen2" style="display:none;text-align:center;position:relative;z-index:1;">
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Yesterday's focus</div>
+    <div id="focusTimeNum" style="font-size:52px;font-weight:700;color:var(--accent3);line-height:1;margin-bottom:6px;">0m</div>
+    <div id="focusSessionCount" style="font-size:13px;color:var(--text-dim);margin-bottom:18px;"></div>
+    <div id="focusBarWrap" style="width:200px;margin:0 auto;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+      <div id="focusBarFill" style="height:100%;width:0%;background:var(--accent3);border-radius:4px;transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>
+    </div>
+    <div id="focusBarLabel" style="font-size:10px;color:var(--text-dim);margin-top:6px;"></div>
+  </div>
+  <!-- Screen 3: Rewards earned -->
+  <div id="celebScreen3" style="display:none;text-align:center;position:relative;z-index:1;">
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:20px;">Rewards earned</div>
+    <div style="display:flex;gap:28px;justify-content:center;align-items:flex-start;">
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Coins</div>
+        <div id="celebCoins" style="font-size:36px;font-weight:700;color:var(--accent);line-height:1;">0</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">XP</div>
+        <div id="celebXP" style="font-size:36px;font-weight:700;color:var(--xp-color);line-height:1;">0</div>
+      </div>
+    </div>
+    <div id="celebLevel" style="font-size:13px;color:var(--text-dim);margin-top:16px;opacity:0;transition:opacity 0.5s;"></div>
+  </div>
+  <div style="font-size:10px;color:var(--text-dim);margin-top:28px;opacity:0.5;position:relative;z-index:1;" id="celebTapHint">tap to continue</div>
+</div>
+
 <div class="notification" id="notification" style="position:fixed;top:-60px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);font-family:'Press Start 2P',monospace;font-size:9px;padding:10px 20px;border-radius:6px;z-index:300;transition:top 0.4s cubic-bezier(0.175,0.885,0.32,1.275);white-space:nowrap;"></div>
 
 <div class="header">

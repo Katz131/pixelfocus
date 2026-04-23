@@ -1185,6 +1185,16 @@ try {
         });
         // v3.21.52: Sync state.level so events engine can gate by tier.
         state.level = getLevelFromXP(state.xp || 0).level;
+        // v3.23.22: Generate profileId in app.js so it doesn't depend on
+        // firebase-sync.js loading. Without this, users never get a profileId
+        // and never appear on the leaderboard.
+        if (!state.profileId) {
+          var _chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+          var _pid = '';
+          for (var _pi = 0; _pi < 12; _pi++) _pid += _chars.charAt(Math.floor(Math.random() * _chars.length));
+          state.profileId = _pid;
+          if (!state.profileCreated) state.profileCreated = Date.now();
+        }
         // v3.20.26: profile stat backfills.
         if (typeof state.tagline !== 'string') state.tagline = '';
         if (typeof state.longestStreak !== 'number') state.longestStreak = 0;
@@ -6625,6 +6635,8 @@ try {
       state.challengeActive = false;
       state.challengeAcceptedAt = 0;
       state.challengeSessionPaused = false;
+      // v3.23.21: Snapshot state BEFORE rewards for celebration deltas
+      var _celebSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1 };
       awardSessionReward(reward);
       if (challengeBonus) {
         setTimeout(function() {
@@ -6642,7 +6654,8 @@ try {
       state.timerState = 'idle';
       save();
       render();
-      SFX.blockEarned();
+      // v3.23.21: Show celebration overlay instead of just SFX
+      try { showPostSessionCelebration(_celebSnapshot); } catch(_) { SFX.blockEarned(); }
     });
     noBtn.addEventListener('click', function() {
       if (!_focusConfirmArmed) { closeModal(); return; }
@@ -9080,6 +9093,287 @@ try {
     render();
   }
 
+
+  // ============== v3.23.21: POST-SESSION CELEBRATION ==============
+  // Multi-screen celebration after confirming focus: Streak -> Focus Time -> Rewards
+  var _celebAudioCtx = null;
+
+  function _celebNote(freq, duration, delay, vol) {
+    if (!_celebAudioCtx) try { _celebAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(_) { return; }
+    var ctx = _celebAudioCtx;
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+    gain.gain.linearRampToValueAtTime(vol || 0.12, ctx.currentTime + delay + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + duration);
+  }
+
+  function _celebChord(freqs, duration, delay, vol) {
+    for (var i = 0; i < freqs.length; i++) _celebNote(freqs[i], duration, delay, vol);
+  }
+
+  function _celebTickSound(progress, target) {
+    var base = 300;
+    var top = target >= 14 ? 900 : target >= 7 ? 700 : 550;
+    _celebNote(base + (top - base) * progress, 0.06, 0, 0.06);
+  }
+
+  function _celebLandSound(target) {
+    if (target >= 14) {
+      _celebNote(523, 0.3, 0, 0.15);
+      _celebChord([659, 784, 1047], 0.5, 0.12, 0.08);
+    } else if (target >= 7) {
+      _celebNote(392, 0.3, 0, 0.12);
+      _celebChord([494, 587], 0.4, 0.15, 0.08);
+    } else {
+      _celebNote(330, 0.4, 0, 0.1);
+    }
+  }
+
+  function _celebRewardSound() {
+    // Ascending coin-collect arpeggio
+    _celebNote(523, 0.15, 0, 0.1);
+    _celebNote(659, 0.15, 0.1, 0.1);
+    _celebNote(784, 0.15, 0.2, 0.1);
+    _celebNote(1047, 0.3, 0.3, 0.12);
+  }
+
+  function _celebFocusSound() {
+    // Warm chord
+    _celebChord([262, 330, 392], 0.6, 0, 0.08);
+  }
+
+  function _getStreakColor(n) {
+    if (n < 3) return '#4ecdc4';
+    if (n < 7) return '#5DCAA5';
+    if (n < 14) return '#F0997B';
+    if (n < 30) return '#D85A30';
+    return '#E24B4A';
+  }
+
+  function _getStreakMessage(n) {
+    if (n <= 0) return 'Start your streak today';
+    if (n === 1) return 'Day one \u2014 it begins';
+    if (n <= 4) return 'Building momentum...';
+    if (n <= 6) return 'Almost a week \u2014 keep going';
+    if (n === 7) return 'One full week. Respect.';
+    if (n <= 13) return 'Consistency is paying off';
+    if (n === 14) return 'Two weeks strong';
+    if (n <= 20) return "You're in the groove now";
+    if (n <= 27) return 'Three weeks and counting';
+    if (n <= 29) return 'A full month. Legendary.';
+    if (n <= 44) return 'Unstoppable.';
+    if (n <= 59) return 'Machine-like dedication.';
+    return 'You ARE the streak.';
+  }
+
+  function _spawnCelebParticles(container, count) {
+    container.innerHTML = '';
+    var colors = ['#4ecdc4','#00ff88','#a855f7','#ffa502','#ff6b9d'];
+    for (var i = 0; i < count; i++) {
+      var p = document.createElement('div');
+      var size = 4 + Math.random() * 6;
+      var x = 10 + Math.random() * 80;
+      var c = colors[Math.floor(Math.random() * colors.length)];
+      p.style.cssText = 'position:absolute;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + c + ';left:' + x + '%;bottom:-10px;opacity:0;';
+      try {
+        p.animate([
+          {transform:'translateY(0) translateX(0)',opacity:0.8},
+          {transform:'translateY(-' + (200 + Math.random() * 200) + 'px) translateX(' + (-40 + Math.random() * 80) + 'px)',opacity:0}
+        ],{duration:(1200 + Math.random() * 1500),delay:Math.random() * 600,easing:'cubic-bezier(0.25,0.46,0.45,0.94)',fill:'forwards'});
+      } catch(_){}
+      container.appendChild(p);
+    }
+  }
+
+  function showPostSessionCelebration(snapshot) {
+    var overlay = $('streakOverlay');
+    if (!overlay) return;
+    var screen1 = $('celebScreen1');
+    var screen2 = $('celebScreen2');
+    var screen3 = $('celebScreen3');
+    var tapHint = $('celebTapHint');
+    if (!screen1 || !screen2 || !screen3) return;
+
+    // Data
+    var streak = state.streak || 0;
+    var sessionMin = Math.round((state.sessionDurationSec || 600) / 60);
+    var coinsEarned = (state.coins || 0) - (snapshot.coins || 0);
+    var xpEarned = (state.xp || 0) - (snapshot.xp || 0);
+    var newLevel = state.level || 1;
+    var oldLevel = snapshot.level || 1;
+    var todaySessions = (state.dailySessionLog && state.dailySessionLog.sessions) ? state.dailySessionLog.sessions.length : 1;
+    var todayMin = 0;
+    if (state.dailySessionLog && state.dailySessionLog.sessions) {
+      for (var _ti = 0; _ti < state.dailySessionLog.sessions.length; _ti++) {
+        todayMin += (state.dailySessionLog.sessions[_ti].min || 0);
+      }
+    }
+
+    // Reset all screens
+    screen1.style.display = 'block';
+    screen2.style.display = 'none';
+    screen3.style.display = 'none';
+
+    // Reset streak screen
+    var streakRing = $('streakRing');
+    var streakCount = $('streakCount');
+    var streakMsg = $('streakMessage');
+    var streakFlames = $('streakFlames');
+    var particles = $('streakParticles');
+    streakCount.textContent = '0';
+    streakMsg.style.opacity = '0';
+    streakFlames.innerHTML = '';
+    particles.innerHTML = '';
+    if (streakRing) {
+      streakRing.style.transition = 'none';
+      streakRing.setAttribute('stroke-dashoffset', '427');
+      streakRing.setAttribute('stroke', _getStreakColor(streak));
+    }
+
+    // Show overlay
+    overlay.style.display = 'flex';
+    setTimeout(function() { overlay.style.opacity = '1'; }, 20);
+
+    // Animate streak ring + counter after fade-in
+    setTimeout(function() {
+      if (streakRing) {
+        var maxRing = 60;
+        var pct = Math.min(streak / maxRing, 1);
+        var off = 427 - (427 * pct);
+        streakRing.style.transition = 'stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1), stroke 0.5s';
+        streakRing.setAttribute('stroke-dashoffset', String(Math.round(off)));
+      }
+      // Animate number
+      var dur = 1200;
+      var st = performance.now();
+      var lastTick = -1;
+      var tickInt = streak <= 10 ? 1 : streak <= 30 ? 3 : 5;
+      function tick(now) {
+        var elapsed = now - st;
+        var prog = Math.min(elapsed / dur, 1);
+        var eased = 1 - Math.pow(1 - prog, 3);
+        var cur = Math.round(eased * streak);
+        streakCount.textContent = String(cur);
+        if (cur !== lastTick && cur % tickInt === 0) {
+          lastTick = cur;
+          _celebTickSound(prog, streak);
+        }
+        if (prog < 1) {
+          requestAnimationFrame(tick);
+        } else {
+          streakCount.textContent = String(streak);
+          streakMsg.textContent = _getStreakMessage(streak);
+          streakMsg.style.opacity = '1';
+          _celebLandSound(streak);
+          // Build flames
+          var fc = Math.min(streak, 7);
+          for (var fi = 0; fi < fc; fi++) {
+            var fl = document.createElement('span');
+            fl.style.cssText = 'display:inline-block;width:8px;height:16px;border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;background:' + _getStreakColor(streak) + ';opacity:0;transform:scale(0);transition:opacity 0.3s,transform 0.3s cubic-bezier(0.34,1.56,0.64,1);';
+            streakFlames.appendChild(fl);
+            (function(el, idx) {
+              setTimeout(function() { el.style.opacity = '1'; el.style.transform = 'scale(1)'; }, idx * 100);
+            })(fl, fi);
+          }
+          if (streak > 7) {
+            var more = document.createElement('span');
+            more.style.cssText = 'font-size:11px;color:var(--text-dim);opacity:0;transition:opacity 0.4s;margin-left:4px;';
+            more.textContent = '+' + (streak - 7);
+            streakFlames.appendChild(more);
+            setTimeout(function() { more.style.opacity = '1'; }, 800);
+          }
+          if (streak >= 7) _spawnCelebParticles(particles, Math.min(streak, 30));
+        }
+      }
+      requestAnimationFrame(tick);
+    }, 400);
+
+    var currentScreen = 1;
+
+    overlay.onclick = function() {
+      currentScreen++;
+      if (currentScreen === 2) {
+        // Transition to focus time screen
+        screen1.style.display = 'none';
+        screen2.style.display = 'block';
+        particles.innerHTML = '';
+        // Animate focus time
+        var focusNum = $('focusTimeNum');
+        var focusSessions = $('focusSessionCount');
+        var focusBar = $('focusBarFill');
+        var focusLabel = $('focusBarLabel');
+        focusSessions.textContent = todaySessions + ' session' + (todaySessions !== 1 ? 's' : '') + ' today';
+        var goalMin = 120;
+        if (focusBar) {
+          setTimeout(function() { focusBar.style.width = Math.min(todayMin / goalMin * 100, 100) + '%'; }, 100);
+        }
+        if (focusLabel) focusLabel.textContent = todayMin + ' / ' + goalMin + ' min goal';
+        // Animate the number
+        _celebFocusSound();
+        var fDur = 800;
+        var fStart = performance.now();
+        function fTick(now) {
+          var prog = Math.min((now - fStart) / fDur, 1);
+          var eased = 1 - Math.pow(1 - prog, 3);
+          var curMin = Math.round(eased * sessionMin);
+          var h = Math.floor(curMin / 60);
+          var m = curMin % 60;
+          focusNum.textContent = h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+          if (prog < 1) requestAnimationFrame(fTick);
+          else {
+            var fh = Math.floor(sessionMin / 60);
+            var fm = sessionMin % 60;
+            focusNum.textContent = fh > 0 ? fh + 'h ' + fm + 'm' : fm + 'm';
+          }
+        }
+        requestAnimationFrame(fTick);
+        tapHint.textContent = 'tap to continue';
+      } else if (currentScreen === 3) {
+        // Transition to rewards screen
+        screen2.style.display = 'none';
+        screen3.style.display = 'block';
+        var celebCoinsEl = $('celebCoins');
+        var celebXPEl = $('celebXP');
+        var celebLevelEl = $('celebLevel');
+        // Animate coins
+        _celebRewardSound();
+        var rDur = 900;
+        var rStart = performance.now();
+        function rTick(now) {
+          var prog = Math.min((now - rStart) / rDur, 1);
+          var eased = 1 - Math.pow(1 - prog, 3);
+          celebCoinsEl.textContent = '+$' + Math.round(eased * coinsEarned);
+          celebXPEl.textContent = '+' + Math.round(eased * xpEarned);
+          if (prog < 1) requestAnimationFrame(rTick);
+          else {
+            celebCoinsEl.textContent = '+$' + coinsEarned;
+            celebXPEl.textContent = '+' + xpEarned;
+            if (newLevel > oldLevel) {
+              celebLevelEl.textContent = 'LEVEL UP' + String.fromCharCode(33) + ' Level ' + newLevel;
+              celebLevelEl.style.opacity = '1';
+              celebLevelEl.style.color = '#ffd700';
+              _celebChord([523, 659, 784, 1047], 0.8, 0.1, 0.1);
+            }
+          }
+        }
+        requestAnimationFrame(rTick);
+        if (streak >= 5) _spawnCelebParticles(particles, 20);
+        tapHint.textContent = 'tap to close';
+      } else {
+        // Dismiss
+        overlay.style.opacity = '0';
+        setTimeout(function() { overlay.style.display = 'none'; particles.innerHTML = ''; }, 400);
+        overlay.onclick = null;
+      }
+    };
+  }
   // ============== INIT ==============
   // Read version from manifest once at load — used everywhere instead of hardcoded strings.
   var _manifestVersion = '0.0.0';
