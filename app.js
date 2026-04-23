@@ -11719,6 +11719,36 @@ try {
       try {
         if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
           window.ProfileSync.sync(state);
+        } else {
+          // v3.23.23: Inline fallback if firebase-sync.js failed to load.
+          // Pushes a minimal profile to Firestore so the user appears on the leaderboard.
+          (function() {
+            if (!state.profileId) return;
+            var PID = 'todo-of-the-loom';
+            var KEY = 'AIzaSyCd200oa970-M-sDbcEn4U7dfENVBm4FOA';
+            var url = 'https://firestore.googleapis.com/v1/projects/' + PID + '/databases/(default)/documents/profiles/' + state.profileId + '?key=' + KEY;
+            var lvl = getLevelFromXP(state.xp || 0);
+            var fields = {
+              displayName: {stringValue: state.displayName || 'Anonymous Weaver'},
+              level: {integerValue: String(lvl.level)},
+              xp: {integerValue: String(state.xp || 0)},
+              streak: {integerValue: String(state.streak || 0)},
+              longestStreak: {integerValue: String(Math.max(state.longestStreak || 0, state.streak || 0))},
+              lifetimeBlocks: {integerValue: String(state.totalLifetimeBlocks || 0)},
+              focusMinutes: {integerValue: String(state.lifetimeFocusMinutes || 0)},
+              wallet: {integerValue: String(state.coins || 0)},
+              updatedAt: {stringValue: new Date().toISOString()}
+            };
+            fetch(url, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({fields: fields})
+            }).then(function(r) {
+              console.log('[FallbackSync] ' + (r.ok ? 'OK' : 'Failed: ' + r.status));
+            }).catch(function(e) {
+              console.warn('[FallbackSync] Error:', e);
+            });
+          })();
         }
       } catch (_) {}
     }, 3000);
