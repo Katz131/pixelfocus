@@ -1132,8 +1132,51 @@ try {
 
   // ============== STORAGE ==============
   function save() {
+    // v3.23.32: Safety — archive stale dailySessionLog before every write.
+    // Prevents data loss when multiple extension pages (popup, profile, etc.)
+    // race each other. Even if page A archived and saved, page B's blind save
+    // would overwrite it. This ensures every save captures the archive first.
+    try {
+      var _saveToday = todayStr();
+      if (state.dailySessionLog && state.dailySessionLog.date && state.dailySessionLog.date !== _saveToday
+          && state.dailySessionLog.sessions && state.dailySessionLog.sessions.length > 0) {
+        if (!state.focusHistory || typeof state.focusHistory !== 'object') state.focusHistory = {};
+        var _sLogDate = state.dailySessionLog.date;
+        var _sLogMins = 0;
+        for (var _si = 0; _si < state.dailySessionLog.sessions.length; _si++) {
+          _sLogMins += (state.dailySessionLog.sessions[_si].min || 0);
+        }
+        if (!state.focusHistory[_sLogDate] || state.focusHistory[_sLogDate] < _sLogMins) {
+          state.focusHistory[_sLogDate] = _sLogMins;
+          console.log('[Save] Safety-archived ' + _sLogMins + ' min for ' + _sLogDate + ' into focusHistory.');
+        }
+        state.dailySessionLog = { date: _saveToday, sessions: [] };
+      }
+    } catch (_) {}
     chrome.storage.local.set({ pixelFocusState: state });
   }
+
+  // v3.23.32: Merge focusHistory from other pages. When popup.html archives
+  // session data, profile.html picks it up (and vice versa) so neither page
+  // can overwrite the other's archive on its next save().
+  try {
+    chrome.storage.onChanged.addListener(function(changes) {
+      if (changes.pixelFocusState && changes.pixelFocusState.newValue) {
+        var _newFH = changes.pixelFocusState.newValue.focusHistory;
+        if (_newFH && typeof _newFH === 'object') {
+          if (!state.focusHistory) state.focusHistory = {};
+          var _merged = false;
+          Object.keys(_newFH).forEach(function(k) {
+            if (!state.focusHistory[k] || state.focusHistory[k] < _newFH[k]) {
+              state.focusHistory[k] = _newFH[k];
+              _merged = true;
+            }
+          });
+          if (_merged) console.log('[StorageSync] Merged focusHistory from another page.');
+        }
+      }
+    });
+  } catch (_) {}
 
   function load(cb) {
     chrome.storage.local.get('pixelFocusState', (result) => {
