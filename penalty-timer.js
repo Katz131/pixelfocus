@@ -8,7 +8,8 @@
   'use strict';
 
   var isTest = window.location.search.indexOf('test=1') !== -1;
-  var PENALTY_SECONDS = isTest ? 30 : 180;
+  var _remainParam = (window.location.search.match(/remain=(\d+)/) || [])[1];
+  var PENALTY_SECONDS = isTest ? 30 : (_remainParam ? parseInt(_remainParam, 10) : 180);
   var PENALTY_AMOUNT = 300;
   var remaining = PENALTY_SECONDS;
   var timerEl = document.getElementById('timerDisplay');

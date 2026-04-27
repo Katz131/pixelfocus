@@ -6,6 +6,10 @@ REM Reads the version from manifest.json, stages every file
 REM that ships in the extension, and produces a zip suitable
 REM for the Chrome Web Store or manual distribution.
 REM
+REM v3.23.33: Now auto-includes ALL .html, .js, .css, .bat,
+REM and .json files instead of a hardcoded list. No more
+REM forgetting to add new files.
+REM
 REM This script ONLY reads source files and writes a zip.
 REM It does NOT touch Chrome, your extension data, tasks,
 REM bundles, gallery progress, or factory progress.
@@ -44,27 +48,60 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "New-Item -ItemType Directory -Path $stageDir -Force | Out-Null;" ^
   "$stagingIcons = Join-Path $stageDir 'icons';" ^
   "New-Item -ItemType Directory -Path $stagingIcons -Force | Out-Null;" ^
-  "$files = @(" ^
-    "'manifest.json','background.js','popup.html','app.js'," ^
-    "'gallery.html','gallery.js','gallery-dispatch.js'," ^
-    "'factory.html','factory.js','factory-dispatch.js'," ^
-    "'house.html','house.js','house-window.js','house-dispatch.js'," ^
-    "'popup-dispatch.js','ratiocinatory.html','ratiocinatory.js','ratiocinatory-dispatch.js'," ^
-    "'patsy-names.js'," ^
-    "'profile.html','profile-window.js'," ^
-    "'incinerator.html','incinerator.js','incinerator-window.js'," ^
-    "'employees.html','employees.js','research.html','research-window.js'," ^
-    "'personnel.js','research.js'," ^
-    "'stage-entries.js','msglog.js','sounds.js','tips.js'," ^
-    "'tooltip.js','fonts.css'" ^
-  ");" ^
-  "foreach ($f in $files) { $full = Join-Path $src $f; if (Test-Path $full) { Copy-Item -LiteralPath $full -Destination (Join-Path $stageDir $f); Write-Host ('  + ' + $f) } else { Write-Host ('  - ' + $f + ' (missing, skipped)') -ForegroundColor Yellow } };" ^
+  "" ^
+  "# Auto-include all extension files by type" ^
+  "$extensions = @('*.html','*.js','*.css','*.json','*.bat');" ^
+  "# Exclude dev-only and git files" ^
+  "$exclude = @('.git','.gitignore','node_modules','firebase-hosting','scratch','*.local','*.local.*','package-lock.json','background_new.js');" ^
+  "" ^
+  "foreach ($ext in $extensions) {" ^
+  "  $found = Get-ChildItem -Path $src -Filter $ext -File -ErrorAction SilentlyContinue;" ^
+  "  foreach ($f in $found) {" ^
+  "    $skip = $false;" ^
+  "    foreach ($ex in $exclude) {" ^
+  "      if ($f.Name -like $ex) { $skip = $true; break }" ^
+  "    }" ^
+  "    if (-not $skip) {" ^
+  "      Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $stageDir $f.Name);" ^
+  "      Write-Host ('  + ' + $f.Name)" ^
+  "    }" ^
+  "  }" ^
+  "}" ^
+  "" ^
+  "# Copy icons" ^
   "$iconDir = Join-Path $src 'icons';" ^
-  "if (Test-Path $iconDir) { $pngs = Get-ChildItem -Path $iconDir -Filter '*.png'; foreach ($p in $pngs) { $dest = Join-Path $stagingIcons $p.Name; Copy-Item -LiteralPath $p.FullName -Destination $dest; Write-Host ('  + icons/' + $p.Name) } };" ^
+  "if (Test-Path $iconDir) {" ^
+  "  $pngs = Get-ChildItem -Path $iconDir -Filter '*.png';" ^
+  "  foreach ($p in $pngs) {" ^
+  "    Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $stagingIcons $p.Name);" ^
+  "    Write-Host ('  + icons/' + $p.Name)" ^
+  "  }" ^
+  "}" ^
+  "" ^
+  "# Copy fonts directory if it exists" ^
+  "$fontDir = Join-Path $src 'fonts';" ^
+  "if (Test-Path $fontDir) {" ^
+  "  $stagingFonts = Join-Path $stageDir 'fonts';" ^
+  "  New-Item -ItemType Directory -Path $stagingFonts -Force | Out-Null;" ^
+  "  Get-ChildItem -Path $fontDir -File | ForEach-Object {" ^
+  "    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stagingFonts $_.Name);" ^
+  "    Write-Host ('  + fonts/' + $_.Name)" ^
+  "  }" ^
+  "}" ^
+  "" ^
   "if (Test-Path $outZip) { Remove-Item -LiteralPath $outZip -Force };" ^
   "Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $outZip -CompressionLevel Optimal;" ^
   "Remove-Item -LiteralPath $staging -Recurse -Force;" ^
-  "if (Test-Path $outZip) { $sizeKb = [math]::Round((Get-Item $outZip).Length / 1KB, 1); Write-Host ''; Write-Host '============================================================' -ForegroundColor Green; Write-Host ('  DONE! Packaged: ' + $outZip) -ForegroundColor Green; Write-Host ('  Size: ' + $sizeKb + ' KB') -ForegroundColor Green; Write-Host '============================================================' -ForegroundColor Green } else { Write-Host 'ERROR: zip was not created.' -ForegroundColor Red; exit 1 }"
+  "if (Test-Path $outZip) {" ^
+  "  $sizeKb = [math]::Round((Get-Item $outZip).Length / 1KB, 1);" ^
+  "  Write-Host '';" ^
+  "  Write-Host '============================================================' -ForegroundColor Green;" ^
+  "  Write-Host ('  DONE! Packaged: ' + $outZip) -ForegroundColor Green;" ^
+  "  Write-Host ('  Size: ' + $sizeKb + ' KB') -ForegroundColor Green;" ^
+  "  Write-Host '============================================================' -ForegroundColor Green" ^
+  "} else {" ^
+  "  Write-Host 'ERROR: zip was not created.' -ForegroundColor Red; exit 1" ^
+  "}"
 
 if errorlevel 1 (
     echo.

@@ -750,6 +750,8 @@ try {
     surveillanceNagCount: 0,         // how many consecutive nags ignored (for escalation)
     surveillanceLastNag: 0,          // timestamp of last surveillance nag
     surveillanceDailyPromptDate: '', // YYYY-MM-DD of last daily opt-in prompt
+    surveillanceTier: 'surveillance', // 'surveillance'|'sentinel'|'passive'
+    surveillanceNagInterval: 300000,  // nag interval ms (default 5min)
     sleepTimeEnabled: false,        // show sleep as blocked period on timeline
     sleepHour: 23,                  // bedtime hour (24h)
     sleepMinute: 0,                 // bedtime minute
@@ -959,6 +961,7 @@ try {
     // uplift, institution flat bonuses, amok siphon) are suspended.
     // The player cannot leave and come back to a fortune.
     lastCompletedSessionAt: 0,
+    lastWelcomeBackCheck: 0,
     // Infinite Improbability Annex — the late-game component unlocked
     // once any aspect crosses 90. Once online, it adds a flat +10% to
     // every aspect's procurement conversion and, more importantly,
@@ -1154,6 +1157,17 @@ try {
       }
     } catch (_) {}
     chrome.storage.local.set({ pixelFocusState: state });
+    // v3.23.34: Rolling auto-backup — keeps backup_safe fresh so recovery
+    // always has recent data. Throttled to once per 5 minutes.
+    try {
+      var _backupNow = Date.now();
+      if (!save._lastBackup || (_backupNow - save._lastBackup > 300000)) {
+        save._lastBackup = _backupNow;
+        chrome.storage.local.set({
+          pixelFocusState_backup_safe: { savedAt: _backupNow, state: JSON.parse(JSON.stringify(state)) }
+        });
+      }
+    } catch (_) {}
   }
 
   // v3.23.32: Merge focusHistory from other pages. When popup.html archives
@@ -1179,9 +1193,34 @@ try {
   } catch (_) {}
 
   function load(cb) {
-    chrome.storage.local.get('pixelFocusState', (result) => {
-      if (result.pixelFocusState) {
-        state = { ...DEFAULT_STATE, ...result.pixelFocusState };
+    chrome.storage.local.get(['pixelFocusState', 'pixelFocusState_backup_safe', 'pixelFocusState_backup_safe2'], (result) => {
+      // v3.23.34: Auto-recovery — if main state is wiped but backup exists, use backup
+      var _loaded = result.pixelFocusState;
+      if (_loaded && ((_loaded.xp || 0) === 0) && (Object.keys(_loaded.tasks || {}).length <= 1)) {
+        // State looks wiped — check backups
+        var _b2 = result.pixelFocusState_backup_safe2;
+        var _b1 = result.pixelFocusState_backup_safe;
+        var _backup = (_b2 && (_b2.state || _b2)) || (_b1 && (_b1.state || _b1)) || null;
+        if (_backup && ((_backup.xp || 0) > 0 || Object.keys(_backup.tasks || {}).length > 1)) {
+          console.log('[AutoRecover] State appears wiped (xp=' + (_loaded.xp||0) + ') but backup has xp=' + (_backup.xp||0) + ' — RESTORING from backup.');
+          _backup.mirrorMode = false;
+          _loaded = _backup;
+          chrome.storage.local.set({ pixelFocusState: _loaded });
+        }
+      }
+      if (!_loaded && (result.pixelFocusState_backup_safe || result.pixelFocusState_backup_safe2)) {
+        var _b2b = result.pixelFocusState_backup_safe2;
+        var _b1b = result.pixelFocusState_backup_safe;
+        var _backupB = (_b2b && (_b2b.state || _b2b)) || (_b1b && (_b1b.state || _b1b)) || null;
+        if (_backupB && ((_backupB.xp || 0) > 0 || Object.keys(_backupB.tasks || {}).length > 1)) {
+          console.log('[AutoRecover] No state found but backup exists — RESTORING from backup.');
+          _backupB.mirrorMode = false;
+          _loaded = _backupB;
+          chrome.storage.local.set({ pixelFocusState: _loaded });
+        }
+      }
+      if (_loaded) {
+        state = { ...DEFAULT_STATE, ..._loaded };
         state.projects.forEach(p => {
           if (!state.tasks[p.id]) state.tasks[p.id] = [];
         });
@@ -3769,7 +3808,7 @@ try {
       return;
     }
     sec = parseInt(sec, 10);
-    if (![600, 1200, 1800, 3600].includes(sec)) return;
+    if (![600, 1200, 1800, 3600, 5400].includes(sec)) return;
     state.sessionDurationSec = sec;
     state.timerRemaining = sec;
     _tlPreviewDurationSec = sec; // v3.23.6: show preview on timeline
@@ -5423,7 +5462,7 @@ try {
       else elapsedEl.style.color = '#ff6b6b';
       // Countdown to next nag + auto-fire when it hits zero
       if (state.surveillanceActive) {
-        var _nagInterval = 300000; // 5 minutes
+        var _nagInterval = state.surveillanceNagInterval || 300000; // dynamic per tier
         // Re-entry guard: prevent multi-fire while async storage write is in flight
         if (window._survNagFiring) {
           elapsedEl.textContent = txt + '  |  NAG FIRING...';
@@ -5454,7 +5493,7 @@ try {
                 elapsedEl.textContent = txt + '  |  NAG PAUSED (timer active)';
                 // v3.22.98: Reset the nag anchor so next nag is 5 min from NOW
                 // This prevents the nag from firing the instant the grace period ends
-                if (st.surveillanceLastNag && (_now - st.surveillanceLastNag) > _nagInterval) {
+                if (st.surveillanceLastNag && (_now - st.surveillanceLastNag) > (_nagInterval - 20000)) {
                   st.surveillanceLastNag = _now;
                   try { chrome.storage.local.set({ pixelFocusState: st }); } catch(_) {}
                 }
@@ -5526,17 +5565,23 @@ try {
         stopBtn.style.display = '';
         timerEl.style.display = '';
         if (addBtnsContainer) addBtnsContainer.style.display = 'flex';
-        panel.style.borderColor = '#ff4444';
-        panel.style.boxShadow = '0 0 15px rgba(255,68,68,0.2)';
+        var _tierColors = {surveillance:'#ff4444',sentinel:'#ff9f43',passive:'#55aa99'};
+        var _tc = _tierColors[state.surveillanceTier] || '#ff4444';
+        panel.style.borderColor = _tc;
+        panel.style.boxShadow = '0 0 15px ' + _tc + '33';
         // Show remaining time with seconds
         var rem = state.surveillanceEndsAt - now;
         var h = Math.floor(rem / 3600000);
         var m = Math.floor((rem % 3600000) / 60000);
         var s = Math.floor((rem % 60000) / 1000);
         timerEl.textContent = h + 'h ' + (m < 10 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+        timerEl.style.color = _tc;
         statusEl.textContent = 'ACTIVE';
-        statusEl.style.color = '#ff4444';
-        descEl.textContent = 'You will be nagged every 5 min without a running focus timer.';
+        statusEl.style.color = _tc;
+        var _intMin = Math.round((state.surveillanceNagInterval || 300000) / 60000);
+        var _intTxt = _intMin >= 60 ? Math.floor(_intMin/60) + 'h' + (_intMin%60 > 0 ? ' ' + (_intMin%60) + 'm' : '') : _intMin + ' min';
+        var _tierNames = {surveillance:'Surveillance',sentinel:'Sentinel',passive:'Passive Surveillance'};
+        descEl.textContent = (_tierNames[state.surveillanceTier] || 'Surveillance') + ' active. Nag every ' + _intTxt + ' without a running focus timer.';
       } else {
         // Auto-deactivate if expired
         if (state.surveillanceActive && state.surveillanceEndsAt <= now) {
@@ -5549,31 +5594,41 @@ try {
         stopBtn.style.display = 'none';
         timerEl.style.display = 'none';
         if (addBtnsContainer) addBtnsContainer.style.display = 'none';
-        panel.style.borderColor = '#ff6b6b';
+        var _tierColors2 = {surveillance:'#ff6b6b',sentinel:'#ff9f43',passive:'#55aa99'};
+        panel.style.borderColor = _tierColors2[state.surveillanceTier] || '#ff6b6b';
         panel.style.boxShadow = 'none';
         statusEl.textContent = 'OFF';
         statusEl.style.color = '#5a5a7e';
-        descEl.textContent = 'Nags you every 5 min when you\'re not running a focus timer. Escalates if ignored.';
+        descEl.textContent = 'Select a surveillance tier and hit START.';
       }
     }
 
     startBtn.addEventListener('click', function() {
       var minutes = parseInt(durSelect.value) || 480;
+      var tier = state.surveillanceTier || 'surveillance';
+      var nagMs = 300000;
+      if (tier === 'sentinel' || tier === 'passive') {
+        var sl = document.getElementById('surveillanceIntervalSlider');
+        nagMs = (sl ? parseInt(sl.value) : (tier === 'sentinel' ? 20 : 60)) * 60000;
+      }
       state.surveillanceActive = true;
       state.surveillanceEndsAt = Date.now() + (minutes * 60000);
       state.surveillanceStartedAt = Date.now();
       state.surveillanceNagCount = 0;
-      state.surveillanceLastNag = Date.now(); // anchor first nag 5 min from NOW (not 0, which races with stale storage)
+      state.surveillanceLastNag = Date.now();
       state.surveillancePenaltyApplied = false;
       state.surveillanceConsecutiveNos = 0;
+      state.surveillanceNagInterval = nagMs;
       save();
-      // Delay UI update to let save() flush — prevents stale-storage race that fires nag instantly
       setTimeout(function() { updateSurveillanceUI(); }, 300);
+      var _tierN = {surveillance:'Surveillance',sentinel:'Sentinel',passive:'Passive Surveillance'};
+      var _iMin = Math.round(nagMs / 60000);
+      var _iTxt = _iMin >= 60 ? Math.floor(_iMin/60) + 'h' + (_iMin%60 > 0 ? ' ' + (_iMin%60) + 'm' : '') : _iMin + ' min';
       try {
         chrome.notifications.create('surveillance-started', {
           type: 'basic', iconUrl: 'icons/icon128.png',
-          title: 'Surveillance Mode ON',
-          message: 'You will be nagged every 5 min without a focus timer for the next ' + (minutes >= 60 ? (minutes/60) + ' hours' : minutes + ' min') + '.',
+          title: (_tierN[tier] || 'Surveillance') + ' Mode ON',
+          message: 'Nag every ' + _iTxt + ' without a focus timer for the next ' + (minutes >= 60 ? (minutes/60) + ' hours' : minutes + ' min') + '.',
           priority: 2
         });
       } catch(_){}
@@ -5589,8 +5644,86 @@ try {
 
     // Test button — removed from IIFE, wired up standalone after this IIFE (v3.22.34)
 
+    // v3.23.34: Tier picker buttons + interval slider
+    var _tierBtns = document.querySelectorAll('.surv-tier-btn');
+    var _sliderRow = document.getElementById('surveillanceSliderRow');
+    var _slider = document.getElementById('surveillanceIntervalSlider');
+    var _sliderVal = document.getElementById('surveillanceSliderVal');
+    var _sliderTicks = document.getElementById('surveillanceSliderTicks');
+    var _survTitle = document.getElementById('surveillanceTitle');
+    var _tierConfigs = {
+      surveillance: { interval: 300000, color: '#ff4444', name: 'SURVEILLANCE MODE' },
+      sentinel: { min: 10, max: 30, step: 5, def: 20, color: '#ff9f43', name: 'SENTINEL MODE', ticks: [10, 15, 20, 25, 30] },
+      passive: { min: 30, max: 180, step: 30, def: 60, color: '#55aa99', name: 'PASSIVE SURVEILLANCE', ticks: [30, 60, 120, 180] }
+    };
+    function _fmtSliderTick(v, tier) {
+      if (tier === 'sentinel') return v + 'm';
+      if (v < 60) return v + 'm';
+      return Math.floor(v / 60) + 'h';
+    }
+    function _buildSliderTicks(tier) {
+      if (!_sliderTicks) return;
+      _sliderTicks.innerHTML = '';
+      var cfg = _tierConfigs[tier];
+      if (!cfg || !cfg.ticks) return;
+      var range = cfg.max - cfg.min;
+      for (var i = 0; i < cfg.ticks.length; i++) {
+        var pct = ((cfg.ticks[i] - cfg.min) / range) * 100;
+        var sp = document.createElement('span');
+        sp.style.cssText = 'position:absolute;font-family:Courier New,monospace;font-size:8px;color:#666;transform:translateX(-50%);left:' + pct + '%;';
+        sp.textContent = _fmtSliderTick(cfg.ticks[i], tier);
+        _sliderTicks.appendChild(sp);
+      }
+    }
+    function _updateSliderDisplay() {
+      if (!_slider || !_sliderVal) return;
+      var v = parseInt(_slider.value);
+      var cfg = _tierConfigs[state.surveillanceTier || 'surveillance'];
+      if (v >= 60) { var h = Math.floor(v / 60), m = v % 60; _sliderVal.textContent = m > 0 ? h + 'h ' + m + 'm' : h + 'h'; }
+      else { _sliderVal.textContent = v + ' min'; }
+      _sliderVal.style.color = cfg ? cfg.color : '#ff9f43';
+    }
+    function _selectTier(tier, isInit) {
+      state.surveillanceTier = tier;
+      var cfg = _tierConfigs[tier];
+      _tierBtns.forEach(function(btn) {
+        var t = btn.getAttribute('data-tier'), co = _tierConfigs[t];
+        if (t === tier) { btn.style.background = co.color; btn.style.color = '#0a0a14'; }
+        else { btn.style.background = 'none'; btn.style.color = co.color; }
+      });
+      if (_survTitle) { _survTitle.textContent = cfg.name; _survTitle.style.color = cfg.color; }
+      if (tier === 'surveillance') {
+        if (_sliderRow) _sliderRow.style.display = 'none';
+        // Only reset interval if user clicked, not on page init
+        if (!isInit) state.surveillanceNagInterval = 300000;
+      } else {
+        if (_sliderRow) _sliderRow.style.display = 'block';
+        _slider.min = cfg.min; _slider.max = cfg.max; _slider.step = cfg.step;
+        // On init, restore saved interval; on click, use default
+        if (isInit && state.surveillanceNagInterval) {
+          _slider.value = Math.round(state.surveillanceNagInterval / 60000);
+        } else {
+          _slider.value = cfg.def;
+          state.surveillanceNagInterval = cfg.def * 60000;
+        }
+        _slider.style.accentColor = cfg.color;
+        _buildSliderTicks(tier); _updateSliderDisplay();
+      }
+      if (!state.surveillanceActive) panel.style.borderColor = cfg.color;
+      var descs = { surveillance: 'Full surveillance. Nags every 5 min without a focus timer. Escalates if ignored.', sentinel: 'Sentinel is watching. Adjust nag interval with the slider.', passive: 'Passive surveillance. Light-touch reminders at a relaxed interval.' };
+      descEl.textContent = descs[tier] || descs.surveillance;
+      if (!isInit) save();
+    }
+    _tierBtns.forEach(function(btn) { btn.addEventListener('click', function() { if (state.surveillanceActive) return; _selectTier(btn.getAttribute('data-tier'), false); }); });
+    if (_slider) { _slider.addEventListener('input', function() { state.surveillanceNagInterval = parseInt(_slider.value) * 60000; _updateSliderDisplay(); }); }
+    _selectTier(state.surveillanceTier || 'surveillance', true);
+    var _tierPicker = document.getElementById('surveillanceTierPicker');
+    function _updateTierPickerVisibility() {
+      if (_tierPicker) _tierPicker.style.display = state.surveillanceActive ? 'none' : 'flex';
+      if (_sliderRow && state.surveillanceActive) _sliderRow.style.display = 'none';
+    }
     // Update timer display every second (shows seconds)
-    setInterval(updateSurveillanceUI, 1000);
+    setInterval(function() { updateSurveillanceUI(); _updateTierPickerVisibility(); }, 1000);
 
     // Old setInterval nag check removed — now runs inside updateSurveillanceUI (v3.22.57)
 
@@ -5609,7 +5742,7 @@ try {
         setTimeout(function() {
           if (!state.surveillanceActive) {
             panel.style.borderColor = '#ff6b6b';
-            descEl.textContent = 'Nags you every 5 min when you\'re not running a focus timer. Escalates if ignored.';
+            descEl.textContent = 'Select a surveillance tier and hit START.';
           }
         }, 30000); // Revert after 30s if not started
       }, 3000);
@@ -6502,6 +6635,11 @@ try {
     state.blocks += sessionTextiles;
     state.todayBlocks += sessionTextiles;
     state.totalLifetimeBlocks += sessionTextiles;
+    // v3.23.35: Start streak at 1 on first focus session of the day
+    if ((state.streak || 0) === 0 && state.todayBlocks > 0) {
+      state.streak = 1;
+      if (state.longestStreak < 1) state.longestStreak = 1;
+    }
     state.sessionBlocks++; // still counts 1 session regardless of haul
     // Drain the resource pools by the amount actually produced. This
     // call also fires depletion milestone chat lines and may flip the
@@ -7415,6 +7553,16 @@ try {
       handle.style.cssText = 'color:#886666;cursor:grab;font-size:12px;padding:0 2px;user-select:none;';
       row.appendChild(handle);
 
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button';
+      doneBtn.textContent = '\u2713';
+      doneBtn.title = (p.recurrence && p.recurrence !== 'none')
+        ? 'Mark this recurring task done for today. It will reappear on the next scheduled day.'
+        : 'Mark this priority task done. It will be removed from the list.';
+      doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
+      doneBtn.addEventListener('click', function() { completePriority(p.id); });
+      row.appendChild(doneBtn);
+
       var txt = document.createElement('div');
       txt.style.cssText = 'flex:1;color:#ffd5d5;font-size:12px;word-break:break-word;';
       txt.textContent = p.text;
@@ -7476,16 +7624,6 @@ try {
         else listEl.appendChild(ed);
       });
       row.appendChild(gearBtn);
-
-      var doneBtn = document.createElement('button');
-      doneBtn.type = 'button';
-      doneBtn.textContent = '\u2713';
-      doneBtn.title = (p.recurrence && p.recurrence !== 'none')
-        ? 'Mark this recurring task done for today. It will reappear on the next scheduled day.'
-        : 'Mark this priority task done. It will be removed from the list.';
-      doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
-      doneBtn.addEventListener('click', function() { completePriority(p.id); });
-      row.appendChild(doneBtn);
 
       var removeBtn = document.createElement('button');
       removeBtn.type = 'button';
@@ -9530,8 +9668,8 @@ try {
           celebXPEl.textContent = '+' + Math.round(eased * xpEarned);
           if (prog < 1) requestAnimationFrame(rTick);
           else {
-            celebCoinsEl.textContent = '+$' + coinsEarned;
-            celebXPEl.textContent = '+' + xpEarned;
+            celebCoinsEl.textContent = '+$' + Math.round(coinsEarned);
+            celebXPEl.textContent = '+' + Math.round(xpEarned);
             if (newLevel > oldLevel) {
               celebLevelEl.textContent = 'LEVEL UP' + String.fromCharCode(33) + ' Level ' + newLevel;
               celebLevelEl.style.opacity = '1';
@@ -9551,6 +9689,87 @@ try {
       }
     };
   }
+  // ============== WELCOME BACK (v3.23.33) ==============
+  function showWelcomeBack(goneMs, passiveCoins, passiveTextiles) {
+    var overlay = $('welcomeBackOverlay'); if (!overlay) return;
+    var screen1 = $('wbScreen1'), screen2 = $('wbScreen2'), tapHint = $('wbTapHint'), particles = $('wbParticles');
+    if (!screen1 || !screen2) return;
+    if (!_celebAudioCtx) { try { _celebAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(_) {} }
+    var goneMin = Math.floor(goneMs / 60000), goneH = Math.floor(goneMin / 60), goneM = goneMin % 60;
+    var goneTxt = goneH > 0 ? goneH + 'h ' + goneM + 'm' : goneM + 'm';
+    var goneEl = $('wbGoneDuration'); if (goneEl) goneEl.textContent = 'you were gone for ' + goneTxt;
+    var today = todayStr(), todaySessions = 0, todayMin = 0;
+    if (state.dailySessionLog && state.dailySessionLog.date === today && state.dailySessionLog.sessions) {
+      todaySessions = state.dailySessionLog.sessions.length;
+      for (var _wi = 0; _wi < state.dailySessionLog.sessions.length; _wi++) todayMin += (state.dailySessionLog.sessions[_wi].min || 0);
+    }
+    screen1.style.display = 'block'; screen2.style.display = 'none';
+    if (particles) particles.innerHTML = '';
+    overlay.style.display = 'flex'; setTimeout(function() { overlay.style.opacity = '1'; }, 20);
+    var currentScreen = 1, coinsVal = Math.round(passiveCoins || 0), textilesVal = Math.round(passiveTextiles || 0);
+    setTimeout(function() {
+      _celebRewardSound(); var dur = 900, start = performance.now();
+      var coinsEl = $('wbCoins'), texEl = $('wbTextiles'), lastTick = -1;
+      function countTick(now) {
+        var prog = Math.min((now - start) / dur, 1), eased = 1 - Math.pow(1 - prog, 3);
+        if (coinsEl) coinsEl.textContent = '+$' + Math.round(eased * coinsVal);
+        if (texEl) texEl.textContent = '+' + Math.round(eased * textilesVal);
+        var tickNum = Math.floor(prog * 10);
+        if (tickNum !== lastTick) { lastTick = tickNum; _celebTickSound(prog, 14); }
+        if (prog < 1) requestAnimationFrame(countTick);
+        else { if (coinsEl) coinsEl.textContent = '+$' + coinsVal; if (texEl) texEl.textContent = '+' + textilesVal; _celebLandSound(14); _spawnCelebParticles(particles, 15); }
+      }
+      requestAnimationFrame(countTick);
+    }, 400);
+    overlay.onclick = function() {
+      currentScreen++;
+      if (currentScreen === 2) {
+        screen1.style.display = 'none'; screen2.style.display = 'block'; tapHint.textContent = 'tap to close';
+        _celebFocusSound();
+        var sessEl = $('wbSessions'), focusEl = $('wbFocusTime'), streakEl = $('wbStreak'), statusEl = $('wbStatus');
+        var fh = Math.floor(todayMin / 60), fm = todayMin % 60, focusTxt = fh > 0 ? fh + 'h ' + fm + 'm' : fm + 'm';
+        var sDur = 600, sStart = performance.now();
+        function sTick(now) {
+          var prog = Math.min((now - sStart) / sDur, 1), eased = 1 - Math.pow(1 - prog, 3);
+          if (sessEl) sessEl.textContent = String(Math.round(eased * todaySessions));
+          if (streakEl) streakEl.textContent = String(Math.round(eased * (state.streak || 0)));
+          if (prog < 1) requestAnimationFrame(sTick);
+          else { if (sessEl) sessEl.textContent = String(todaySessions); if (focusEl) focusEl.textContent = focusTxt; if (streakEl) streakEl.textContent = String(state.streak || 0);
+            if (statusEl) statusEl.innerHTML = '<span>Wallet <span style="color:var(--accent);">$' + Math.round(state.coins || 0) + '</span></span><span>Level <span style="color:#ffd700;">' + (state.level || 1) + '</span></span><span>XP <span style="color:var(--xp-color);">' + Math.round(state.xp || 0) + '</span></span>';
+          }
+        }
+        var fDur = 800, fStart = performance.now();
+        function fTick(now) {
+          var prog = Math.min((now - fStart) / fDur, 1), eased = 1 - Math.pow(1 - prog, 3);
+          var curMin = Math.round(eased * todayMin), ch = Math.floor(curMin / 60), cm = curMin % 60;
+          if (focusEl) focusEl.textContent = ch > 0 ? ch + 'h ' + cm + 'm' : cm + 'm';
+          if (prog < 1) requestAnimationFrame(fTick);
+        }
+        requestAnimationFrame(sTick); requestAnimationFrame(fTick); _spawnCelebParticles(particles, 12);
+      } else {
+        overlay.style.opacity = '0';
+        setTimeout(function() { overlay.style.display = 'none'; if (particles) particles.innerHTML = ''; }, 400);
+        overlay.onclick = null;
+      }
+    };
+  }
+  function maybeShowWelcomeBack() {
+    var now = Date.now(), lastInteraction = state.lastWelcomeBackCheck || state.lastCompletedSessionAt || 0;
+    // v3.23.35: If no timestamp but user has a lastActiveDate, derive from that
+    if (!lastInteraction && state.lastActiveDate) {
+      try { lastInteraction = new Date(state.lastActiveDate).getTime(); } catch(_) {}
+    }
+    if (!lastInteraction) { state.lastWelcomeBackCheck = now; save(); return; }
+    var goneMs = now - lastInteraction, FOUR_HOURS = 4 * 60 * 60 * 1000;
+    if (goneMs < FOUR_HOURS) { state.lastWelcomeBackCheck = now; save(); return; }
+    var empLevel = state.hireEmployeesLevel || 0, passiveCoins = 0;
+    if (empLevel > 0 && (state.streak || 0) > 0) { passiveCoins = Math.round(empLevel * (state.streak || 0) * 0.5 * Math.min(goneMs / 60000, 300)); }
+    var passiveTextiles = 0, autoloomLevel = state.autoloomLevel || 0;
+    if (autoloomLevel > 0) { var periodMin = [0, 7200, 2880, 1440, 720, 240][Math.min(autoloomLevel, 5)]; if (periodMin > 0) passiveTextiles = Math.floor((goneMs / 60000) / periodMin); }
+    state.lastWelcomeBackCheck = now; save();
+    if (passiveCoins > 0 || passiveTextiles > 0 || goneMs >= FOUR_HOURS) showWelcomeBack(goneMs, passiveCoins, passiveTextiles);
+  }
+
   // ============== INIT ==============
   // Read version from manifest once at load — used everywhere instead of hardcoded strings.
   var _manifestVersion = '0.0.0';
@@ -10846,14 +11065,15 @@ try {
       // v3.21.71: Auto-detect mirror mode. If this browser has a profile ID
       // but basically no data (no XP, no lifetime blocks), it's not the main
       // browser — enable mirror mode automatically.
-      if (state.profileId && !state.mirrorMode) {
-        var hasNoData = (state.xp || 0) === 0 && (state.totalLifetimeBlocks || 0) === 0;
-        if (hasNoData) {
-          state.mirrorMode = true;
-          save();
-          console.log('[Mirror] Auto-enabled mirror mode — this browser has no local data.');
-        }
-      }
+      // v3.23.34: Auto-mirror DISABLED to prevent data loss on extension reload
+      // if (state.profileId && !state.mirrorMode) {
+      //   var hasNoData = (state.xp || 0) === 0 && (state.totalLifetimeBlocks || 0) === 0;
+      //   if (hasNoData) {
+      //     state.mirrorMode = true;
+      //     save();
+      //     console.log('[Mirror] Auto-enabled mirror mode — this browser has no local data.');
+      //   }
+      // }
 
       // v3.21.74: Apply mirror mode UI — stripped-down read-only view
       if (state.mirrorMode) {
@@ -11433,6 +11653,14 @@ try {
         });
       }
 
+      // v3.23.33: Test welcome back screen
+      var testWelcomeBackBtn = $('testWelcomeBackBtn');
+      if (testWelcomeBackBtn) {
+        testWelcomeBackBtn.addEventListener('click', function() {
+          try { var sm = $('settingsModal'); if (sm) sm.style.display = 'none'; showWelcomeBack(4.5 * 60 * 60 * 1000, 60, 2); } catch (e) { console.error('[TestWelcomeBack] Error:', e); }
+        });
+      }
+
       // v3.21.49: Auto-reopen todo list setting
       var autoReopenToggle = $('autoReopenToggle');
       if (autoReopenToggle) {
@@ -11918,6 +12146,7 @@ try {
   setTimeout(function() { try { maybeWindDownCTCheckin(); } catch (_) {} }, 2500);
   setTimeout(function() { try { maybeDailyRemindersPopup(); } catch (_) {} }, 1800);
   setTimeout(function() { try { checkIncrementalization(); } catch (_) {} }, 2000);
+  setTimeout(function() { try { maybeShowWelcomeBack(); } catch (_) {} }, 2200);
 
   if (!state.mirrorMode) {
     setTimeout(function() {

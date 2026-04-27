@@ -333,39 +333,44 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   <div id="focusTimelineSummary" style="font-size:10px;color:#5a5a7e;text-align:center;margin-top:4px;font-family:'Courier New',monospace;">No focus sessions yet today.</div>
 </div>
 
-<!-- v3.22.27: Surveillance Mode panel — replaces weekly focus graph (moved to profile) -->
+<!-- v3.23.34: Surveillance Mode panel with tier picker -->
 <div id="surveillancePanel" style="background:var(--surface,#12122a);border:1px solid #ff6b6b;border-radius:10px;padding:12px 14px;margin:4px 0 8px;">
   <div style="display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ff6b6b;letter-spacing:0.5px;" title="Surveillance mode nags you every 5 minutes when no focus timer is running. After 3 ignored nags it escalates: opens Cold Turkey + a confrontational pop-up. Pick a duration and hit START.">SURVEILLANCE MODE</div>
-    <div id="surveillanceStatus" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;" title="Shows whether surveillance is currently active or inactive."></div>
+    <div id="surveillanceTitle" style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ff6b6b;letter-spacing:0.5px;" title="Pick a surveillance tier and duration, then hit START.">SURVEILLANCE MODE</div>
+    <div id="surveillanceStatus" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;"></div>
   </div>
-  <div id="surveillanceElapsed" style="margin-top:6px;font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;letter-spacing:0.5px;" title="Time since your last completed focus session, plus a countdown to the next surveillance nag. Green = recent. Orange = getting stale. Red = it's been a while."></div>
-  <div id="siteNagCountdownSurv" style="display:none;margin-top:6px;padding:6px 8px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);border-radius:4px;font-family:'Press Start 2P',monospace;font-size:7px;color:#ff6b6b;text-align:center;letter-spacing:0.5px;" title="Distraction site detected in another tab. Shows a countdown to the next nag notification. Escalates: 5 min → 10 min → 10 min → 2-hour pause after 3 strikes."></div>
-  <div style="margin-top:8px;font-family:'Courier New',monospace;font-size:11px;color:#aaa;line-height:1.5;" id="surveillanceDesc">
-    Nags you every 5 min when you're not running a focus timer. Escalates if ignored.
+  <div id="surveillanceElapsed" style="margin-top:6px;font-family:'Press Start 2P',monospace;font-size:7px;color:#5a5a7e;letter-spacing:0.5px;"></div>
+  <div id="siteNagCountdownSurv" style="display:none;margin-top:6px;padding:6px 8px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);border-radius:4px;font-family:'Press Start 2P',monospace;font-size:7px;color:#ff6b6b;text-align:center;letter-spacing:0.5px;"></div>
+  <div style="margin-top:8px;font-family:'Courier New',monospace;font-size:11px;color:#aaa;line-height:1.5;" id="surveillanceDesc">Select a surveillance tier and hit START.</div>
+  <div id="surveillanceTierPicker" style="display:flex;gap:6px;margin-top:10px;margin-bottom:8px;">
+    <button id="tierBtnSurveillance" class="surv-tier-btn" data-tier="surveillance" style="flex:1;background:none;border:1px solid #ff4444;color:#ff4444;font-family:'Press Start 2P',monospace;font-size:7px;padding:7px 4px;border-radius:6px;cursor:pointer;text-align:center;transition:all 0.2s;"><div style="font-weight:bold;margin-bottom:2px;">SURVEILLANCE</div><div style="font-size:6px;opacity:0.7;">every 5 min</div></button>
+    <button id="tierBtnSentinel" class="surv-tier-btn" data-tier="sentinel" style="flex:1;background:none;border:1px solid #ff9f43;color:#ff9f43;font-family:'Press Start 2P',monospace;font-size:7px;padding:7px 4px;border-radius:6px;cursor:pointer;text-align:center;transition:all 0.2s;"><div style="font-weight:bold;margin-bottom:2px;">SENTINEL</div><div style="font-size:6px;opacity:0.7;">every 10-30 min</div></button>
+    <button id="tierBtnPassive" class="surv-tier-btn" data-tier="passive" style="flex:1;background:none;border:1px solid #55aa99;color:#55aa99;font-family:'Press Start 2P',monospace;font-size:7px;padding:7px 4px;border-radius:6px;cursor:pointer;text-align:center;transition:all 0.2s;"><div style="font-weight:bold;margin-bottom:2px;">PASSIVE</div><div style="font-size:6px;opacity:0.7;">every 30m-3h</div></button>
+  </div>
+  <div id="surveillanceSliderRow" style="display:none;margin-bottom:8px;">
+    <div style="display:flex;justify-content:center;margin-bottom:4px;">
+      <span style="font-family:'Courier New',monospace;font-size:10px;color:#888;">Nag every </span>
+      <span id="surveillanceSliderVal" style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ff9f43;font-weight:bold;margin-left:4px;">20 min</span>
+    </div>
+    <div style="position:relative;padding:0 2px;">
+      <input type="range" id="surveillanceIntervalSlider" min="10" max="30" value="20" step="5" style="width:100%;accent-color:#ff9f43;height:4px;">
+      <div id="surveillanceSliderTicks" style="position:relative;height:14px;margin-top:4px;"></div>
+    </div>
   </div>
   <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-    <button id="surveillanceStartBtn" style="background:linear-gradient(135deg,#ff6b6b,#ff8c8c);color:#0a0a14;border:none;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;" title="Start surveillance mode for the selected duration. You'll be nagged every 5 minutes unless a focus timer is running.">START</button>
-    <button id="surveillanceStopBtn" style="display:none;background:transparent;border:1px solid #ff6b6b;color:#ff6b6b;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;" title="Turn off surveillance mode early. Nags stop immediately.">STOP</button>
-    <select id="surveillanceDuration" style="background:var(--surface2,#1a1a3a);border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:6px 8px;border-radius:4px;cursor:pointer;" title="How long surveillance mode stays active. After this time it turns off automatically.">
-      <option value="5">5 MIN</option>
-      <option value="15">15 MIN</option>
-      <option value="30">30 MIN</option>
-      <option value="45">45 MIN</option>
-      <option value="60">1 HOUR</option>
-      <option value="120">2 HOURS</option>
-      <option value="240">4 HOURS</option>
-      <option value="480" selected>8 HOURS</option>
-      <option value="720">12 HOURS</option>
+    <button id="surveillanceStartBtn" style="background:linear-gradient(135deg,#ff6b6b,#ff8c8c);color:#0a0a14;border:none;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;">START</button>
+    <button id="surveillanceStopBtn" style="display:none;background:transparent;border:1px solid #ff6b6b;color:#ff6b6b;border-radius:6px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:0.5px;">STOP</button>
+    <select id="surveillanceDuration" style="background:var(--surface2,#1a1a3a);border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:6px 8px;border-radius:4px;cursor:pointer;">
+      <option value="5">5 MIN</option><option value="15">15 MIN</option><option value="30">30 MIN</option><option value="45">45 MIN</option><option value="60">1 HOUR</option><option value="90">1.5 HOURS</option><option value="120">2 HOURS</option><option value="240">4 HOURS</option><option value="480" selected>8 HOURS</option><option value="720">12 HOURS</option>
     </select>
     <span id="surveillanceAddBtns" style="display:none;gap:3px;flex-wrap:wrap;">
-      <button class="surv-add-btn" data-min="5" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 5 minutes to surveillance">+5m</button>
-      <button class="surv-add-btn" data-min="15" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 15 minutes to surveillance">+15m</button>
-      <button class="surv-add-btn" data-min="30" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 30 minutes to surveillance">+30m</button>
-      <button class="surv-add-btn" data-min="45" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;" title="Add 45 minutes to surveillance">+45m</button>
+      <button class="surv-add-btn" data-min="5" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;">+5m</button>
+      <button class="surv-add-btn" data-min="15" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;">+15m</button>
+      <button class="surv-add-btn" data-min="30" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;">+30m</button>
+      <button class="surv-add-btn" data-min="45" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:6px;padding:3px 5px;border-radius:3px;cursor:pointer;">+45m</button>
     </span>
-    <div id="surveillanceTimer" style="display:none;font-family:'Press Start 2P',monospace;font-size:9px;color:#ff6b6b;" title="Time remaining in this surveillance session."></div>
-    <button id="surveillanceTestBtn" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-radius:4px;cursor:pointer;margin-left:auto;" title="Test: simulates a full strike-3 escalation — opens the confrontational nag window + Cold Turkey. Does not affect your YES/NO score.">TEST</button>
+    <div id="surveillanceTimer" style="display:none;font-family:'Press Start 2P',monospace;font-size:9px;color:#ff6b6b;"></div>
+    <button id="surveillanceTestBtn" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-radius:4px;cursor:pointer;margin-left:auto;">TEST</button>
   </div>
 </div>
 
@@ -526,6 +531,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <button type="button" class="session-pill" data-dur="1200" title="20-minute double session. Earns 2 textiles on completion. No commitment bonus &mdash; that starts at 30 min.">20 MIN</button>
     <button type="button" class="session-pill" data-dur="1800" title="30-minute deep focus run. Earns 3 textiles + 1 commitment bonus textile on completion.">30 MIN</button>
     <button type="button" class="session-pill" data-dur="3600" title="60-minute marathon focus run. Earns 6 textiles + 3 commitment bonus textiles on completion.">60 MIN</button>
+    <button type="button" class="session-pill" data-dur="5400" title="90-minute ultra focus run. Earns 9 textiles + 5 commitment bonus textiles on completion.">90 MIN</button>
   </div>
   <div id="mirrorBanner" style="background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(78,205,196,0.08));border:1px solid #a855f7;border-radius:6px;padding:8px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#a855f7;letter-spacing:1px;line-height:1.8;">&#128225; MIRROR MODE &mdash; READ ONLY<br><span style="font-family:'Courier New',monospace;font-size:9px;color:#5a5a7e;">Viewing stats from main browser. Use Brave to make changes.</span></div>
   <div id="challengeBanner" style="display:none;background:linear-gradient(135deg,rgba(255,140,58,0.12),rgba(255,215,0,0.08));border:1px solid #ff8c3a;border-radius:6px;padding:6px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Idle Challenge active! Complete this session without pausing for 1.5x rewards.">&#9876; IDLE CHALLENGE ACTIVE &mdash; 1.5x REWARDS &#9876;</div>

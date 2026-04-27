@@ -18,6 +18,50 @@
 
 // PixelFocus Background Service Worker
 
+// v3.23.35: Open surveillance nag as a popup window that re-focuses every 5s
+var _nagWindowId = null;
+function openNagPopup(htmlPath) {
+  var url = chrome.runtime.getURL(htmlPath);
+  console.log('[NagPopup] Opening:', url);
+  // Close any existing nag window first
+  if (_nagWindowId) {
+    try { chrome.windows.remove(_nagWindowId, function() {}); } catch(_) {}
+    _nagWindowId = null;
+  }
+  try {
+    chrome.windows.create({
+      url: url, type: 'popup', width: 480, height: 580, focused: true
+    }, function(win) {
+      if (chrome.runtime.lastError) {
+        console.warn('[NagPopup] windows.create error:', chrome.runtime.lastError.message);
+        // Fallback: open as tab
+        openPixelFocusWindow(htmlPath);
+        return;
+      }
+      if (win && win.id) {
+        _nagWindowId = win.id;
+        console.log('[NagPopup] Created window', win.id);
+        // Re-focus every 5s so it stays on top
+        var _refId = setInterval(function() {
+          if (!_nagWindowId) { clearInterval(_refId); return; }
+          try {
+            chrome.windows.get(_nagWindowId, function(w) {
+              if (chrome.runtime.lastError || !w) { _nagWindowId = null; clearInterval(_refId); return; }
+              chrome.windows.update(_nagWindowId, { focused: true });
+            });
+          } catch(_) { clearInterval(_refId); }
+        }, 5000);
+      } else {
+        console.warn('[NagPopup] No window returned, falling back to tab');
+        openPixelFocusWindow(htmlPath);
+      }
+    });
+  } catch(e) {
+    console.warn('[NagPopup] Exception:', e);
+    openPixelFocusWindow(htmlPath);
+  }
+}
+
 function openPixelFocusWindow(htmlPath) {
   var url = chrome.runtime.getURL(htmlPath);
   chrome.tabs.query({}, function(tabs) {
@@ -92,6 +136,16 @@ function _syncPenaltyTracking() {
   } catch(_) {}
 }
 
+// v3.23.35: SAFETY — never write pixelFocusState unless it has real data.
+function _safeSaveState(stateObj) {
+  if (!stateObj || typeof stateObj !== 'object') return;
+  if (!stateObj.profileId && !stateObj.xp && (!stateObj.tasks || Object.keys(stateObj.tasks).length <= 1)) {
+    console.warn('[BG-Safety] BLOCKED write of empty/wiped state to pixelFocusState.');
+    return;
+  }
+  chrome.storage.local.set({ pixelFocusState: stateObj });
+}
+
 // Restore on startup (service worker wake)
 try {
   chrome.storage.local.get('pixelPenaltyTracking', function(result) {
@@ -110,25 +164,55 @@ try {
     // v3.23.12: If we restored an active (unresolved) timer but the window is gone,
     // verify the window still exists. If not, the penalty would have been handled
     // by the alarm already — just clean up.
+    // v3.23.35: On reload, stale windows go blank. Close them and reopen fresh.
     if (_promiseTimerWindowId && !_promiseTimerResolved) {
-      chrome.windows.get(_promiseTimerWindowId, function(win) {
-        if (chrome.runtime.lastError || !win) {
-          console.log('[PenaltyTracking] Promise timer window ' + _promiseTimerWindowId + ' no longer exists.');
-          // Don't penalize here — the alarm or apply function will handle it
-          // with proper timerState checks. Just note it's gone.
-          _promiseTimerWindowId = null;
-          _syncPenaltyTracking();
-        }
-      });
+      // Calculate remaining time from when it was started
+      var _promiseElapsed = _promiseTimerStartedAt ? (Date.now() - _promiseTimerStartedAt) : 0;
+      var _promiseRemainMs = Math.max(0, (3 * 60 * 1000) - _promiseElapsed);
+      // Close the stale blank window
+      try { chrome.windows.remove(_promiseTimerWindowId, function() {}); } catch(_) {}
+      _promiseTimerWindowId = null;
+      if (_promiseRemainMs > 5000) {
+        // Reopen with remaining time
+        var _pUrl = chrome.runtime.getURL('promise-timer.html?remain=' + Math.round(_promiseRemainMs / 1000));
+        chrome.windows.create({
+          url: _pUrl, type: 'popup', width: 380, height: 360, focused: true,
+          top: 80, left: Math.round((screen.availWidth || 1200) - 420)
+        }, function(win) {
+          if (win && win.id) {
+            _setPromiseTimer(win.id, false);
+            console.log('[PenaltyTracking] Promise timer REOPENED with ' + Math.round(_promiseRemainMs/1000) + 's remaining.');
+            var _refocusId = setInterval(function() {
+              if (!_promiseTimerWindowId || _promiseTimerResolved) { clearInterval(_refocusId); return; }
+              try { chrome.windows.update(_promiseTimerWindowId, { focused: true }); } catch(_) { clearInterval(_refocusId); }
+            }, 5000);
+          }
+        });
+      } else {
+        console.log('[PenaltyTracking] Promise timer expired during reload. Letting alarm handle it.');
+        _syncPenaltyTracking();
+      }
     }
     if (_penaltyTimerWindowId && !_penaltyTimerResolved) {
-      chrome.windows.get(_penaltyTimerWindowId, function(win) {
-        if (chrome.runtime.lastError || !win) {
-          console.log('[PenaltyTracking] Penalty timer window ' + _penaltyTimerWindowId + ' no longer exists.');
-          _penaltyTimerWindowId = null;
-          _syncPenaltyTracking();
-        }
-      });
+      var _penElapsed = _penaltyTimerStartedAt ? (Date.now() - _penaltyTimerStartedAt) : 0;
+      var _penRemainMs = Math.max(0, (3 * 60 * 1000) - _penElapsed);
+      try { chrome.windows.remove(_penaltyTimerWindowId, function() {}); } catch(_) {}
+      _penaltyTimerWindowId = null;
+      if (_penRemainMs > 5000) {
+        var _penUrl = chrome.runtime.getURL('penalty-timer.html?remain=' + Math.round(_penRemainMs / 1000));
+        chrome.windows.create({
+          url: _penUrl, type: 'popup', width: 380, height: 360, focused: true,
+          top: 80, left: Math.round((screen.availWidth || 1200) - 420)
+        }, function(win) {
+          if (win && win.id) {
+            _setPenaltyTimer(win.id, false);
+            console.log('[PenaltyTracking] Penalty timer REOPENED with ' + Math.round(_penRemainMs/1000) + 's remaining.');
+          }
+        });
+      } else {
+        console.log('[PenaltyTracking] Penalty timer expired during reload.');
+        _syncPenaltyTracking();
+      }
     }
   });
 } catch(_) {}
@@ -156,7 +240,7 @@ function clearPenaltyActiveFlag() {
         var s = r.pixelFocusState || {};
         if (s.penaltyCountdownActive) {
           s.penaltyCountdownActive = false;
-          chrome.storage.local.set({ pixelFocusState: s });
+          _safeSaveState(s);
           console.log('[Penalty] penaltyCountdownActive cleared.');
         }
       });
@@ -196,7 +280,7 @@ function applyPromisePenalty() {
       _setPromiseTimer(null, true);
       // Clear the flag
       state.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       return;
     }
 
@@ -206,7 +290,7 @@ function applyPromisePenalty() {
         Math.round((state.timerEndsAt - Date.now()) / 1000) + 's left). Penalty CANCELLED.');
       _setPromiseTimer(null, true);
       state.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       return;
     }
 
@@ -217,7 +301,7 @@ function applyPromisePenalty() {
         Math.round((Date.now() - state.lastStartedSessionAt) / 1000) + 's ago. Penalty CANCELLED.');
       _setPromiseTimer(null, true);
       state.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       return;
     }
 
@@ -238,7 +322,7 @@ function applyPromisePenalty() {
     var prevCoins = state.coins || 0;
     state.coins = Math.max(0, prevCoins - PROMISE_PENALTY);
     state.penaltyCountdownActive = false;
-    chrome.storage.local.set({ pixelFocusState: state });
+    _safeSaveState(state);
     console.log('[PromiseTimer] PENALTY APPLIED: $' + PROMISE_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
     try {
@@ -276,14 +360,14 @@ function applyPenaltyTimerPenalty() {
       console.log('[PenaltyTimer] SAFETY CHECK: timerState=' + state.timerState + '. Penalty CANCELLED.');
       _setPenaltyTimer(null, true);
       state.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       return;
     }
     if (state.timerEndsAt && state.timerEndsAt > Date.now()) {
       console.log('[PenaltyTimer] SAFETY CHECK: timerEndsAt in future. Penalty CANCELLED.');
       _setPenaltyTimer(null, true);
       state.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       return;
     }
     if (state.lastStartedSessionAt && (Date.now() - state.lastStartedSessionAt) < 300000) {
@@ -291,7 +375,7 @@ function applyPenaltyTimerPenalty() {
         Math.round((Date.now() - state.lastStartedSessionAt) / 1000) + 's ago. Penalty CANCELLED.');
       _setPenaltyTimer(null, true);
       state.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       return;
     }
     if (_penaltyTimerStartedAt && (Date.now() - _penaltyTimerStartedAt) < 10000) {
@@ -308,7 +392,7 @@ function applyPenaltyTimerPenalty() {
     var prevCoins = state.coins || 0;
     state.coins = Math.max(0, prevCoins - PENALTY_TIMER_PENALTY);
     state.penaltyCountdownActive = false;
-    chrome.storage.local.set({ pixelFocusState: state });
+    _safeSaveState(state);
     console.log('[PenaltyTimer] PENALTY APPLIED: $' + PENALTY_TIMER_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
     try {
@@ -355,7 +439,7 @@ chrome.storage.onChanged.addListener(function(changes, area) {
     // Reset consecutive NOs — they're at least trying
     if (newState.surveillanceConsecutiveNos > 0) {
       newState.surveillanceConsecutiveNos = 0;
-      chrome.storage.local.set({ pixelFocusState: newState });
+      _safeSaveState(newState);
       console.log('[Surveillance] Consecutive NOs reset — focus timer started.');
     }
   }
@@ -404,7 +488,7 @@ chrome.storage.onChanged.addListener(function(changes, area) {
     }
     if (anyCancelled) {
       newState.penaltyCountdownActive = false;
-      chrome.storage.local.set({ pixelFocusState: newState });
+      _safeSaveState(newState);
     }
   }
 });
@@ -464,7 +548,11 @@ chrome.windows.onRemoved.addListener(function(windowId) {
 
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   if (msg && msg.type === 'pf-open' && typeof msg.path === 'string') {
-    openPixelFocusWindow(msg.path);
+    if (msg.path.indexOf('surveillance-nag') !== -1) {
+      openNagPopup(msg.path);
+    } else {
+      openPixelFocusWindow(msg.path);
+    }
     sendResponse({ ok: true });
   }
   // v3.22.91: Open promise timer as a popup window AND track it in background
@@ -476,7 +564,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       url: promiseUrl,
       type: 'popup',
       width: 380,
-      height: 260,
+      height: 360,
       focused: true,
       top: 80,
       left: Math.round((screen.availWidth || 1200) - 420)
@@ -485,11 +573,16 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         _setPromiseTimer(win.id, false, Date.now());
         console.log('[PromiseTimer] Window opened. windowId=' + win.id + ', deadline in 3 minutes.');
         chrome.alarms.create('pixelfocus-promise-deadline', { delayInMinutes: 3 });
+        // v3.23.35: Re-focus every 5s so it stays on top
+        var _refocusId = setInterval(function() {
+          if (!_promiseTimerWindowId || _promiseTimerResolved) { clearInterval(_refocusId); return; }
+          try { chrome.windows.update(_promiseTimerWindowId, { focused: true }); } catch(_) { clearInterval(_refocusId); }
+        }, 5000);
         // v3.23.2: Flag for pause/reset warning
         chrome.storage.local.get('pixelFocusState', function(r) {
           var s = r.pixelFocusState || {};
           s.penaltyCountdownActive = true;
-          chrome.storage.local.set({ pixelFocusState: s });
+          _safeSaveState(s);
         });
       } else if (!isTestPromise) {
         console.warn('[PromiseTimer] Window creation returned no window or no ID. Penalty tracking NOT active.');
@@ -521,7 +614,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       chrome.storage.local.get('pixelFocusState', function(r) {
         var s = r.pixelFocusState || {};
         s.penaltyCountdownActive = true;
-        chrome.storage.local.set({ pixelFocusState: s });
+        _safeSaveState(s);
       });
     }
     try { sendResponse({ ok: true }); } catch(_) {}
@@ -537,7 +630,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       chrome.storage.local.get('pixelFocusState', function(r) {
         var s = r.pixelFocusState || {};
         s.penaltyCountdownActive = true;
-        chrome.storage.local.set({ pixelFocusState: s });
+        _safeSaveState(s);
       });
     }
     try { sendResponse({ ok: true }); } catch(_) {}
@@ -562,7 +655,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         chrome.storage.local.get('pixelFocusState', function(r) {
           var s = r.pixelFocusState || {};
           s.penaltyCountdownActive = true;
-          chrome.storage.local.set({ pixelFocusState: s });
+          _safeSaveState(s);
         });
       } else if (!isTestPenalty) {
         console.warn('[PenaltyTimer] Window creation returned no window or no ID. Penalty tracking NOT active.');
@@ -773,7 +866,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       // v3.23.15: Stamp every alarm fire so wake-from-sleep detection works.
       // Must be BEFORE guards so it updates even when blocked.
       state._ctIdleLastAlarmAt = now;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
 
       console.log(_dbg + 'timerState=' + (state.timerState || 'undefined') +
         ' timerEndsAt=' + (state.timerEndsAt ? new Date(state.timerEndsAt).toLocaleTimeString() : 'none') +
@@ -837,7 +930,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       if (lastAlarmFire && (now - lastAlarmFire) > 600000) {
         console.log(_dbg + 'BLOCKED by wake-from-sleep (last alarm was ' + Math.round((now - lastAlarmFire) / 60000) + 'min ago, gap > 10min)');
         state._ctIdleLastAlarmAt = now;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state);
         return;
       }
       state._ctIdleLastAlarmAt = now;
@@ -845,7 +938,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       // Fire! Open the challenge window + Cold Turkey + notification
       state.coldTurkeyLastIdleOpen = now;
       state.challengeOfferedAt = now; // v3.22.89: gate so manual navigation can't exploit
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
 
       // v3.23.15: Open challenge as a popup window (not a tab)
       chrome.windows.create({
@@ -899,7 +992,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       // v3.23.15: Stamp + wake-from-sleep detection (same as CT-Idle)
       var lastFocusAlarm = state._focusIdleLastAlarmAt || 0;
       state._focusIdleLastAlarmAt = now;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       if (lastFocusAlarm && (now - lastFocusAlarm) > 600000) {
         console.log(_dbg + 'BLOCKED by wake-from-sleep (gap ' + Math.round((now - lastFocusAlarm) / 60000) + 'min)');
         return;
@@ -945,7 +1038,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       console.warn(_dbg + 'ALL GUARDS PASSED — FIRING idle nudge!');
 
       state.focusIdleLastNudge = now;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
 
       try {
         chrome.notifications.create('focus-idle-nudge', {
@@ -974,7 +1067,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       if (state.surveillanceEndsAt && state.surveillanceEndsAt <= now) {
         state.surveillanceActive = false;
         state.surveillanceNagCount = 0;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state);
         return;
       }
 
@@ -985,7 +1078,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
         // Reset nag anchor so it doesn't fire the SECOND the timer ends
         if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
           state.surveillanceLastNag = now;
-          chrome.storage.local.set({ pixelFocusState: state });
+          _safeSaveState(state);
         }
         return;
       }
@@ -993,7 +1086,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
         // Grace period — also reset nag anchor so nag is 5 min from NOW, not from session start
         if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
           state.surveillanceLastNag = now;
-          chrome.storage.local.set({ pixelFocusState: state });
+          _safeSaveState(state);
         }
         return;
       }
@@ -1015,7 +1108,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       if (nagNum >= 3) {
         state.surveillanceNagCount = 0;
       }
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
 
       // Notification with escalating messages
       var nagTitle = nagNum >= 3 && !state.surveillancePenaltyApplied ? 'STRIKE 3 \u2014 $100 PENALTY'
@@ -1036,7 +1129,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       // Every nag: open surveillance window + Cold Turkey
       var nagPath = 'surveillance-nag.html' + (nagNum >= 3 && state.surveillancePenaltyApplied ? '?penalty=1' : '');
-      try { openPixelFocusWindow(nagPath); } catch(_){}
+      try { openNagPopup(nagPath); } catch(_){}
       setTimeout(function() {
         try {
           chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {});
@@ -1065,7 +1158,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
         if (state.coldTurkeyLastSiteNagAt && (Date.now() - state.coldTurkeyLastSiteNagAt) < TWO_HOURS) return;
         // 2 hours passed — reset and allow nagging again
         state.siteNagUnackedCount = 0;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state);
       }
 
       // Escalating cooldowns: after 1st nag wait 5min, after 2nd/3rd wait 10min
@@ -1089,7 +1182,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
         // Fire! Update timestamp + increment unacked count
         state.coldTurkeyLastSiteNagAt = Date.now();
         state.siteNagUnackedCount = (state.siteNagUnackedCount || 0) + 1;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state);
 
         // Open Cold Turkey via native messaging
         try {
@@ -1193,7 +1286,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
                       } catch (_) {}
                       st.volumeMuteAntagonizeCount = 0;
                     }
-                    chrome.storage.local.set({ pixelFocusState: st });
+                    _safeSaveState(st);
                   });
                 });
               } catch (_) {}
@@ -1279,7 +1372,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
     state.lastActiveDate = today;
     state.sessionBlocks = 0;
 
-    chrome.storage.local.set({ pixelFocusState: state });
+    _safeSaveState(state);
   });
 });
 
@@ -1291,7 +1384,7 @@ chrome.notifications.onClicked.addListener(function(notifId) {
       if (!state) return;
       state.volumeMutePausedUntil = Date.now() + 30 * 60 * 1000;
       state.volumeMuteAntagonizeCount = 0;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       // Unmute immediately
       try {
         chrome.runtime.sendNativeMessage('com.todooftheloom.volume', { action: 'unmute' }, function() {});
@@ -1313,7 +1406,7 @@ chrome.notifications.onClicked.addListener(function(notifId) {
       var state = result.pixelFocusState;
       if (!state) return;
       state.siteNagUnackedCount = 0;
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       console.log('[SiteNag] Acknowledged via notification click — counter reset.');
     });
   }
@@ -1390,7 +1483,7 @@ chrome.runtime.onStartup.addListener(function() {
     if (state && state.autoReopenTodoList) {
       // v3.21.54: Stamp when auto-start last fired so settings can show status
       state.lastAutoStartAt = Date.now();
-      chrome.storage.local.set({ pixelFocusState: state });
+      _safeSaveState(state);
       setTimeout(function() { openPixelFocusWindow('popup.html'); }, 2000);
     }
   });
@@ -1418,7 +1511,7 @@ function opportunisticSurveillanceCheck() {
       // v3.22.98: Reset nag anchor while timer is active so nag doesn't fire the instant it ends
       if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
         state.surveillanceLastNag = now;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state);
       }
       return;
     }
@@ -1428,7 +1521,7 @@ function opportunisticSurveillanceCheck() {
       // v3.22.98: Grace period — reset anchor so nag is 5 min from now
       if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
         state.surveillanceLastNag = now;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state);
       }
       return;
     }
@@ -1452,7 +1545,7 @@ function opportunisticSurveillanceCheck() {
     if (nagNum >= 3) {
       state.surveillanceNagCount = 0;
     }
-    chrome.storage.local.set({ pixelFocusState: state });
+    _safeSaveState(state);
 
     // Notification
     var nagTitle = penaltyJustApplied ? 'STRIKE 3 — $100 PENALTY'
@@ -1473,7 +1566,7 @@ function opportunisticSurveillanceCheck() {
 
     // Open surveillance window + Cold Turkey
     var nagPath = 'surveillance-nag.html' + (penaltyJustApplied ? '?penalty=1' : '');
-    try { openPixelFocusWindow(nagPath); } catch(_){}
+    try { openNagPopup(nagPath); } catch(_){}
     setTimeout(function() {
       try {
         chrome.runtime.sendNativeMessage('com.todooftheloom.coldturkey', { action: 'open' }, function() {});
