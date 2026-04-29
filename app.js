@@ -1214,7 +1214,7 @@ try {
   } catch (_) {}
 
   function load(cb) {
-    chrome.storage.local.get(['pixelFocusState', 'pixelFocusState_backup_safe', 'pixelFocusState_backup_safe2'], (result) => {
+    chrome.storage.local.get(['pixelFocusState', 'pixelFocusState_backup_safe', 'pixelFocusState_backup_safe2', 'pixelFocusProfileId'], (result) => {
       // v3.23.34: Auto-recovery — if main state is wiped but backup exists, use backup
       var _loaded = result.pixelFocusState;
       if (_loaded && ((_loaded.xp || 0) === 0) && (Object.keys(_loaded.tasks || {}).length <= 1)) {
@@ -1239,6 +1239,12 @@ try {
           _loaded = _backupB;
           chrome.storage.local.set({ pixelFocusState: _loaded });
         }
+      }
+      // v3.23.46: Recover profileId from separate backup key if state lost it
+      if (_loaded && !_loaded.profileId && result.pixelFocusProfileId) {
+        _loaded.profileId = result.pixelFocusProfileId;
+        console.log('[Load] Recovered profileId from backup key: ' + result.pixelFocusProfileId);
+        chrome.storage.local.set({ pixelFocusState: _loaded });
       }
       if (_loaded) {
         state = { ...DEFAULT_STATE, ..._loaded };
@@ -5520,6 +5526,19 @@ try {
                 }
                 return;
               }
+              // v3.23.45: Detect sleep — if gap > 15 min, computer was closed. Reset, don't punish.
+              if (lastNag && (_now - lastNag) > 900000) {
+                console.log('[Surveillance] Sleep detected (' + Math.round((_now - lastNag)/60000) + ' min gap). Resetting.');
+                st.surveillanceNagCount = 0;
+                st.surveillanceLastNag = _now;
+                st.surveillancePenaltyApplied = false;
+                state.surveillanceNagCount = 0;
+                state.surveillanceLastNag = _now;
+                state.surveillancePenaltyApplied = false;
+                try { chrome.storage.local.set({ pixelFocusState: st }); } catch(_) {}
+                elapsedEl.textContent = txt + '  |  SLEEP DETECTED — NAG RESET';
+                return;
+              }
               // Lock to prevent re-fire on next tick
               window._survNagFiring = true;
               st.surveillanceNagCount = (st.surveillanceNagCount || 0) + 1;
@@ -6576,6 +6595,7 @@ try {
   // the long runs. Returns { blocks, bonus } — total produced = blocks + bonus.
   function getSessionReward(sec) {
     sec = parseInt(sec, 10) || 600;
+    if (sec >= 5400) return { blocks: 9, bonus: 5, label: '90-minute ultra marathon' };
     if (sec >= 3600) return { blocks: 6, bonus: 3, label: '60-minute marathon' };
     if (sec >= 1800) return { blocks: 3, bonus: 1, label: '30-minute deep run' };
     if (sec >= 1200) return { blocks: 2, bonus: 0, label: '20-minute double' };

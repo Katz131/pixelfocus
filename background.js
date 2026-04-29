@@ -30,7 +30,7 @@ function openNagPopup(htmlPath) {
   }
   try {
     chrome.windows.create({
-      url: url, type: 'popup', width: 480, height: 580, focused: true
+      url: url, type: 'popup', width: 480, height: 720, focused: true
     }, function(win) {
       if (chrome.runtime.lastError) {
         console.warn('[NagPopup] windows.create error:', chrome.runtime.lastError.message);
@@ -1094,6 +1094,18 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       // Respect the 5-min nag interval — don't double-fire with page-side
       var lastNag = state.surveillanceLastNag || 0;
       if (lastNag && (now - lastNag) < 280000) return; // 4m40s to avoid edge races with page-side 5m
+
+      // v3.23.45: Detect computer sleep/lid close — if gap since last nag is
+      // more than 15 minutes, the computer was likely asleep. Reset the nag
+      // counter and anchor time instead of punishing the user for being away.
+      if (lastNag && (now - lastNag) > 900000) {
+        console.log('[Surveillance] Large gap detected (' + Math.round((now - lastNag)/60000) + ' min) — computer was likely asleep. Resetting nag counter.');
+        state.surveillanceNagCount = 0;
+        state.surveillanceLastNag = now;
+        state.surveillancePenaltyApplied = false;
+        _safeSaveState(state);
+        return;
+      }
 
       // Increment nag count
       state.surveillanceNagCount = (state.surveillanceNagCount || 0) + 1;

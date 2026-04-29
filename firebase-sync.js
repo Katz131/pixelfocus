@@ -258,12 +258,17 @@
       profileId = generateProfileId();
       state.profileId = profileId;
       needsSave = true;
+      console.warn('[ProfileSync] Generated NEW profileId: ' + profileId);
     }
 
-    // Save profile ID back to state if newly generated
+    // v3.23.46: Always save profileId to a separate key that survives state wipes
     if (needsSave) {
       try {
-        chrome.storage.local.set({ pixelFocusState: state });
+        chrome.storage.local.set({ pixelFocusState: state, pixelFocusProfileId: profileId });
+      } catch (_) {}
+    } else {
+      try {
+        chrome.storage.local.set({ pixelFocusProfileId: profileId });
       } catch (_) {}
     }
 

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cleanup Duplicate Profiles</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #08080f; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 30px; }
+h1 { font-size: 18px; color: #4ecdc4; margin-bottom: 20px; }
+.profile { background: #12122a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.profile.real { border-color: #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.2); }
+.profile .info { font-size: 13px; line-height: 1.6; }
+.profile .id { font-size: 10px; color: #5a5a7e; font-family: monospace; }
+.profile .name { color: #ffd700; font-weight: bold; }
+.profile .xp { color: #4ecdc4; }
+.profile .date { color: #5a5a7e; font-size: 11px; }
+.btn-delete { background: #ff4444; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 12px; font-weight: bold; }
+.btn-delete:hover { background: #ff6666; }
+.btn-keep { background: #00ff88; color: #0a0a14; border: none; border-radius: 6px; padding: 8px 16px; font-size: 12px; font-weight: bold; cursor: default; }
+.status { margin-top: 10px; padding: 10px; background: #1a1a3a; border-radius: 6px; font-size: 12px; color: #4ecdc4; }
+.loading { color: #ffd700; font-size: 14px; margin: 20px 0; }
+</style>
+</head>
+<body>
+<h1>Cleanup Duplicate Profiles</h1>
+<p style="color:#5a5a7e;margin-bottom:20px;font-size:13px;">Your real profile ID is <strong style="color:#00ff88;">336ysd55fgia</strong>. Duplicates are marked with a DELETE button. Click to remove them from the leaderboard.</p>
+<div id="list"><div class="loading">Loading profiles...</div></div>
+<div id="status"></div>
+
+<script>
+var API_KEY = 'AIzaSyCd200oa970-M-sDbcEn4U7dfENVBm4FOA';
+var BASE = 'https://firestore.googleapis.com/v1/projects/todo-of-the-loom/databases/(default)/documents';
+var REAL_ID = '336ysd55fgia';
+
+function loadProfiles() {
+  var listEl = document.getElementById('list');
+  fetch(BASE + '/profiles?key=' + API_KEY + '&pageSize=100')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var docs = data.documents || [];
+      if (docs.length === 0) { listEl.innerHTML = '<p>No profiles found.</p>'; return; }
+      listEl.innerHTML = '';
+      docs.forEach(function(doc) {
+        var id = doc.name.split('/').pop();
+        var f = doc.fields || {};
+        var name = (f.displayName && f.displayName.stringValue) || '(no name)';
+        var xp = (f.xp && f.xp.integerValue) || '0';
+        var level = (f.level && f.level.integerValue) || '?';
+        var updated = (f.updatedAt && f.updatedAt.stringValue) || '?';
+        var isReal = (id === REAL_ID);
+
+        var div = document.createElement('div');
+        div.className = 'profile' + (isReal ? ' real' : '');
+        div.innerHTML = '<div class="info">' +
+          '<div class="name">' + name + '</div>' +
+          '<div class="id">ID: ' + id + '</div>' +
+          '<div><span class="xp">Level ' + level + ' (XP: ' + xp + ')</span></div>' +
+          '<div class="date">Updated: ' + updated + '</div>' +
+          '</div>';
+
+        if (isReal) {
+          var keep = document.createElement('button');
+          keep.className = 'btn-keep';
+          keep.textContent = 'YOUR PROFILE';
+          div.appendChild(keep);
+        } else {
+          var del = document.createElement('button');
+          del.className = 'btn-delete';
+          del.textContent = 'DELETE';
+          del.onclick = (function(profileId, el) {
+            return function() {
+              if (!confirm('Delete profile ' + profileId + '?')) return;
+              fetch(BASE + '/profiles/' + profileId + '?key=' + API_KEY, { method: 'DELETE' })
+                .then(function(r) {
+                  if (r.ok || r.status === 200 || r.status === 204) {
+                    el.style.opacity = '0.3';
+                    el.querySelector('.btn-delete').textContent = 'DELETED';
+                    el.querySelector('.btn-delete').disabled = true;
+                    document.getElementById('status').innerHTML = '<div class="status">Deleted ' + profileId + '</div>';
+                  } else {
+                    alert('Failed to delete: ' + r.status);
+                  }
+                })
+                .catch(function(err) { alert('Error: ' + err); });
+            };
+          })(id, div);
+          div.appendChild(del);
+        }
+        listEl.appendChild(div);
+      });
+    })
+    .catch(function(err) {
+      listEl.innerHTML = '<p style="color:#ff4444;">Failed to load profiles: ' + err + '</p>';
+    });
+}
+
+loadProfiles();
+</script>
+</body>
+</html>
