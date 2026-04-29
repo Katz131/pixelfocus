@@ -14,7 +14,7 @@
     try {
       chrome.windows.create({
         url: chrome.runtime.getURL('promise-timer.html'),
-        type: 'popup', width: 380, height: 260, focused: true,
+        type: 'popup', width: 380, height: 420, focused: true,
         top: 80, left: Math.round((screen.availWidth || 1200) - 420)
       }, function(win) {
         // Also notify background so it can track the window for penalty enforcement
@@ -29,7 +29,7 @@
     try {
       chrome.windows.create({
         url: chrome.runtime.getURL('penalty-timer.html'),
-        type: 'popup', width: 380, height: 300, focused: true,
+        type: 'popup', width: 380, height: 420, focused: true,
         top: 80, left: Math.round((screen.availWidth || 1200) - 420)
       }, function(win) {
         try { chrome.runtime.sendMessage({ type: 'TRACK_PENALTY_TIMER', windowId: win && win.id }); } catch(_) {}

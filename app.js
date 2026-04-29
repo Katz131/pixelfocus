@@ -1188,6 +1188,27 @@ try {
           });
           if (_merged) console.log('[StorageSync] Merged focusHistory from another page.');
         }
+        // v3.23.40: Also merge dailyReminders so multi-page saves don't clobber them
+        var _newDR = changes.pixelFocusState.newValue.dailyReminders;
+        if (Array.isArray(_newDR) && _newDR.length > 0) {
+          if (!Array.isArray(state.dailyReminders)) state.dailyReminders = [];
+          var _existIds = {};
+          state.dailyReminders.forEach(function(r) { _existIds[r.id] = true; });
+          var _drMerged = false;
+          _newDR.forEach(function(r) {
+            if (r && r.id && !_existIds[r.id]) {
+              state.dailyReminders.push(r);
+              _existIds[r.id] = true;
+              _drMerged = true;
+            }
+          });
+          // Also handle deletions: if source has fewer, adopt their list
+          if (!_drMerged && _newDR.length < state.dailyReminders.length) {
+            state.dailyReminders = _newDR;
+            _drMerged = true;
+          }
+          if (_drMerged) console.log('[StorageSync] Merged dailyReminders from another page.');
+        }
       }
     });
   } catch (_) {}
@@ -9761,13 +9782,16 @@ try {
     }
     if (!lastInteraction) { state.lastWelcomeBackCheck = now; save(); return; }
     var goneMs = now - lastInteraction, FOUR_HOURS = 4 * 60 * 60 * 1000;
-    if (goneMs < FOUR_HOURS) { state.lastWelcomeBackCheck = now; save(); return; }
+    // v3.23.41: Do NOT reset lastWelcomeBackCheck when gap < 4h.
+    // Only update it when the welcome screen actually fires.
+    // This prevents extension reloads from resetting the clock.
+    if (goneMs < FOUR_HOURS) return;
     var empLevel = state.hireEmployeesLevel || 0, passiveCoins = 0;
     if (empLevel > 0 && (state.streak || 0) > 0) { passiveCoins = Math.round(empLevel * (state.streak || 0) * 0.5 * Math.min(goneMs / 60000, 300)); }
     var passiveTextiles = 0, autoloomLevel = state.autoloomLevel || 0;
     if (autoloomLevel > 0) { var periodMin = [0, 7200, 2880, 1440, 720, 240][Math.min(autoloomLevel, 5)]; if (periodMin > 0) passiveTextiles = Math.floor((goneMs / 60000) / periodMin); }
     state.lastWelcomeBackCheck = now; save();
-    if (passiveCoins > 0 || passiveTextiles > 0 || goneMs >= FOUR_HOURS) showWelcomeBack(goneMs, passiveCoins, passiveTextiles);
+    showWelcomeBack(goneMs, passiveCoins, passiveTextiles);
   }
 
   // ============== INIT ==============

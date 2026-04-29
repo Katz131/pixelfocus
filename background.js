@@ -176,7 +176,7 @@ try {
         // Reopen with remaining time
         var _pUrl = chrome.runtime.getURL('promise-timer.html?remain=' + Math.round(_promiseRemainMs / 1000));
         chrome.windows.create({
-          url: _pUrl, type: 'popup', width: 380, height: 360, focused: true,
+          url: _pUrl, type: 'popup', width: 380, height: 420, focused: true,
           top: 80, left: Math.round((screen.availWidth || 1200) - 420)
         }, function(win) {
           if (win && win.id) {
@@ -201,7 +201,7 @@ try {
       if (_penRemainMs > 5000) {
         var _penUrl = chrome.runtime.getURL('penalty-timer.html?remain=' + Math.round(_penRemainMs / 1000));
         chrome.windows.create({
-          url: _penUrl, type: 'popup', width: 380, height: 360, focused: true,
+          url: _penUrl, type: 'popup', width: 380, height: 420, focused: true,
           top: 80, left: Math.round((screen.availWidth || 1200) - 420)
         }, function(win) {
           if (win && win.id) {
@@ -564,7 +564,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       url: promiseUrl,
       type: 'popup',
       width: 380,
-      height: 360,
+      height: 420,
       focused: true,
       top: 80,
       left: Math.round((screen.availWidth || 1200) - 420)
@@ -643,7 +643,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       url: penaltyUrl,
       type: 'popup',
       width: 380,
-      height: 300,
+      height: 420,
       focused: true,
       top: 80,
       left: Math.round((screen.availWidth || 1200) - 420)

@@ -296,6 +296,46 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   <div style="font-size:10px;color:var(--text-dim);margin-top:28px;opacity:0.5;position:relative;z-index:1;" id="celebTapHint">tap to continue</div>
 </div>
 
+<!-- v3.23.41: Welcome back overlay (shows after 4+ hours away) -->
+<div id="welcomeBackOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:9999;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.4s;">
+  <div id="wbParticles" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;"></div>
+  <!-- Screen 1: Welcome back + passive earnings -->
+  <div id="wbScreen1" style="text-align:center;position:relative;z-index:1;">
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Welcome back</div>
+    <div id="wbGoneDuration" style="font-size:14px;color:var(--text-dim);margin-bottom:20px;"></div>
+    <div style="display:flex;gap:28px;justify-content:center;align-items:flex-start;">
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Passive coins</div>
+        <div id="wbCoins" style="font-size:36px;font-weight:700;color:var(--accent);line-height:1;">0</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Textiles</div>
+        <div id="wbTextiles" style="font-size:36px;font-weight:700;color:var(--accent3);line-height:1;">0</div>
+      </div>
+    </div>
+  </div>
+  <!-- Screen 2: Today's status -->
+  <div id="wbScreen2" style="display:none;text-align:center;position:relative;z-index:1;">
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Today so far</div>
+    <div style="display:flex;gap:28px;justify-content:center;align-items:flex-start;margin-bottom:18px;">
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Sessions</div>
+        <div id="wbSessions" style="font-size:36px;font-weight:700;color:var(--accent3);line-height:1;">0</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Focus time</div>
+        <div id="wbFocusTime" style="font-size:36px;font-weight:700;color:var(--accent3);line-height:1;">0m</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Streak</div>
+        <div id="wbStreak" style="font-size:36px;font-weight:700;color:#ffd700;line-height:1;">0</div>
+      </div>
+    </div>
+    <div id="wbStatus" style="display:flex;gap:16px;justify-content:center;font-size:12px;color:var(--text-dim);"></div>
+  </div>
+  <div style="font-size:10px;color:var(--text-dim);margin-top:28px;opacity:0.5;position:relative;z-index:1;" id="wbTapHint">tap to continue</div>
+</div>
+
 <div class="notification" id="notification" style="position:fixed;top:-60px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);font-family:'Press Start 2P',monospace;font-size:9px;padding:10px 20px;border-radius:6px;z-index:300;transition:top 0.4s cubic-bezier(0.175,0.885,0.32,1.275);white-space:nowrap;"></div>
 
 <div class="header">
@@ -1135,6 +1175,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" id="testStreakBtn" style="background:linear-gradient(135deg,#ffd700,#ff8c3a);color:#0a0a14;border:none;border-radius:4px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 12px rgba(255,215,0,0.3);" title="Preview the daily streak celebration (shows once per day).">TEST STREAK</button>
         <button type="button" id="testRewardsBtn" style="background:linear-gradient(135deg,#4ecdc4,#00ff88);color:#0a0a14;border:none;border-radius:4px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 12px rgba(0,255,136,0.3);" title="Preview the focus time + rewards screens (shows after every focus session).">TEST REWARDS</button>
+        <button type="button" id="testWelcomeBackBtn" style="background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:4px;padding:8px 14px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 12px rgba(167,139,250,0.3);" title="Preview the welcome back screen (normally shows after 4+ hours away).">TEST WELCOME</button>
       </div>
     </div>
     <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
