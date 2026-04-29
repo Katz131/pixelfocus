@@ -64,7 +64,17 @@ jobs:
                    house.js house.html house-window.js house-dispatch.js \
                    popup-dispatch.js ratiocinatory.html ratiocinatory.js \
                    ratiocinatory-dispatch.js patsy-names.js \
-                   profile.html profile-window.js; do
+                   profile.html profile-window.js \
+                   events.js events-modal.js events-catalog.js \
+                   firebase-sync.js lockout-guard.js \
+                   surveillance-nag.html surveillance-nag-window.js \
+                   promise-timer.html promise-timer.js \
+                   penalty-timer.html penalty-timer.js \
+                   bureau.html bureau.js bureau-window.js \
+                   challenge.html challenge-window.js \
+                   timeline.html timeline-window.js \
+                   preview-daily-tasks.html preview-profile.html \
+                   resize-icon.html; do
             if [ -f "$f" ]; then
               cp "$f" "$STAGING/$f"
               echo "  + $f"
