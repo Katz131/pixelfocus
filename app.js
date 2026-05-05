@@ -10393,6 +10393,65 @@ try {
           });
         }
 
+        // v3.23.66: Add friend by Profile ID — send request directly from extension
+        var addFriendInput = $('addFriendInput');
+        var addFriendBtn = $('addFriendBtn');
+        var addFriendMsg = $('addFriendMsg');
+        if (addFriendBtn && addFriendInput) {
+          addFriendBtn.addEventListener('click', function() {
+            var targetId = (addFriendInput.value || '').trim().toLowerCase();
+            if (!targetId || targetId.length < 6) {
+              addFriendMsg.style.color = '#ff4444';
+              addFriendMsg.textContent = 'Enter a valid Profile ID (at least 6 characters).';
+              return;
+            }
+            if (targetId === state.profileId) {
+              addFriendMsg.style.color = '#ff4444';
+              addFriendMsg.textContent = 'That\'s your own ID!';
+              return;
+            }
+            if (state.friends[targetId] && state.friends[targetId].status === 'accepted') {
+              addFriendMsg.style.color = '#5aadff';
+              addFriendMsg.textContent = 'Already friends!';
+              return;
+            }
+            addFriendBtn.disabled = true;
+            addFriendBtn.textContent = '...';
+            addFriendMsg.textContent = '';
+            // Verify the target profile exists
+            window.ProfileSync.getProfile(targetId).then(function(profile) {
+              if (!profile) {
+                addFriendMsg.style.color = '#ff4444';
+                addFriendMsg.textContent = 'Profile not found. Check the ID.';
+                addFriendBtn.disabled = false;
+                addFriendBtn.textContent = 'SEND';
+                return;
+              }
+              // Send friend request to their inbox
+              return window.ProfileSync.sendInboxMessage(targetId, {
+                type: 'friend_request',
+                fromId: state.profileId,
+                fromName: state.displayName || 'A weaver',
+                createdAt: new Date().toISOString()
+              }).then(function() {
+                addFriendMsg.style.color = '#00ff88';
+                addFriendMsg.textContent = 'Friend request sent to ' + (profile.displayName || targetId) + '!';
+                addFriendInput.value = '';
+                addFriendBtn.disabled = false;
+                addFriendBtn.textContent = 'SEND';
+              });
+            }).catch(function() {
+              addFriendMsg.style.color = '#ff4444';
+              addFriendMsg.textContent = 'Failed to send. Try again.';
+              addFriendBtn.disabled = false;
+              addFriendBtn.textContent = 'SEND';
+            });
+          });
+          addFriendInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') addFriendBtn.click();
+          });
+        }
+
         // v3.23.64: Fetch and cache a friend's avatar from their profile
         function fetchFriendAvatar(friendId) {
           if (!friendId || !window.ProfileSync || !window.ProfileSync.getProfile) return;
@@ -12829,9 +12888,8 @@ try {
             // Personnel count
             var roster = 0;
             if (state.personnel) {
-              try { roster = Object.keys(state.personnel).filter(function(k) { return state.personnel[k] && state.personnel[k].hired; }).length; } catch(_) {}
+              try { roster = Object.keys(state.personnel).filter(function(k) { return state.personnelRoster && state.personnelRoster[k]; }).length || Object.keys(state.personnel).length; } catch(_) {}
             }
-            // Lives lost
             var livesLost = 0;
             if (typeof state.maxLives === 'number' && typeof state.lives === 'number') {
               livesLost = Math.max(0, state.maxLives - state.lives);
@@ -12842,6 +12900,8 @@ try {
               level: {integerValue: String(lvl.level)},
               currentXP: {integerValue: String(lvl.currentXP || 0)},
               nextLevelXP: {integerValue: String(lvl.nextLevelXP || 50)},
+              xp: {integerValue: String(state.xp || 0)},
+              title: {stringValue: lvl.level >= 100 ? 'Omnifabric Singularity' : (state.title || 'Would-Be Weaver')},
               streak: {integerValue: String(state.streak || 0)},
               longestStreak: {integerValue: String(Math.max(state.longestStreak || 0, state.streak || 0))},
               lifetimeBlocks: {integerValue: String(state.totalLifetimeBlocks || 0)},
