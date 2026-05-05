@@ -10926,17 +10926,16 @@ try {
                     }
                   }
                 } else if (msg.type === 'access_request') {
-                  // Only show if they're an accepted friend
+                  // v3.23.70: Show access requests from accepted friends.
+                  // If not yet friends, keep the message (don't delete) — it may
+                  // be valid once the friends list restores from cloud.
                   if (state.friends[msg.fromId] && state.friends[msg.fromId].status === 'accepted') {
-                    // v3.23.65: Dedup access requests per person
                     var alreadyHaveAccess = accessReqs.some(function(r) { return r.fromId === msg.fromId; });
                     if (alreadyHaveAccess) {
                       try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                     } else {
                       accessReqs.push(msg);
                     }
-                  } else {
-                    try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   }
                 } else if (msg.type === 'task') {
                   tasks.push(msg);
@@ -11012,11 +11011,17 @@ try {
         // Initial render
         renderFriends();
 
-        // v3.23.70: Restore friends from Firestore if local state lost them
+        // v3.23.70: Restore friends from Firestore BEFORE polling inbox
+        // Without this, pollInbox may silently delete access requests from
+        // friends whose local state was lost.
+        function startInboxPolling() {
+          setTimeout(pollInbox, 1000);
+          setInterval(pollInbox, 30000);
+        }
         try {
           if (state.profileId && window.ProfileSync && window.ProfileSync.getSocialData) {
             window.ProfileSync.getSocialData(state.profileId).then(function(social) {
-              if (!social || !social.friends) return;
+              if (!social || !social.friends) { startInboxPolling(); return; }
               var cloudFriends = social.friends;
               var localFriends = state.friends || {};
               var changed = false;
@@ -11032,15 +11037,17 @@ try {
                 renderFriends();
                 console.log('[Friends] Restored friends from Firestore cloud backup');
               }
+              startInboxPolling();
             }).catch(function(err) {
               console.warn('[Friends] Cloud restore failed:', err);
+              startInboxPolling();
             });
+          } else {
+            startInboxPolling();
           }
-        } catch(_) {}
-
-        // Poll on startup + every 30 seconds
-        setTimeout(pollInbox, 3000);
-        setInterval(pollInbox, 30000);
+        } catch(_) {
+          startInboxPolling();
+        }
       })();
 
       // ===== Passive ticks: autoloom + streak coin trickle =====
@@ -13067,6 +13074,7 @@ try {
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({fields: fields})
             }).then(function(r) {
+              console.log('[FallbackSync] ' + (r.ok ? 'OK' : 'Failed: ' + r.status));
               console.log('[FallbackSync] ' + (r.ok ? 'OK' : 'Failed: ' + r.status));
             }).catch(function(e) {
               console.warn('[FallbackSync] Error:', e);
