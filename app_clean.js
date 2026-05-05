@@ -10754,7 +10754,20 @@ try {
               };
               save();
               try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
-              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              // v3.23.71: Persist to Firestore with retry so acceptance isn't lost
+              var _socialWriteDone = false;
+              function _writeSocial() {
+                try {
+                  window.ProfileSync.putSocialData(state.profileId, { friends: state.friends })
+                    .then(function() { _socialWriteDone = true; })
+                    .catch(function() {
+                      if (!_socialWriteDone) setTimeout(_writeSocial, 5000);
+                    });
+                } catch(_) {
+                  if (!_socialWriteDone) setTimeout(_writeSocial, 5000);
+                }
+              }
+              _writeSocial();
               try {
                 window.ProfileSync.sendInboxMessage(fid, {
                   type: 'friend_accepted',
@@ -10853,7 +10866,20 @@ try {
               }
               save();
               try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
-              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              // v3.23.71: Persist with retry
+              var _grantWriteDone = false;
+              function _writeGrantSocial() {
+                try {
+                  window.ProfileSync.putSocialData(state.profileId, { friends: state.friends })
+                    .then(function() { _grantWriteDone = true; })
+                    .catch(function() {
+                      if (!_grantWriteDone) setTimeout(_writeGrantSocial, 5000);
+                    });
+                } catch(_) {
+                  if (!_grantWriteDone) setTimeout(_writeGrantSocial, 5000);
+                }
+              }
+              _writeGrantSocial();
               // Notify the friend that access was granted
               try {
                 window.ProfileSync.sendInboxMessage(fid, {
@@ -11021,9 +11047,12 @@ try {
         try {
           if (state.profileId && window.ProfileSync && window.ProfileSync.getSocialData) {
             window.ProfileSync.getSocialData(state.profileId).then(function(social) {
-              if (!social || !social.friends) { startInboxPolling(); return; }
-              var cloudFriends = social.friends;
+              var cloudFriends = (social && social.friends) ? social.friends : {};
               var localFriends = state.friends || {};
+              var localAccepted = Object.keys(localFriends).filter(function(k) { return localFriends[k].status === 'accepted'; });
+              var cloudAccepted = Object.keys(cloudFriends).filter(function(k) { return cloudFriends[k].status === 'accepted'; });
+
+              // Case 1: Cloud has friends that local doesn't — restore them
               var changed = false;
               Object.keys(cloudFriends).forEach(function(fid) {
                 if (!localFriends[fid] && cloudFriends[fid].status === 'accepted') {
@@ -11037,6 +11066,13 @@ try {
                 renderFriends();
                 console.log('[Friends] Restored friends from Firestore cloud backup');
               }
+
+              // Case 2: Local has accepted friends but cloud is empty — push to cloud
+              if (localAccepted.length > 0 && cloudAccepted.length === 0) {
+                console.log('[Friends] Local has ' + localAccepted.length + ' friends but cloud is empty — pushing to Firestore');
+                try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              }
+
               startInboxPolling();
             }).catch(function(err) {
               console.warn('[Friends] Cloud restore failed:', err);
@@ -13053,6 +13089,7 @@ try {
               streak: {integerValue: String(state.streak || 0)},
               longestStreak: {integerValue: String(Math.max(state.longestStreak || 0, state.streak || 0))},
               focusMinutes: {integerValue: String(state.lifetimeFocusMinutes || 0)},
+              focusMinutes: {integerValue: String(state.lifetimeFocusMinutes || 0)},
               tasksCompleted: {integerValue: String(state.tasksCompletedLifetime || 0)},
               lifetimeCoins: {integerValue: String(state.lifetimeCoins || 0)},
               wallet: {integerValue: String(state.coins || 0)},
@@ -13074,7 +13111,6 @@ try {
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({fields: fields})
             }).then(function(r) {
-              console.log('[FallbackSync] ' + (r.ok ? 'OK' : 'Failed: ' + r.status));
               console.log('[FallbackSync] ' + (r.ok ? 'OK' : 'Failed: ' + r.status));
             }).catch(function(e) {
               console.warn('[FallbackSync] Error:', e);
