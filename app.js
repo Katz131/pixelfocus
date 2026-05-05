@@ -10393,62 +10393,134 @@ try {
           });
         }
 
-        // v3.23.66: Add friend by Profile ID — send request directly from extension
+        // v3.23.67: Add friend — search by name or paste Profile ID
         var addFriendInput = $('addFriendInput');
-        var addFriendBtn = $('addFriendBtn');
+        var addFriendSearchBtn = $('addFriendSearchBtn');
+        var addFriendResults = $('addFriendResults');
         var addFriendMsg = $('addFriendMsg');
-        if (addFriendBtn && addFriendInput) {
-          addFriendBtn.addEventListener('click', function() {
-            var targetId = (addFriendInput.value || '').trim().toLowerCase();
-            if (!targetId || targetId.length < 6) {
+
+        function sendFriendRequest(targetId, targetName) {
+          if (targetId === state.profileId) {
+            addFriendMsg.style.color = '#ff4444';
+            addFriendMsg.textContent = 'That\'s you!';
+            return;
+          }
+          if (state.friends[targetId] && state.friends[targetId].status === 'accepted') {
+            addFriendMsg.style.color = '#5aadff';
+            addFriendMsg.textContent = 'Already friends with ' + (targetName || targetId) + '!';
+            return;
+          }
+          addFriendMsg.style.color = 'var(--text-dim)';
+          addFriendMsg.textContent = 'Sending...';
+          window.ProfileSync.sendInboxMessage(targetId, {
+            type: 'friend_request',
+            fromId: state.profileId,
+            fromName: state.displayName || 'A weaver',
+            createdAt: new Date().toISOString()
+          }).then(function() {
+            addFriendMsg.style.color = '#00ff88';
+            addFriendMsg.textContent = 'Friend request sent to ' + (targetName || targetId) + '!';
+            addFriendInput.value = '';
+            addFriendResults.innerHTML = '';
+          }).catch(function() {
+            addFriendMsg.style.color = '#ff4444';
+            addFriendMsg.textContent = 'Failed to send. Try again.';
+          });
+        }
+
+        if (addFriendSearchBtn && addFriendInput) {
+          addFriendSearchBtn.addEventListener('click', function() {
+            var query = (addFriendInput.value || '').trim();
+            if (!query || query.length < 2) {
               addFriendMsg.style.color = '#ff4444';
-              addFriendMsg.textContent = 'Enter a valid Profile ID (at least 6 characters).';
+              addFriendMsg.textContent = 'Type at least 2 characters to search.';
               return;
             }
-            if (targetId === state.profileId) {
-              addFriendMsg.style.color = '#ff4444';
-              addFriendMsg.textContent = 'That\'s your own ID!';
-              return;
-            }
-            if (state.friends[targetId] && state.friends[targetId].status === 'accepted') {
-              addFriendMsg.style.color = '#5aadff';
-              addFriendMsg.textContent = 'Already friends!';
-              return;
-            }
-            addFriendBtn.disabled = true;
-            addFriendBtn.textContent = '...';
+            addFriendSearchBtn.disabled = true;
+            addFriendSearchBtn.textContent = '...';
             addFriendMsg.textContent = '';
-            // Verify the target profile exists
-            window.ProfileSync.getProfile(targetId).then(function(profile) {
-              if (!profile) {
-                addFriendMsg.style.color = '#ff4444';
-                addFriendMsg.textContent = 'Profile not found. Check the ID.';
-                addFriendBtn.disabled = false;
-                addFriendBtn.textContent = 'SEND';
-                return;
-              }
-              // Send friend request to their inbox
-              return window.ProfileSync.sendInboxMessage(targetId, {
-                type: 'friend_request',
-                fromId: state.profileId,
-                fromName: state.displayName || 'A weaver',
-                createdAt: new Date().toISOString()
-              }).then(function() {
-                addFriendMsg.style.color = '#00ff88';
-                addFriendMsg.textContent = 'Friend request sent to ' + (profile.displayName || targetId) + '!';
-                addFriendInput.value = '';
-                addFriendBtn.disabled = false;
-                addFriendBtn.textContent = 'SEND';
+            addFriendResults.innerHTML = '';
+
+            // Check if it looks like a Profile ID (lowercase alphanumeric, 6+ chars)
+            var looksLikeId = /^[a-z0-9]{6,}$/.test(query.toLowerCase());
+
+            window.ProfileSync.searchProfiles().then(function(profiles) {
+              var queryLower = query.toLowerCase();
+              var matches = profiles.filter(function(p) {
+                if (p.id === state.profileId) return false; // exclude self
+                // Match by name (partial, case-insensitive) or exact ID
+                return (p.displayName && p.displayName.toLowerCase().indexOf(queryLower) !== -1)
+                    || p.id.toLowerCase() === queryLower;
               });
+
+              if (matches.length === 0) {
+                // If it looks like an ID, try direct lookup
+                if (looksLikeId) {
+                  return window.ProfileSync.getProfile(queryLower).then(function(profile) {
+                    if (profile && queryLower !== state.profileId) {
+                      renderSearchResults([{
+                        id: queryLower,
+                        displayName: profile.displayName || queryLower,
+                        level: profile.level || 0,
+                        avatarDataURL: profile.avatarDataURL || ''
+                      }]);
+                    } else {
+                      addFriendMsg.style.color = '#ff4444';
+                      addFriendMsg.textContent = 'No profiles found.';
+                    }
+                  });
+                }
+                addFriendMsg.style.color = '#ff4444';
+                addFriendMsg.textContent = 'No profiles found matching "' + escHtml(query) + '".';
+              } else {
+                renderSearchResults(matches);
+              }
             }).catch(function() {
               addFriendMsg.style.color = '#ff4444';
-              addFriendMsg.textContent = 'Failed to send. Try again.';
-              addFriendBtn.disabled = false;
-              addFriendBtn.textContent = 'SEND';
+              addFriendMsg.textContent = 'Search failed. Try again.';
+            }).finally(function() {
+              addFriendSearchBtn.disabled = false;
+              addFriendSearchBtn.textContent = 'SEARCH';
             });
           });
+
           addFriendInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') addFriendBtn.click();
+            if (e.key === 'Enter') addFriendSearchBtn.click();
+          });
+        }
+
+        function renderSearchResults(matches) {
+          if (!addFriendResults) return;
+          var html = '';
+          matches.forEach(function(m) {
+            var isFriend = state.friends[m.id] && state.friends[m.id].status === 'accepted';
+            html += '<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:4px;">';
+            html += avatarThumb(m.avatarDataURL);
+            html += '<div style="flex:1;min-width:0;">';
+            html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#5aadff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(m.displayName || m.id) + '</div>';
+            html += '<div style="font-size:9px;color:var(--text-dim);">Level ' + (m.level || 0) + '</div>';
+            html += '</div>';
+            if (isFriend) {
+              html += '<span style="font-size:8px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">FRIEND</span>';
+            } else {
+              html += '<button class="btn btn-small search-add-btn" data-sid="' + escHtml(m.id) + '" data-sname="' + escHtml(m.displayName || m.id) + '" style="border-color:#4ecdc4;color:#4ecdc4;font-size:7px;padding:2px 8px;flex-shrink:0;">ADD</button>';
+            }
+            html += '</div>';
+          });
+          addFriendResults.innerHTML = html;
+
+          // Wire up ADD buttons
+          addFriendResults.querySelectorAll('.search-add-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var sid = btn.getAttribute('data-sid');
+              var sname = btn.getAttribute('data-sname');
+              btn.disabled = true;
+              btn.textContent = '...';
+              sendFriendRequest(sid, sname);
+              btn.textContent = 'SENT';
+              btn.style.borderColor = '#00ff88';
+              btn.style.color = '#00ff88';
+            });
           });
         }
 

@@ -491,6 +491,25 @@
     sendInboxMessage: sendInboxMessage,
     getInbox: getInbox,
     deleteInboxMessage: deleteInboxMessage,
-    getProfile: getProfile
+    getProfile: getProfile,
+    // v3.23.67: Search all profiles (returns array of {id, displayName, level, avatarDataURL})
+    searchProfiles: function() {
+      var url = FIRESTORE_BASE + '/profiles?key=' + API_KEY + '&pageSize=100';
+      return fetch(url).then(function(resp) {
+        if (!resp.ok) throw new Error('searchProfiles failed: ' + resp.status);
+        return resp.json();
+      }).then(function(data) {
+        var docs = data.documents || [];
+        return docs.map(function(doc) {
+          var fields = doc.fields || {};
+          return {
+            id: (doc.name || '').split('/').pop(),
+            displayName: fields.displayName ? fromFirestoreValue(fields.displayName) : '',
+            level: fields.level ? fromFirestoreValue(fields.level) : 0,
+            avatarDataURL: fields.avatarDataURL ? fromFirestoreValue(fields.avatarDataURL) : ''
+          };
+        });
+      });
+    }
   };
 })();

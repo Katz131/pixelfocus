@@ -711,13 +711,14 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       </div>
       <div style="font-size:9px;color:var(--text-dim);margin-top:3px;">Share this with friends so they can add you on <a href="#" id="profileLinkFromFriends" style="color:#5aadff;" target="_blank">your web profile</a>.</div>
     </div>
-    <!-- Add friend by Profile ID -->
+    <!-- Add friend by name or Profile ID -->
     <div style="margin-bottom:8px;">
       <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;">ADD A FRIEND</div>
       <div style="display:flex;gap:4px;align-items:center;">
-        <input type="text" id="addFriendInput" placeholder="Paste their Profile ID..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:11px;" />
-        <button class="btn btn-small" id="addFriendBtn" style="border-color:#4ecdc4;color:#4ecdc4;font-size:9px;padding:4px 8px;">SEND</button>
+        <input type="text" id="addFriendInput" placeholder="Search by name or paste Profile ID..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:11px;" />
+        <button class="btn btn-small" id="addFriendSearchBtn" style="border-color:#5aadff;color:#5aadff;font-size:9px;padding:4px 8px;">SEARCH</button>
       </div>
+      <div id="addFriendResults" style="margin-top:4px;max-height:150px;overflow-y:auto;"></div>
       <div id="addFriendMsg" style="font-size:9px;margin-top:3px;min-height:12px;"></div>
     </div>
     <!-- Pending friend requests -->
