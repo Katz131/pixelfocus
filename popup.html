@@ -585,20 +585,6 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   <div class="current-task-label" id="currentTaskLabel" title="The task currently being focused. Click FOCUS on a task in the list below to set it.">Select a task to focus on</div>
 </div>
 
-<div style="margin:0 10px;" title="Project tabs. The active project is shown inline. Use the menu (\u25be) on the right to jump to any other project \u2014 including ones that would otherwise overflow. Click the pencil on the active tab to rename or delete it.">
-  <div class="tabs-row" id="tabsRow">
-    <div class="tab-active-wrap" id="tabActiveWrap"></div>
-    <div class="tabs-dropdown" id="tabsDropdown">
-      <button type="button" class="tab-menu-btn" id="tabMenuBtn" title="Open the project menu. Lists every project (including the active one) with open task counts, so you can jump directly to any of them without a scroll bar.">&#9662;<span id="tabMenuCount" style="font-size:8px;margin-left:2px;"></span></button>
-      <div class="tabs-dropdown-menu" id="tabsDropdownMenu" role="menu"></div>
-    </div>
-    <div id="addTabBtn" class="tab-menu-btn" title="Create a new project tab.">+</div>
-    <!-- v3.20.26: focus-mode toggle. Click to expand the whole tracker to near-full-screen with larger, more legible type. Click again to collapse back to popup size. Preference persists across sessions. -->
-    <div id="focusModeBtn" class="tab-menu-btn" title="Expand to focus view &mdash; widens the whole tracker to near-full-screen with bigger type so you can read and organize your entire to-do list comfortably. Click again to collapse back.">&#9167;</div>
-    <div class="tab-rotate-bar" id="tabRotateBar"><div class="tab-rotate-bar-fill" id="tabRotateBarFill"></div></div>
-  </div>
-</div>
-
 <!-- v3.20.26: HIGH PRIORITY section. Tasks added here open a blocking modal
      every time the popup opens, until they are marked done or removed.
      Persists across days. If empty, no modal. -->
@@ -622,7 +608,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <span class="tip" data-tip="A simple daily task list — no pop-ups, no locks. Add what you want to get done today. Completed tasks count toward your daily log. Recurring tasks auto-replenish each day.">?</span>
     <span id="todayTasksCount" style="margin-left:auto;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffe0b2;background:#8b5e1a;padding:2px 6px;border-radius:8px;">0</span>
   </div>
-  <div style="display:flex;gap:6px;margin-bottom:6px;">
+  <div style="display:flex;gap:6px;margin-bottom:4px;">
     <input type="text" id="todayTaskInput" placeholder="Add today's task..." style="flex:1;background:#1a0f00;border:1px solid #b8731a;border-radius:4px;padding:6px 10px;color:#ffe0b2;font-size:12px;outline:none;" />
     <button type="button" id="addTodayTaskBtn" style="background:#8b5e1a;color:#fff;border:1px solid #ffb43c;border-radius:4px;padding:0 12px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;" title="Add this task.">+</button>
   </div>
@@ -641,6 +627,19 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <button type="button" id="addDailyReminderBtn" style="background:#1a3a5a;color:#fff;border:1px solid #5aadff;border-radius:4px;padding:0 12px;font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer;">+</button>
   </div>
   <div id="dailyRemindersList" style="max-height:150px;overflow-y:auto;"></div>
+</div>
+
+<div style="margin:0 10px;" title="Project tabs — click a project name to switch, use + to add new projects, ▾ for the overflow menu.">
+  <div class="tabs-row" id="tabsRow">
+    <div class="tab-active-wrap" id="tabActiveWrap"></div>
+    <div class="tabs-dropdown" id="tabsDropdown">
+      <button type="button" class="tab-menu-btn" id="tabMenuBtn">&#9662;<span id="tabMenuCount" style="font-size:7px;vertical-align:super;color:var(--accent);margin-left:2px;"></span></button>
+      <div class="tabs-dropdown-menu" id="tabsDropdownMenu" role="menu"></div>
+    </div>
+    <div id="addTabBtn" class="tab-menu-btn">+</div>
+    <div id="focusModeBtn" class="tab-menu-btn">&#9167;</div>
+    <div class="tab-rotate-bar" id="tabRotateBar"><div class="tab-rotate-bar-fill" id="tabRotateBarFill"></div></div>
+  </div>
 </div>
 
 <div style="margin:0 10px 8px;background:var(--surface);border-radius:0 0 8px 8px;border:1px solid var(--border);border-top:none;">
@@ -693,6 +692,42 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       </div>
     </div>
     <button class="btn btn-small" id="newBundleBtn" style="margin-top:8px;width:100%;border-color:var(--accent3);color:var(--accent3);" title="Open the bundle creation form to build a new reusable task set.">+ CREATE BUNDLE</button>
+  </div>
+</div>
+
+<!-- v3.23.61: Friends & Remote Task Sharing -->
+<div style="margin:0 10px 6px;background:var(--surface);border-radius:8px;border:1px solid var(--border);overflow:hidden;">
+  <div class="collapsible-header" style="padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" title="Manage friends who can remotely add tasks to your projects.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#5aadff;display:flex;align-items:center;gap:4px;">FRIENDS &amp; SHARING <span class="tip" data-tip="Share your Profile ID with friends. They visit your web profile, send a friend request, then you approve which projects they can add tasks to remotely.">?</span> <span id="friendInboxBadge" style="display:none;background:#ff4444;color:#fff;font-size:7px;padding:1px 5px;border-radius:8px;margin-left:4px;">0</span></span>
+    <span class="collapse-arrow" style="color:var(--text-dim);" title="Expand / collapse">&#9660;</span>
+  </div>
+  <div class="collapsible-body" style="display:none;padding:10px;border-top:1px solid var(--border);">
+    <!-- Profile ID -->
+    <div style="margin-bottom:8px;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;">YOUR PROFILE ID</div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <input type="text" id="profileIdDisplay" readonly style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;color:#5aadff;font-family:monospace;font-size:12px;cursor:pointer;" title="Click to copy your Profile ID. Share this with friends so they can find you." />
+        <button class="btn btn-small" id="copyProfileIdBtn" style="border-color:#5aadff;color:#5aadff;font-size:9px;padding:4px 8px;" title="Copy your Profile ID to clipboard.">COPY</button>
+      </div>
+      <div style="font-size:9px;color:var(--text-dim);margin-top:3px;">Share this with friends so they can add you on <a href="#" id="profileLinkFromFriends" style="color:#5aadff;" target="_blank">your web profile</a>.</div>
+    </div>
+    <!-- Pending friend requests -->
+    <div id="friendRequestsSection" style="display:none;margin-bottom:8px;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ff9f43;margin-bottom:4px;letter-spacing:1px;">PENDING REQUESTS</div>
+      <div id="friendRequestsList"></div>
+    </div>
+    <!-- Accepted friends + permissions -->
+    <div id="friendsListSection">
+      <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;">FRIENDS</div>
+      <div id="friendsList" style="max-height:200px;overflow-y:auto;">
+        <div style="font-size:11px;color:var(--text-dim);font-style:italic;">No friends yet. Share your Profile ID!</div>
+      </div>
+    </div>
+    <!-- Access requests (separate from friend requests) -->
+    <div id="accessRequestsSection" style="display:none;margin-top:8px;">
+      <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4ecdc4;margin-bottom:4px;letter-spacing:1px;">TASK ACCESS REQUESTS</div>
+      <div id="accessRequestsList"></div>
+    </div>
   </div>
 </div>
 
@@ -899,6 +934,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div style="padding:2px 18px 4px;display:flex;gap:10px;justify-content:center;align-items:center;">
       <button type="button" id="incrementalizeSkipAllBtn" style="background:transparent;color:#886655;border:none;padding:4px 8px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;letter-spacing:1px;text-decoration:underline;">SKIP ALL</button>
       <button type="button" id="incrementalizeDefer4hBtn" style="background:transparent;color:#886655;border:none;padding:4px 8px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;letter-spacing:1px;text-decoration:underline;">DEFER ALL 4 HOURS</button>
+      <button type="button" id="incrementalizeNeverBtn" style="background:transparent;color:#4ecdc4;border:1px solid #2a6a6a;border-radius:4px;padding:4px 8px;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer;letter-spacing:1px;">NOT INCREMENTAL</button>
     </div>
     <div style="padding:4px 18px 14px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
       <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#886655;width:100%;text-align:center;margin-bottom:4px;letter-spacing:1px;">DELAY PROMPT</div>

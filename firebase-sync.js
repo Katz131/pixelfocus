@@ -154,10 +154,15 @@
         return (state.dailySessionLog && state.dailySessionLog.date === _t)
           ? state.dailySessionLog : { date: _t, sessions: [] };
       })(),
+      focusHistory: state.focusHistory || {},
       updatedAt: new Date().toISOString(),
       profileCreated: state.profileCreated
         ? new Date(state.profileCreated).toISOString()
-        : new Date().toISOString()
+        : new Date().toISOString(),
+      extensionUrl: (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
+        ? chrome.runtime.getURL('popup.html') : '',
+      // v3.23.61: Project names for remote task-adding (friends see which projects exist)
+      projectNames: (state.projects || []).map(function(p) { return { id: p.id, name: p.name || 'Untitled' }; })
     };
   }
 
@@ -360,6 +365,118 @@
     return (state && state.profileId) || null;
   }
 
+  // =========================================================================
+  // v3.23.61: Social / Remote Task-Adding API
+  //
+  // Data model:
+  //   profiles/{id}/social/data   — owner-managed: friend list + permissions
+  //     { friends: { friendId: { displayName, status, permittedProjects, addedAt } } }
+  //   profiles/{id}/inbox/{msgId} — individual messages (friend reqs, tasks)
+  //     { type, fromId, fromName, project, text, createdAt }
+  // =========================================================================
+
+  // ---- Read social data (friends + permissions) ----
+  function getSocialData(profileId) {
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '/social/data?key=' + API_KEY;
+    return fetch(url).then(function(resp) {
+      if (resp.status === 404) return { friends: {} };
+      if (!resp.ok) throw new Error('getSocialData failed: ' + resp.status);
+      return resp.json();
+    }).then(function(doc) {
+      if (!doc || !doc.fields) return { friends: {} };
+      var result = {};
+      Object.keys(doc.fields).forEach(function(k) {
+        result[k] = fromFirestoreValue(doc.fields[k]);
+      });
+      return result;
+    });
+  }
+
+  // ---- Write social data (friends + permissions) ----
+  function putSocialData(profileId, data) {
+    var fields = {};
+    Object.keys(data).forEach(function(k) {
+      fields[k] = toFirestoreValue(data[k]);
+    });
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '/social/data?key=' + API_KEY;
+    return fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fields })
+    }).then(function(resp) {
+      if (!resp.ok) throw new Error('putSocialData failed: ' + resp.status);
+      return resp.json();
+    });
+  }
+
+  // ---- Send a message to someone's inbox (friend request, task, etc.) ----
+  function sendInboxMessage(targetProfileId, message) {
+    var fields = {};
+    Object.keys(message).forEach(function(k) {
+      fields[k] = toFirestoreValue(message[k]);
+    });
+    // POST creates a new document with auto-generated ID
+    var url = FIRESTORE_BASE + '/profiles/' + targetProfileId + '/inbox?key=' + API_KEY;
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fields })
+    }).then(function(resp) {
+      if (!resp.ok) throw new Error('sendInboxMessage failed: ' + resp.status);
+      return resp.json();
+    });
+  }
+
+  // ---- Read all inbox messages ----
+  function getInbox(profileId) {
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '/inbox?key=' + API_KEY + '&pageSize=50';
+    return fetch(url).then(function(resp) {
+      if (resp.status === 404) return [];
+      if (!resp.ok) throw new Error('getInbox failed: ' + resp.status);
+      return resp.json();
+    }).then(function(data) {
+      if (!data || !data.documents) return [];
+      return data.documents.map(function(doc) {
+        var result = {};
+        if (doc.fields) {
+          Object.keys(doc.fields).forEach(function(k) {
+            result[k] = fromFirestoreValue(doc.fields[k]);
+          });
+        }
+        // Extract document ID from the name path
+        var parts = (doc.name || '').split('/');
+        result._id = parts[parts.length - 1];
+        return result;
+      });
+    });
+  }
+
+  // ---- Delete an inbox message after processing ----
+  function deleteInboxMessage(profileId, messageId) {
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '/inbox/' + messageId + '?key=' + API_KEY;
+    return fetch(url, { method: 'DELETE' }).then(function(resp) {
+      if (!resp.ok && resp.status !== 404) throw new Error('deleteInboxMessage failed: ' + resp.status);
+      return true;
+    });
+  }
+
+  // ---- Fetch a single profile (for looking up friend names, etc.) ----
+  function getProfile(profileId) {
+    var url = FIRESTORE_BASE + '/profiles/' + profileId + '?key=' + API_KEY;
+    return fetch(url).then(function(resp) {
+      if (resp.status === 404) return null;
+      if (!resp.ok) throw new Error('getProfile failed: ' + resp.status);
+      return resp.json();
+    }).then(function(doc) {
+      if (!doc || !doc.fields) return null;
+      var result = {};
+      Object.keys(doc.fields).forEach(function(k) {
+        result[k] = fromFirestoreValue(doc.fields[k]);
+      });
+      return result;
+    });
+  }
+
   // Expose
   window.ProfileSync = {
     sync: sync,
@@ -367,6 +484,13 @@
     getProfileUrl: getProfileUrl,
     getProfileId: getProfileId,
     HOSTING_BASE: HOSTING_BASE,
-    _resetThrottle: function() { lastSyncTime = 0; }
+    _resetThrottle: function() { lastSyncTime = 0; },
+    // v3.23.61: Social API
+    getSocialData: getSocialData,
+    putSocialData: putSocialData,
+    sendInboxMessage: sendInboxMessage,
+    getInbox: getInbox,
+    deleteInboxMessage: deleteInboxMessage,
+    getProfile: getProfile
   };
 })();

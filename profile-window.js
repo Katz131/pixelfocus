@@ -398,6 +398,9 @@
       footer.title = 'Date your profile card was first stamped by the factory. Purely narrative.';
     }
 
+    // v3.23.55: Daily focus timeline
+    renderProfileTimeline(state);
+
     // v3.21.19: Daily completed tasks
     renderDailyTasks(state);
 
@@ -407,6 +410,66 @@
     // Sync to Firestore + show link
     updateProfileLinkBar(state);
     syncProfile(state);
+  }
+
+  function renderProfileTimeline(state) {
+    var bar = document.getElementById('profileTimelineBar');
+    var summary = document.getElementById('profileTimelineSummary');
+    if (!bar) return;
+
+    function todayStr() {
+      var d = new Date();
+      var m = d.getMonth() + 1;
+      var dd = d.getDate();
+      return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
+    }
+    var today = todayStr();
+    var sessions = (state.dailySessionLog && state.dailySessionLog.date === today)
+      ? (state.dailySessionLog.sessions || []) : [];
+
+    bar.innerHTML = '';
+    var totalMin = 0;
+    for (var i = 0; i < sessions.length; i++) { totalMin += (sessions[i].min || 0); }
+
+    for (var j = 0; j < sessions.length; j++) {
+      var s = sessions[j];
+      if (!s.start || !s.end) continue;
+      var sd = new Date(s.start);
+      var ed = new Date(s.end);
+      var startPct = ((sd.getHours() * 60 + sd.getMinutes()) / (24 * 60)) * 100;
+      var endPct = ((ed.getHours() * 60 + ed.getMinutes()) / (24 * 60)) * 100;
+      var widthPct = Math.max(0.5, endPct - startPct);
+
+      var use24 = state.use24Hour;
+      var startTime, endTime;
+      if (use24) {
+        startTime = (sd.getHours() < 10 ? '0' : '') + sd.getHours() + ':' + (sd.getMinutes() < 10 ? '0' : '') + sd.getMinutes();
+        endTime = (ed.getHours() < 10 ? '0' : '') + ed.getHours() + ':' + (ed.getMinutes() < 10 ? '0' : '') + ed.getMinutes();
+      } else {
+        startTime = sd.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+        endTime = ed.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+      }
+
+      var block = document.createElement('div');
+      block.className = 'timeline-block';
+      block.style.cssText = 'left:' + startPct.toFixed(1) + '%;width:' + widthPct.toFixed(1) + '%;';
+      var tt = document.createElement('div');
+      tt.className = 'tt';
+      tt.textContent = startTime + ' - ' + endTime + ' (' + (s.min || '?') + ' min)';
+      block.appendChild(tt);
+      bar.appendChild(block);
+    }
+
+    if (summary) {
+      if (sessions.length === 0) {
+        summary.textContent = 'No focus sessions yet today.';
+      } else {
+        var hrs = Math.floor(totalMin / 60);
+        var mins = totalMin % 60;
+        var timeStr = hrs > 0 ? (hrs + 'h ' + (mins > 0 ? mins + 'm' : '')) : (mins + ' min');
+        summary.innerHTML = '<strong>' + timeStr + '</strong> focused across <strong>' + sessions.length + '</strong> session' + (sessions.length === 1 ? '' : 's');
+      }
+    }
   }
 
   function renderDailyTasks(state) {

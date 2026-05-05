@@ -20,7 +20,16 @@ Example: `"version": "3.21.12"` → `"version": "3.21.13"` and update descriptio
 
 ## Communication Preferences
 
+- **THE USER DOES NOT CODE. NEVER ask them to run commands, paste code, use a terminal, or do anything technical. If something needs to be run or deployed, Claude must do it directly using available tools, or provide a one-click solution (like a .bat file). This is non-negotiable and must never be forgotten.**
+- **ALWAYS give click-by-click instructions with exact file/folder locations. Never say "run X" or "go to your project folder" — say exactly where to click, what to open, and what to look for. Assume zero technical knowledge.**
 - When giving numbered steps/instructions, always format as a proper numbered list so the user can copy-paste it directly (including the numbers) to send to others
 - Always tell the user the new version number when bumping
 - The user often relays instructions to another user (Giulia) who cannot code — keep ELI5 instructions simple and copy-paste ready
 - User prefers military/24-hour time (setting available in extension)
+
+## Deployment
+
+- **Extension updates**: User runs `release.bat` (double-click) — that's it
+- **Firebase hosting updates**: Need a `deploy-website.bat` in the project root that deploys with one double-click (see below)
+- **Chrome Web Store**: Not currently used for distribution. Extension ID: jlfiokfngdjebicfaagoeiciihbfeeil
+- **Giulia gets updates** via GitHub zip download — release.yml builds the zip automatically

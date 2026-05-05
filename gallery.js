@@ -1412,6 +1412,16 @@
     var skill = Math.round((ls.skill || 0) * 10) / 10;
     var cons  = Math.round((ls.constitution || 0) * 10) / 10;
     var acu   = Math.round((ls.mentalAcuity || 0) * 10) / 10;
+    // Deltas from starting values
+    var skillStart = 10; // all operators start at 10
+    var consStart  = (proc.constitution_seed || 50);
+    var acuStart   = (proc.mental_acuity_seed || 50);
+    function fmtDelta(current, start) {
+      var d = Math.round((current - start) * 10) / 10;
+      if (d > 0) return '<span class="stat-delta pos">(+' + d.toFixed(1) + ')</span>';
+      if (d < 0) return '<span class="stat-delta neg">(' + d.toFixed(1) + ')</span>';
+      return '<span class="stat-delta zero">(no change)</span>';
+    }
     statsBody.innerHTML =
       '<div class="stat-row" title="Total number of pixel artworks you have saved to the gallery using the SAVE TO GALLERY button. Each save counts as one loom woven.">' +
         '<span class="stat-k">Looms woven (lifetime)</span><span class="stat-v">' + (ls.totalWoven || 0) + '</span></div>' +
@@ -1422,13 +1432,13 @@
       '<div class="stat-row" title="Your average practice rating (out of 100) across your last ' + ratings.length + ' saved artworks. Not the 1\u20135 stars. A rising average means your consistent weaving is paying off \u2014 your skill is climbing, your pieces are getting more ambitious, and you\u2019re avoiding rust and fatigue penalties. A falling average may mean long breaks between saves or rushing. This smooths out individual highs and lows so you can see the overall trend.">' +
         '<span class="stat-k">Rolling average (last ' + ratings.length + ')</span><span class="stat-v">' + (ratings.length ? avg.toFixed(1) : '\u2014') + '</span></div>' +
       '<div class="stat-row" title="A practice stat that rises slowly each time you save an artwork. Higher skill means your operator is more experienced at the loom. This is a cosmetic stat \u2014 it does not affect textile earnings or gameplay.">' +
-        '<span class="stat-k">Operator skill</span><span class="stat-v">' + skill.toFixed(1) + ' / 100</span></div>' +
+        '<span class="stat-k">Operator skill</span><span class="stat-v">' + skill.toFixed(1) + ' / 100 ' + fmtDelta(skill, skillStart) + '</span></div>' +
       bar(skill, '', 'Green bar = operator skill out of 100. Grows with each artwork you save.') +
       '<div class="stat-row" title="Your operator\u2019s physical resilience. Starts at 100 and stays high as long as you weave regularly. In the late game, if a \u2018merging\u2019 event is active, constitution drifts slowly downward. Weaving more frequently slows the decline. This is a cosmetic stat.">' +
-        '<span class="stat-k">Constitution</span><span class="stat-v">' + cons.toFixed(1) + '</span></div>' +
+        '<span class="stat-k">Constitution</span><span class="stat-v">' + cons.toFixed(1) + ' ' + fmtDelta(cons, consStart) + '</span></div>' +
       bar(cons, 'cons', 'Yellow-to-red bar = constitution. Starts full and stays healthy with regular weaving. Can drift down during late-game events.') +
       '<div class="stat-row" title="Your operator\u2019s mental sharpness. Like constitution, it starts high and stays healthy with regular weaving, but can drift down during late-game \u2018merging\u2019 events. This is a cosmetic stat \u2014 it won\u2019t lock you out of anything.">' +
-        '<span class="stat-k">Mental acuity</span><span class="stat-v">' + acu.toFixed(1) + '</span></div>' +
+        '<span class="stat-k">Mental acuity</span><span class="stat-v">' + acu.toFixed(1) + ' ' + fmtDelta(acu, acuStart) + '</span></div>' +
       bar(acu, 'acu', 'Purple bar = mental acuity. Behaves like constitution \u2014 stays high with regular use, can drift during late-game merging.');
 
     // ----- Sparkline panel -----

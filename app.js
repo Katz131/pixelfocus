@@ -774,6 +774,10 @@ try {
     volumeMuteMinute: 0,            // v3.21.79: mute start minute (0-59)
     volumeUnmuteHour: 10,           // v3.21.79: unmute start hour (0-23)
     volumeUnmuteMinute: 0,          // v3.21.79: unmute start minute (0-59)
+    // v3.23.61: Social / Remote task-adding
+    friends: {},                     // { profileId: { displayName, status, permittedProjects:[], addedAt } }
+    remoteTasksEnabled: true,        // allow friends to add tasks to your projects
+    lastInboxPoll: 0,                // timestamp of last inbox poll
     // Streak-driven passive currency (Paperclips-style precursor)
     coins: 0,                 // current spendable coin balance
     lifetimeCoins: 0,         // all-time coins earned
@@ -2758,6 +2762,50 @@ try {
         var endLabel = _tlTimeLabel(_tlFmtMs(previewEndMs), pvEndPct, 'right');
         endLabel.style.color = '#4ecdc4';
         bar.appendChild(endLabel);
+      }
+    }
+
+    // v3.23.63: Active session projection — show where the running timer will end
+    if (state.timerEndsAt && state.timerEndsAt > nowMs &&
+        (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused')) {
+      var asStart = state._sessionStartedAt || nowMs;
+      var asEnd = state.timerEndsAt;
+      var asClipStart = Math.max(asStart, windowStartMs);
+      var asClipEnd = Math.min(asEnd, windowEndMs);
+      if (asClipStart < asClipEnd) {
+        var asLeftPct = ((asClipStart - windowStartMs) / windowMs) * 100;
+        var asWidthPct = ((asClipEnd - asClipStart) / windowMs) * 100;
+        if (asWidthPct < 0.5) asWidthPct = 0.5;
+
+        // Elapsed portion (solid, like a completed session)
+        var elapsedEnd = Math.min(nowMs, asClipEnd);
+        if (elapsedEnd > asClipStart) {
+          var elLeftPct = asLeftPct;
+          var elWidthPct = ((elapsedEnd - asClipStart) / windowMs) * 100;
+          var elBlock = document.createElement('div');
+          elBlock.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px 0 0 3px;background:linear-gradient(180deg,#4ecdc4,#26a69a);opacity:0.85;left:' + elLeftPct + '%;width:' + elWidthPct + '%;z-index:1;';
+          elBlock.title = 'Active session (elapsed)';
+          bar.appendChild(elBlock);
+        }
+
+        // Remaining portion (ghost/projected)
+        var remStart = Math.max(nowMs, asClipStart);
+        if (remStart < asClipEnd) {
+          var remLeftPct = ((remStart - windowStartMs) / windowMs) * 100;
+          var remWidthPct = ((asClipEnd - remStart) / windowMs) * 100;
+          var remBlock = document.createElement('div');
+          remBlock.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#4ecdc4,#26a69a);opacity:0.35;border:1px dashed #4ecdc488;left:' + remLeftPct + '%;width:' + remWidthPct + '%;z-index:1;';
+          var remMin = Math.ceil((asEnd - nowMs) / 60000);
+          remBlock.title = 'Projected: ' + remMin + ' min remaining';
+          bar.appendChild(remBlock);
+        }
+
+        // Time labels for active session
+        bar.appendChild(_tlTimeLabel(_tlFmtMs(asStart), asLeftPct, 'left'));
+        var asEndPct = asLeftPct + asWidthPct;
+        var asEndLabel = _tlTimeLabel(_tlFmtMs(asEnd), asEndPct, 'right');
+        asEndLabel.style.color = '#4ecdc4';
+        bar.appendChild(asEndLabel);
       }
     }
 
@@ -5526,8 +5574,10 @@ try {
                 }
                 return;
               }
-              // v3.23.45: Detect sleep — if gap > 15 min, computer was closed. Reset, don't punish.
-              if (lastNag && (_now - lastNag) > 900000) {
+              // v3.23.60: Detect sleep — if gap > 3× nag interval, computer was closed. Reset, don't punish.
+              // (Previously hardcoded 15 min which was LESS than a 20-min nag interval, blocking every real nag.)
+              var _sleepThresh = Math.max(_nagInterval * 3, 900000);
+              if (lastNag && (_now - lastNag) > _sleepThresh) {
                 console.log('[Surveillance] Sleep detected (' + Math.round((_now - lastNag)/60000) + ' min gap). Resetting.');
                 st.surveillanceNagCount = 0;
                 st.surveillanceLastNag = _now;
@@ -8100,6 +8150,7 @@ try {
       for (var i = 0; i < state.todayTasks.length; i++) {
         var t = state.todayTasks[i];
         if (t.incrementalizedAt) continue;
+        if (t.neverIncrementalize) continue;
         if (!t.createdAt || (now - t.createdAt) < STALE_MS) continue;
         if (_wasPromptedToday(t.id)) continue;
         _incrementalizeQueue.push({ id: t.id, text: t.text, type: 'today' });
@@ -8114,6 +8165,7 @@ try {
         for (var j = 0; j < ptasks.length; j++) {
           var pt = ptasks[j];
           if (pt.completed) continue;
+          if (pt.neverIncrementalize) continue;
           if (!pt.createdAt || (now - pt.createdAt) < STALE_MS) continue;
           if (_wasPromptedToday(pt.id)) continue;
           // Skip if already in today tasks
@@ -8128,6 +8180,7 @@ try {
       var activePri = getActivePriorityTasks();
       for (var k = 0; k < activePri.length; k++) {
         var pri = activePri[k];
+        if (pri.neverIncrementalize) continue;
         if (!pri.createdAt || (now - pri.createdAt) < STALE_MS) continue;
         if (_wasPromptedToday(pri.id)) continue;
         if (isInTodayTasks(pri.id)) continue;
@@ -8492,6 +8545,39 @@ try {
       _incrementalizePendingStages = [];
       save();
       modal.style.display = 'none';
+    });
+
+    // Not Incremental — permanently mark this task so the prompt never shows for it again
+    var neverBtn = document.getElementById('incrementalizeNeverBtn');
+    if (neverBtn) neverBtn.addEventListener('click', function() {
+      var modal = document.getElementById('incrementalizeModal');
+      if (!modal) return;
+      var taskId = modal.dataset.taskId;
+      var taskType = modal.dataset.taskType;
+      if (taskId) {
+        // Find the task and set neverIncrementalize = true
+        if (taskType === 'today' && Array.isArray(state.todayTasks)) {
+          for (var i = 0; i < state.todayTasks.length; i++) {
+            if (state.todayTasks[i].id === taskId) { state.todayTasks[i].neverIncrementalize = true; break; }
+          }
+        } else if (taskType === 'project') {
+          var projId = modal.dataset.projectId;
+          if (projId && state.tasks && state.tasks[projId]) {
+            for (var j = 0; j < state.tasks[projId].length; j++) {
+              if (state.tasks[projId][j].id === taskId) { state.tasks[projId][j].neverIncrementalize = true; break; }
+            }
+          }
+        } else if (taskType === 'priority' && Array.isArray(state.priorityTasks)) {
+          for (var k = 0; k < state.priorityTasks.length; k++) {
+            if (state.priorityTasks[k].id === taskId) { state.priorityTasks[k].neverIncrementalize = true; break; }
+          }
+        }
+        _markPromptedToday(taskId);
+        save();
+      }
+      _incrementalizePendingStages = [];
+      modal.style.display = 'none';
+      _advanceIncrQueue();
     });
 
     // Not now — mark prompted today, come back tomorrow
@@ -10268,6 +10354,494 @@ try {
           SFX.click();
         });
       }
+
+      // ===== v3.23.61: Friends & Remote Task Sharing =====
+      (function initFriendsUI() {
+        var profileIdDisplay = $('profileIdDisplay');
+        var copyBtn = $('copyProfileIdBtn');
+        var profileLink = $('profileLinkFromFriends');
+        var friendRequestsList = $('friendRequestsList');
+        var friendRequestsSection = $('friendRequestsSection');
+        var accessRequestsList = $('accessRequestsList');
+        var accessRequestsSection = $('accessRequestsSection');
+        var friendsList = $('friendsList');
+        var friendInboxBadge = $('friendInboxBadge');
+
+        // Show profile ID
+        if (profileIdDisplay && state.profileId) {
+          profileIdDisplay.value = state.profileId;
+        }
+        if (profileLink && state.profileId) {
+          profileLink.href = 'https://todo-of-the-loom.web.app/p/?id=' + state.profileId;
+        }
+
+        // Copy profile ID
+        if (copyBtn) {
+          copyBtn.addEventListener('click', function() {
+            if (state.profileId) {
+              navigator.clipboard.writeText(state.profileId).then(function() {
+                copyBtn.textContent = 'COPIED!';
+                copyBtn.style.color = '#00ff88';
+                copyBtn.style.borderColor = '#00ff88';
+                setTimeout(function() {
+                  copyBtn.textContent = 'COPY';
+                  copyBtn.style.color = '#5aadff';
+                  copyBtn.style.borderColor = '#5aadff';
+                }, 2000);
+              });
+            }
+          });
+        }
+
+        // v3.23.64: Fetch and cache a friend's avatar from their profile
+        function fetchFriendAvatar(friendId) {
+          if (!friendId || !window.ProfileSync || !window.ProfileSync.getProfile) return;
+          try {
+            window.ProfileSync.getProfile(friendId).then(function(profile) {
+              if (!profile || !profile.avatarDataURL) return;
+              if (state.friends[friendId]) {
+                state.friends[friendId].avatarURL = profile.avatarDataURL;
+                save();
+                renderFriends();
+              }
+            }).catch(function() {});
+          } catch(_) {}
+        }
+
+        // v3.23.64: Build a small avatar thumbnail element
+        function avatarThumb(url) {
+          if (url) {
+            return '<img src="' + escHtml(url) + '" style="width:28px;height:28px;border-radius:50%;border:2px solid #5aadff;object-fit:cover;flex-shrink:0;image-rendering:pixelated;" />';
+          }
+          return '<div style="width:28px;height:28px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-dim);">?</div>';
+        }
+
+        // Render friends list — shows accepted friends and their permissions
+        function renderFriends() {
+          var friends = state.friends || {};
+          var keys = Object.keys(friends).filter(function(k) { return friends[k].status === 'accepted'; });
+          if (!friendsList) return;
+          if (keys.length === 0) {
+            friendsList.innerHTML = '<div style="font-size:11px;color:var(--text-dim);font-style:italic;">No friends yet. Share your Profile ID!</div>';
+            return;
+          }
+          var html = '';
+          keys.forEach(function(fid) {
+            var f = friends[fid];
+            var perms = f.permittedProjects || [];
+            var hasTaskAccess = f.taskAccessGranted === true;
+            // v3.23.64: Fetch avatar if not cached yet
+            if (!f.avatarURL) fetchFriendAvatar(fid);
+            html += '<div style="background:var(--bg);border:1px solid ' + (hasTaskAccess ? '#5aadff' : 'var(--border)') + ';border-radius:6px;padding:8px;margin-bottom:6px;">';
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;">';
+            html += avatarThumb(f.avatarURL);
+            html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#5aadff;">' + escHtml(f.displayName || fid) + '</span>';
+            html += '</div>';
+            html += '<button class="btn btn-small friend-remove-btn" data-fid="' + escHtml(fid) + '" style="border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 6px;">REMOVE</button>';
+            html += '</div>';
+            if (hasTaskAccess) {
+              // Show per-project permission checkboxes
+              var projects = state.projects || [];
+              html += '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Can add tasks to:</div>';
+              html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+              projects.forEach(function(p) {
+                var checked = perms.indexOf(p.id) !== -1;
+                html += '<label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:3px;cursor:pointer;background:var(--surface2);padding:2px 6px;border-radius:4px;border:1px solid ' + (checked ? '#5aadff' : 'var(--border)') + ';">';
+                html += '<input type="checkbox" class="friend-perm-cb" data-fid="' + escHtml(fid) + '" data-pid="' + escHtml(p.id) + '"' + (checked ? ' checked' : '') + ' style="accent-color:#5aadff;" />';
+                html += escHtml(p.name) + '</label>';
+              });
+              html += '</div>';
+              html += '<div style="margin-top:4px;"><button class="btn btn-small friend-revoke-access-btn" data-fid="' + escHtml(fid) + '" style="border-color:#ff9f43;color:#ff9f43;font-size:7px;padding:2px 6px;">REVOKE TASK ACCESS</button></div>';
+            } else {
+              html += '<div style="font-size:9px;color:var(--text-dim);font-style:italic;">Friend only — no task access granted.</div>';
+            }
+            // v3.23.66: Button to request task access TO this friend's projects
+            html += '<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">';
+            html += '<button class="btn btn-small friend-req-access-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#4ecdc4;color:#4ecdc4;font-size:7px;padding:2px 8px;">REQUEST ACCESS TO THEIR TASKS</button>';
+            html += '</div>';
+            html += '</div>';
+          });
+          friendsList.innerHTML = html;
+
+          // Permission checkbox handlers
+          friendsList.querySelectorAll('.friend-perm-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+              var fid = cb.getAttribute('data-fid');
+              var pid = cb.getAttribute('data-pid');
+              if (!state.friends[fid]) return;
+              var perms = state.friends[fid].permittedProjects || [];
+              if (cb.checked && perms.indexOf(pid) === -1) {
+                perms.push(pid);
+              } else if (!cb.checked) {
+                perms = perms.filter(function(x) { return x !== pid; });
+              }
+              state.friends[fid].permittedProjects = perms;
+              save();
+              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+            });
+          });
+
+          // Revoke task access handler
+          friendsList.querySelectorAll('.friend-revoke-access-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              if (!fid || !state.friends[fid]) return;
+              var name = state.friends[fid].displayName || fid;
+              state.friends[fid].taskAccessGranted = false;
+              state.friends[fid].permittedProjects = [];
+              save();
+              renderFriends();
+              notify('Revoked task access for ' + name, '#ff9f43');
+              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+            });
+          });
+
+          // Remove friend handlers
+          friendsList.querySelectorAll('.friend-remove-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              if (!fid || !state.friends[fid]) return;
+              var name = state.friends[fid].displayName || fid;
+              if (!confirm('Remove ' + name + ' from your friends?')) return;
+              delete state.friends[fid];
+              save();
+              renderFriends();
+              notify('Removed friend: ' + name, '#ff4444');
+              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+            });
+          });
+
+          // v3.23.66: Request access to a friend's tasks (sends access_request to their inbox)
+          friendsList.querySelectorAll('.friend-req-access-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              btn.disabled = true;
+              btn.textContent = 'SENDING...';
+              try {
+                window.ProfileSync.sendInboxMessage(fid, {
+                  type: 'access_request',
+                  fromId: state.profileId,
+                  fromName: state.displayName || 'A weaver',
+                  createdAt: new Date().toISOString()
+                }).then(function() {
+                  btn.textContent = 'REQUESTED!';
+                  btn.style.borderColor = '#00ff88';
+                  btn.style.color = '#00ff88';
+                  notify('Task access requested from ' + (fname || fid), '#4ecdc4');
+                }).catch(function() {
+                  btn.disabled = false;
+                  btn.textContent = 'REQUEST ACCESS TO THEIR TASKS';
+                  notify('Failed to send request. Try again.', '#ff4444');
+                });
+              } catch(_) {
+                btn.disabled = false;
+                btn.textContent = 'REQUEST ACCESS TO THEIR TASKS';
+              }
+            });
+          });
+        }
+
+        // Render pending friend requests
+        function renderRequests(requests) {
+          if (!friendRequestsSection || !friendRequestsList) return;
+          if (!requests || requests.length === 0) {
+            friendRequestsSection.style.display = 'none';
+            return;
+          }
+          friendRequestsSection.style.display = 'block';
+          var html = '';
+          requests.forEach(function(req) {
+            var reqAvatar = (state.friends[req.fromId] && state.friends[req.fromId].avatarURL) || req.avatarURL || '';
+            html += '<div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid #ff9f43;border-radius:6px;padding:6px 8px;margin-bottom:4px;">';
+            html += avatarThumb(reqAvatar);
+            html += '<span style="flex:1;font-size:11px;color:var(--text);">' + escHtml(req.fromName || req.fromId) + ' wants to be friends</span>';
+            html += '<button class="btn btn-small friend-accept-btn" data-msgid="' + escHtml(req._id) + '" data-fid="' + escHtml(req.fromId) + '" data-fname="' + escHtml(req.fromName || '') + '" style="border-color:#00ff88;color:#00ff88;font-size:7px;padding:2px 6px;">ACCEPT</button>';
+            html += '<button class="btn btn-small friend-decline-btn" data-msgid="' + escHtml(req._id) + '" data-fid="' + escHtml(req.fromId) + '" style="border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 6px;">DECLINE</button>';
+            html += '</div>';
+          });
+          friendRequestsList.innerHTML = html;
+
+          // Accept handler
+          friendRequestsList.querySelectorAll('.friend-accept-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var msgId = btn.getAttribute('data-msgid');
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              state.friends[fid] = {
+                displayName: fname || fid,
+                status: 'accepted',
+                taskAccessGranted: false,
+                permittedProjects: [],
+                addedAt: new Date().toISOString()
+              };
+              save();
+              try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
+              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              try {
+                window.ProfileSync.sendInboxMessage(fid, {
+                  type: 'friend_accepted',
+                  fromId: state.profileId,
+                  fromName: state.displayName || 'A weaver',
+                  createdAt: new Date().toISOString()
+                });
+              } catch(_) {}
+              notify('Accepted friend request from ' + (fname || fid), '#00ff88');
+              fetchFriendAvatar(fid); // v3.23.64: grab avatar on accept
+              renderFriends();
+              pollInbox();
+            });
+          });
+
+          // Decline handler — v3.23.65: mark declined so dupes auto-clean
+          friendRequestsList.querySelectorAll('.friend-decline-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var msgId = btn.getAttribute('data-msgid');
+              var fid = btn.getAttribute('data-fid');
+              try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
+              // Mark as declined so future duplicate requests from this person get auto-deleted
+              if (fid) {
+                state.friends[fid] = { displayName: '', status: 'declined', addedAt: new Date().toISOString() };
+                save();
+              }
+              notify('Friend request declined.', '#ff4444');
+              pollInbox();
+            });
+          });
+        }
+
+        // Render access requests (friends asking for task-adding permission)
+        function renderAccessRequests(requests) {
+          if (!accessRequestsSection || !accessRequestsList) return;
+          if (!requests || requests.length === 0) {
+            accessRequestsSection.style.display = 'none';
+            return;
+          }
+          accessRequestsSection.style.display = 'block';
+          var html = '';
+          requests.forEach(function(req) {
+            var accAvatar = (state.friends[req.fromId] && state.friends[req.fromId].avatarURL) || '';
+            html += '<div style="background:var(--bg);border:1px solid #4ecdc4;border-radius:6px;padding:8px;margin-bottom:4px;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+            html += avatarThumb(accAvatar);
+            html += '<span style="font-size:11px;color:var(--text);">' + escHtml(req.fromName || req.fromId) + ' is requesting task access</span>';
+            html += '</div>';
+            // Show project checkboxes for granting
+            var projects = state.projects || [];
+            html += '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Grant access to:</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">';
+            projects.forEach(function(p) {
+              html += '<label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:3px;cursor:pointer;background:var(--surface2);padding:2px 6px;border-radius:4px;border:1px solid var(--border);">';
+              html += '<input type="checkbox" class="access-grant-cb" data-pid="' + escHtml(p.id) + '" style="accent-color:#4ecdc4;" />';
+              html += escHtml(p.name) + '</label>';
+            });
+            html += '</div>';
+            html += '<div style="display:flex;gap:4px;">';
+            html += '<button class="btn btn-small access-grant-btn" data-msgid="' + escHtml(req._id) + '" data-fid="' + escHtml(req.fromId) + '" data-fname="' + escHtml(req.fromName || '') + '" style="border-color:#4ecdc4;color:#4ecdc4;font-size:7px;padding:2px 8px;">GRANT ACCESS</button>';
+            html += '<button class="btn btn-small access-deny-btn" data-msgid="' + escHtml(req._id) + '" style="border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 8px;">DENY</button>';
+            html += '</div>';
+            html += '</div>';
+          });
+          accessRequestsList.innerHTML = html;
+
+          // Grant access handler
+          accessRequestsList.querySelectorAll('.access-grant-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var msgId = btn.getAttribute('data-msgid');
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              // Collect checked projects from the same card
+              var card = btn.closest('div[style*="border:1px solid #4ecdc4"]') || btn.parentElement.parentElement;
+              var checkedProjects = [];
+              card.querySelectorAll('.access-grant-cb:checked').forEach(function(cb) {
+                checkedProjects.push(cb.getAttribute('data-pid'));
+              });
+              if (checkedProjects.length === 0) {
+                notify('Check at least one project to grant access.', '#ff9f43');
+                return;
+              }
+              // Ensure friend entry exists
+              if (!state.friends[fid]) {
+                state.friends[fid] = {
+                  displayName: fname || fid,
+                  status: 'accepted',
+                  taskAccessGranted: true,
+                  permittedProjects: checkedProjects,
+                  addedAt: new Date().toISOString()
+                };
+              } else {
+                state.friends[fid].taskAccessGranted = true;
+                state.friends[fid].permittedProjects = checkedProjects;
+              }
+              save();
+              try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
+              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              // Notify the friend that access was granted
+              try {
+                window.ProfileSync.sendInboxMessage(fid, {
+                  type: 'access_granted',
+                  fromId: state.profileId,
+                  fromName: state.displayName || 'A weaver',
+                  projects: checkedProjects,
+                  createdAt: new Date().toISOString()
+                });
+              } catch(_) {}
+              notify('Granted task access to ' + (fname || fid), '#4ecdc4');
+              renderFriends();
+              pollInbox();
+            });
+          });
+
+          // Deny handler
+          accessRequestsList.querySelectorAll('.access-deny-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var msgId = btn.getAttribute('data-msgid');
+              try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
+              notify('Access request denied.', '#ff4444');
+              pollInbox();
+            });
+          });
+        }
+
+        // Update badge count
+        function updateBadge(friendReqCount, accessReqCount) {
+          var total = friendReqCount + accessReqCount;
+          if (friendInboxBadge) {
+            if (total > 0) {
+              friendInboxBadge.style.display = 'inline';
+              friendInboxBadge.textContent = total;
+            } else {
+              friendInboxBadge.style.display = 'none';
+            }
+          }
+        }
+
+        // Poll inbox for friend requests, access requests, and remote tasks
+        function pollInbox() {
+          if (!state.profileId) return;
+          try {
+            window.ProfileSync.getInbox(state.profileId).then(function(messages) {
+              if (!messages || !messages.length) {
+                renderRequests([]);
+                renderAccessRequests([]);
+                updateBadge(0, 0);
+                return;
+              }
+              var friendReqs = [];
+              var accessReqs = [];
+              var tasks = [];
+              var acceptNotices = [];
+              var accessGrantNotices = [];
+              messages.forEach(function(msg) {
+                if (msg.type === 'friend_request') {
+                  var existingFriend = state.friends[msg.fromId];
+                  if (existingFriend && (existingFriend.status === 'accepted' || existingFriend.status === 'declined')) {
+                    // Already accepted or declined — auto-clean
+                    try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
+                  } else {
+                    // v3.23.65: Dedup — only keep one request per person, delete extras
+                    var alreadyHave = friendReqs.some(function(r) { return r.fromId === msg.fromId; });
+                    if (alreadyHave) {
+                      try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
+                    } else {
+                      friendReqs.push(msg);
+                    }
+                  }
+                } else if (msg.type === 'access_request') {
+                  // Only show if they're an accepted friend
+                  if (state.friends[msg.fromId] && state.friends[msg.fromId].status === 'accepted') {
+                    // v3.23.65: Dedup access requests per person
+                    var alreadyHaveAccess = accessReqs.some(function(r) { return r.fromId === msg.fromId; });
+                    if (alreadyHaveAccess) {
+                      try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
+                    } else {
+                      accessReqs.push(msg);
+                    }
+                  } else {
+                    try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
+                  }
+                } else if (msg.type === 'task') {
+                  tasks.push(msg);
+                } else if (msg.type === 'friend_accepted') {
+                  acceptNotices.push(msg);
+                } else if (msg.type === 'access_granted') {
+                  accessGrantNotices.push(msg);
+                }
+              });
+
+              // Process acceptance notices
+              acceptNotices.forEach(function(notice) {
+                if (!state.friends[notice.fromId]) {
+                  state.friends[notice.fromId] = {
+                    displayName: notice.fromName || notice.fromId,
+                    status: 'accepted',
+                    taskAccessGranted: false,
+                    permittedProjects: [],
+                    addedAt: new Date().toISOString()
+                  };
+                }
+                fetchFriendAvatar(notice.fromId); // v3.23.64
+                notify(escHtml(notice.fromName || notice.fromId) + ' accepted your friend request!', '#00ff88');
+                try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
+              });
+
+              // Process access-granted notices
+              accessGrantNotices.forEach(function(notice) {
+                notify(escHtml(notice.fromName || notice.fromId) + ' granted you task access!', '#4ecdc4');
+                try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
+              });
+
+              // Process remote tasks
+              tasks.forEach(function(t) {
+                var projectId = t.project;
+                var friend = state.friends[t.fromId];
+                if (!friend || friend.status !== 'accepted' || !friend.taskAccessGranted) {
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, t._id); } catch(_) {}
+                  return;
+                }
+                var perms = friend.permittedProjects || [];
+                if (perms.indexOf(projectId) === -1) {
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, t._id); } catch(_) {}
+                  return;
+                }
+                if (!state.tasks[projectId]) state.tasks[projectId] = [];
+                state.tasks[projectId].push({
+                  id: 'remote-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+                  text: (t.text || '').substring(0, 200),
+                  done: false,
+                  createdAt: Date.now(),
+                  addedBy: t.fromName || t.fromId
+                });
+                notify('Task from ' + (t.fromName || t.fromId) + ': ' + (t.text || '').substring(0, 40), '#5aadff');
+                try { window.ProfileSync.deleteInboxMessage(state.profileId, t._id); } catch(_) {}
+              });
+
+              if (tasks.length > 0 || acceptNotices.length > 0 || accessGrantNotices.length > 0) {
+                save();
+                render();
+              }
+
+              renderRequests(friendReqs);
+              renderAccessRequests(accessReqs);
+              updateBadge(friendReqs.length, accessReqs.length);
+              renderFriends();
+            }).catch(function(err) {
+              console.warn('[Friends] Inbox poll failed:', err);
+            });
+          } catch(_) {}
+        }
+
+        // Initial render
+        renderFriends();
+
+        // Poll on startup + every 30 seconds
+        setTimeout(pollInbox, 3000);
+        setInterval(pollInbox, 30000);
+      })();
 
       // ===== Passive ticks: autoloom + streak coin trickle =====
       // Run once now to catch up any idle accumulation, then on intervals.
@@ -12268,8 +12842,6 @@ try {
               level: {integerValue: String(lvl.level)},
               currentXP: {integerValue: String(lvl.currentXP || 0)},
               nextLevelXP: {integerValue: String(lvl.nextLevelXP || 50)},
-              xp: {integerValue: String(state.xp || 0)},
-              title: {stringValue: lvl.level >= 100 ? 'Omnifabric Singularity' : (state.title || 'Would-Be Weaver')},
               streak: {integerValue: String(state.streak || 0)},
               longestStreak: {integerValue: String(Math.max(state.longestStreak || 0, state.streak || 0))},
               lifetimeBlocks: {integerValue: String(state.totalLifetimeBlocks || 0)},
@@ -12287,7 +12859,8 @@ try {
               dailyTaskLog: _toFV(taskLog),
               dailySessionLog: _toFV(sessionLog),
               updatedAt: {stringValue: new Date().toISOString()},
-              profileCreated: {stringValue: state.profileCreated ? new Date(state.profileCreated).toISOString() : new Date().toISOString()}
+              profileCreated: {stringValue: state.profileCreated ? new Date(state.profileCreated).toISOString() : new Date().toISOString()},
+              projectNames: _toFV((state.projects || []).map(function(p) { return { id: p.id, name: p.name || 'Untitled' }; }))
             };
             fetch(url, {
               method: 'PATCH',

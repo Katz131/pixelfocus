@@ -100,8 +100,28 @@
 <div id="emptyView" class="empty" style="display:none;">No profiles synced yet.<br>Be the first weaver on the board.</div>
 
 <div class="site-nav">
+  <a class="nav-link accent" id="openTodoBtn" href="#" style="display:none;">&larr; TO-DO LIST</a>
   <a class="nav-link accent" href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET TODO OF THE LOOM &rarr;</a>
 </div>
+<script>
+// Detect extension and show TO-DO LIST button
+(function(){
+  // Try the Chrome Web Store extension ID first
+  var storeId = 'jlfiokfngdjebicfaagoeiciihbfeeil';
+  var tryIds = [storeId];
+  // Also try detecting via a well-known resource
+  function tryExtUrl(extId) {
+    var url = 'chrome-extension://' + extId + '/icons/icon16.png';
+    var img = new Image();
+    img.onload = function() {
+      var btn = document.getElementById('openTodoBtn');
+      if (btn) { btn.href = 'chrome-extension://' + extId + '/popup.html'; btn.style.display = ''; }
+    };
+    img.src = url;
+  }
+  tryIds.forEach(tryExtUrl);
+})();
+</script>
 
 <script>
 (function() {
@@ -222,4 +242,18 @@
       html += '<a class="player-card" href="/p/?id=' + esc(d._id) + '">'
         + '<div class="card-avatar">' + avatarHtml + '</div>'
         + '<div class="card-info">'
+        + '<div class="card-name">' + esc(d.displayName || 'Unknown Weaver') + '</div>'
+        + '<div class="card-title">' + esc(d.title || 'Would-Be Weaver') + '</div>'
+        + '<div class="card-meta">'
+        + '<span class="lv">LV ' + (d.level || 1) + '</span>'
+        + '<span class="streak">\u{1F525} ' + (d.streak || 0) + '</span>'
+        + '<span class="blocks">' + fmtNum(d.lifetimeBlocks) + ' textiles</span>'
+        + '</div></div></a>';
+    });
+    grid.innerHTML = html;
+  }
+})();
+</script>
+</body>
+</html>
         + '<div class="

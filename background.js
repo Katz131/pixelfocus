@@ -1074,9 +1074,10 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       // Timer running, in countdown, completed, or recently completed? Skip.
       // v3.22.98: Also check 'completed' state — fires between timer end and user clicking confirmation
       if (state.timerEndsAt && state.timerEndsAt > now) return;
+      var _nagMs = state.surveillanceNagInterval || 300000;
       if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
         // Reset nag anchor so it doesn't fire the SECOND the timer ends
-        if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+        if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > (_nagMs - 20000)) {
           state.surveillanceLastNag = now;
           _safeSaveState(state);
         }
@@ -1084,21 +1085,25 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       }
       if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) {
         // Grace period — also reset nag anchor so nag is 5 min from NOW, not from session start
-        if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+        if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > (_nagMs - 20000)) {
           state.surveillanceLastNag = now;
           _safeSaveState(state);
         }
         return;
       }
 
-      // Respect the 5-min nag interval — don't double-fire with page-side
+      // Respect the user's chosen nag interval — don't fire early
+      var nagIntervalMs = state.surveillanceNagInterval || 300000;
       var lastNag = state.surveillanceLastNag || 0;
-      if (lastNag && (now - lastNag) < 280000) return; // 4m40s to avoid edge races with page-side 5m
+      if (lastNag && (now - lastNag) < (nagIntervalMs - 20000)) return; // 20s buffer for alarm jitter
 
-      // v3.23.45: Detect computer sleep/lid close — if gap since last nag is
-      // more than 15 minutes, the computer was likely asleep. Reset the nag
-      // counter and anchor time instead of punishing the user for being away.
-      if (lastNag && (now - lastNag) > 900000) {
+      // v3.23.59: Detect computer sleep/lid close — if gap since last nag is
+      // more than 3× the nag interval, the computer was likely asleep. Reset
+      // the nag counter and anchor time instead of punishing the user.
+      // (Previously hardcoded 15 min which was LESS than a 20-min interval,
+      //  causing every real nag to be swallowed by sleep detection.)
+      var sleepThresholdMs = Math.max(nagIntervalMs * 3, 900000);
+      if (lastNag && (now - lastNag) > sleepThresholdMs) {
         console.log('[Surveillance] Large gap detected (' + Math.round((now - lastNag)/60000) + ' min) — computer was likely asleep. Resetting nag counter.');
         state.surveillanceNagCount = 0;
         state.surveillanceLastNag = now;
@@ -1312,6 +1317,20 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
     return;
   }
 
+  // v3.23.61: Remote task inbox poll — send message to popup for processing
+  if (alarm.name === 'pixelfocus-inbox-poll') {
+    // The actual inbox processing happens in app.js (pollInbox function)
+    // This alarm just ensures the popup's interval fires even if the service worker
+    // was asleep. Send a lightweight message; popup will handle it if open.
+    try {
+      chrome.runtime.sendMessage({ type: 'INBOX_POLL' }, function() {
+        // Ignore errors (popup may not be open)
+        if (chrome.runtime.lastError) { /* expected */ }
+      });
+    } catch(_) {}
+    return;
+  }
+
   // v3.21.49: Auto-reopen todo list if closed (persistent mode)
   if (alarm.name === 'pixelfocus-keepopen') {
     chrome.storage.local.get('pixelFocusState', function(result) {
@@ -1436,6 +1455,7 @@ chrome.runtime.onInstalled.addListener(function(details) {
   chrome.alarms.create('pixelfocus-keepopen', { periodInMinutes: 5 });
   chrome.alarms.create('pixelfocus-site-nag', { periodInMinutes: 2 });
   chrome.alarms.create('pixelfocus-volume-mute', { periodInMinutes: 10 });
+  chrome.alarms.create('pixelfocus-inbox-poll', { periodInMinutes: 1 }); // v3.23.61: Remote task inbox
   chrome.alarms.clear('pixelfocus-tick');
 
   // v3.22.32: After extension reload, close stale extension tabs and reopen fresh.
@@ -1487,6 +1507,7 @@ chrome.runtime.onStartup.addListener(function() {
   chrome.alarms.create('pixelfocus-keepopen', { periodInMinutes: 5 });
   chrome.alarms.create('pixelfocus-site-nag', { periodInMinutes: 2 });
   chrome.alarms.create('pixelfocus-volume-mute', { periodInMinutes: 10 });
+  chrome.alarms.create('pixelfocus-inbox-poll', { periodInMinutes: 1 }); // v3.23.61: Remote task inbox
   chrome.alarms.clear('pixelfocus-tick');
 
   // v3.21.49: Auto-open todo list on browser startup if enabled
@@ -1519,9 +1540,10 @@ function opportunisticSurveillanceCheck() {
     if (!state || !state.surveillanceActive) return;
     if (state.surveillanceEndsAt && state.surveillanceEndsAt <= now) return;
     if (state.timerEndsAt && state.timerEndsAt > now) return;
+    var _oppNagMs = state.surveillanceNagInterval || 300000;
     if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
       // v3.22.98: Reset nag anchor while timer is active so nag doesn't fire the instant it ends
-      if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+      if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > (_oppNagMs - 20000)) {
         state.surveillanceLastNag = now;
         _safeSaveState(state);
       }
@@ -1530,18 +1552,18 @@ function opportunisticSurveillanceCheck() {
     // Buffer: skip if timer ended less than 60s ago (completion flow still writing)
     if (state.timerEndsAt && (now - state.timerEndsAt) < 60000) return;
     if (state.lastCompletedSessionAt && (now - state.lastCompletedSessionAt) < 300000) {
-      // v3.22.98: Grace period — reset anchor so nag is 5 min from now
-      if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > 280000) {
+      // v3.22.98: Grace period — reset anchor so nag is from now
+      if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > (_oppNagMs - 20000)) {
         state.surveillanceLastNag = now;
         _safeSaveState(state);
       }
       return;
     }
 
-    // Is a nag overdue? (5 min since last nag or surveillance start)
+    // Is a nag overdue? Check against user's chosen interval
     var lastNag = state.surveillanceLastNag || 0;
     var anchor = lastNag || state.surveillanceStartedAt || now;
-    if ((now - anchor) < 300000) return; // not yet due
+    if ((now - anchor) < _oppNagMs) return; // not yet due
 
     // Fire the nag — same logic as the alarm handler
     state.surveillanceNagCount = (state.surveillanceNagCount || 0) + 1;

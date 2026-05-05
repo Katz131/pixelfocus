@@ -56,11 +56,19 @@
   .stat-value.teal{color:var(--accent3)}
   .timeline-panel{background:var(--surface);border:1px solid var(--accent3);border-radius:10px;padding:18px 20px;margin-top:2px}
   .timeline-panel h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent3);margin-bottom:12px;letter-spacing:0.5px}
-  .timeline-bar-wrap{position:relative;height:32px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:8px}
-  .timeline-block{position:absolute;top:4px;bottom:4px;background:linear-gradient(180deg,var(--accent),var(--accent3));border-radius:3px;min-width:3px;opacity:0.85}
+  .timeline-bar-wrap{position:relative;height:32px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:visible;margin-bottom:8px}
+  .timeline-block{position:absolute;top:4px;bottom:4px;background:linear-gradient(180deg,var(--accent),var(--accent3));border-radius:3px;min-width:6px;opacity:0.85;cursor:pointer;z-index:1}
+  .timeline-block:hover{opacity:1;box-shadow:0 0 8px rgba(78,205,196,0.5)}
+  .timeline-block .tt{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a1a3a;border:1px solid var(--accent3);border-radius:6px;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:8px;color:var(--accent);white-space:nowrap;z-index:10;pointer-events:none}
+  .timeline-block:hover .tt{display:block}
   .timeline-labels{display:flex;justify-content:space-between;font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);padding:0 2px}
   .timeline-summary{font-size:11px;color:var(--text-dim);text-align:center;margin-top:8px;font-family:'Courier New',monospace}
   .timeline-summary strong{color:var(--accent);font-weight:normal}
+  .weekly-panel{background:var(--surface);border:1px solid #ff9f43;border-radius:10px;padding:18px 20px;margin-top:2px}
+  .weekly-panel h2{font-family:'Press Start 2P',monospace;font-size:10px;color:#ff9f43;margin-bottom:10px;letter-spacing:0.5px}
+  .weekly-bars{display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px}
+  .weekly-labels{display:flex;gap:8px;padding:4px 4px 0}
+  .weekly-summary{font-size:11px;color:var(--text-dim);text-align:center;margin-top:8px;font-family:'Courier New',monospace}
   .daily-tasks{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:18px 20px;margin-top:2px}
   .daily-tasks h2{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--accent);margin-bottom:12px;letter-spacing:0.5px}
   .daily-tasks-date{font-size:10px;color:var(--text-dim);margin-bottom:10px;font-family:'Press Start 2P',monospace}
@@ -81,12 +89,29 @@
   .nav-link.gold:hover{box-shadow:0 0 12px rgba(255,215,0,0.2)}
   .nav-link.accent{color:var(--accent)}
   .site-nav{text-align:center;padding:14px 20px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+  /* v3.23.61: Social / Friend / Task UI */
+  .social-panel{background:var(--surface);border:1px solid #5aadff;border-radius:12px;padding:22px 24px;margin-top:4px}
+  .social-panel h2{font-family:'Press Start 2P',monospace;font-size:10px;color:#5aadff;margin-bottom:12px;letter-spacing:0.5px}
+  .social-input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;width:100%}
+  .social-input:focus{border-color:#5aadff}
+  .social-btn{background:var(--surface2);border:1px solid #5aadff;border-radius:6px;padding:8px 16px;color:#5aadff;font-family:'Press Start 2P',monospace;font-size:9px;cursor:pointer;letter-spacing:0.5px;transition:background 200ms}
+  .social-btn:hover{background:#1a2a4a}
+  .social-btn:disabled{opacity:0.4;cursor:not-allowed}
+  .social-btn.green{border-color:var(--accent);color:var(--accent)}
+  .social-btn.green:hover{background:#1a2a2a}
+  .social-msg{font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none}
+  .social-msg.ok{display:block;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.3);color:var(--accent)}
+  .social-msg.err{display:block;background:rgba(255,107,157,0.08);border:1px solid rgba(255,107,157,0.3);color:var(--accent2)}
+  .task-form-project{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;margin:3px;cursor:pointer;font-size:11px;color:var(--text-dim);transition:border-color 200ms}
+  .task-form-project.selected{border-color:#5aadff;color:#5aadff;background:rgba(90,173,255,0.08)}
+  .task-form-project:hover{border-color:#5aadff}
 </style>
 </head>
 <body>
 <div class="top-bar"><h1>TODO OF THE LOOM</h1></div>
 <div class="site-nav">
   <a class="nav-link gold" href="/">&larr; LEADERBOARD</a>
+  <a class="nav-link accent" id="openTodoBtn" href="#" style="display:none;" title="Open your to-do list in the extension.">&larr; TO-DO LIST</a>
   <a class="nav-link accent" href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET THE EXTENSION &rarr;</a>
 </div>
 <div class="hero"><div class="hero-label">CARD OF STANDING</div></div>
@@ -112,6 +137,11 @@
       var d=parseDoc(doc.fields||{});
       document.title=(d.displayName||'Profile')+' \u2014 Todo of the Loom';
       renderProfile(d);
+      // Show "TO-DO LIST" button if the extension URL is known
+      if (d.extensionUrl) {
+        var todoBtn = document.getElementById('openTodoBtn');
+        if (todoBtn) { todoBtn.href = d.extensionUrl; todoBtn.style.display = ''; }
+      }
     })
     .catch(function(err){
       if(err.message==='not_found'){showError('Profile not found. It may not have been synced yet.');}
@@ -130,8 +160,8 @@
   function parseVal(v){
     if(!v)return null;
     if('stringValue' in v)return v.stringValue;
-    if('integerValue' in v)return parseInt(v.integerValue,10);
-    if('doubleValue' in v)return v.doubleValue;
+    if('integerValue' in v)return Number(v.integerValue);
+    if('doubleValue' in v)return Number(v.doubleValue);
     if('booleanValue' in v)return v.booleanValue;
     if('nullValue' in v)return null;
     if('mapValue' in v)return parseDoc(v.mapValue.fields||{});
@@ -203,7 +233,7 @@
       var widthPct=Math.max(0.5,endPct-startPct);
       var startTime=sd.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
       var endTime=ed.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
-      blocks+='<div class="timeline-block" style="left:'+startPct.toFixed(1)+'%;width:'+widthPct.toFixed(1)+'%;" title="'+startTime+' - '+endTime+' ('+s.min+'min)"></div>';
+      blocks+='<div class="timeline-block" style="left:'+startPct.toFixed(1)+'%;width:'+widthPct.toFixed(1)+'%;"><div class="tt">'+startTime+' - '+endTime+' ('+s.min+' min)</div></div>';
     }
     var html='<div class="timeline-panel">'
       +'<h2>TODAY\'S FOCUS TIMELINE</h2>'
@@ -219,6 +249,69 @@
       html+='<strong>'+timeStr+'</strong> focused across <strong>'+sessions.length+'</strong> session'+(sessions.length===1?'':'s');
     }
     html+='</div></div>';
+    return html;
+  }
+  function buildWeeklyFocus(d){
+    var history=d.focusHistory||{};
+    var today=new Date();
+    var todayDate=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+    var dow=todayDate.getDay();
+    var mondayOff=dow===0?-6:1-dow;
+    var monday=new Date(todayDate.getTime()+mondayOff*86400000);
+    function pad(n){return n<10?'0'+n:''+n;}
+    function fmtShort(dt){return pad(dt.getMonth()+1)+'/'+pad(dt.getDate());}
+    function todayStr(){return today.getFullYear()+'-'+pad(today.getMonth()+1)+'-'+pad(today.getDate());}
+    var todayS=todayStr();
+    var dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var days=[];
+    var maxMin=1;
+    for(var i=0;i<7;i++){
+      var dt=new Date(monday.getTime()+i*86400000);
+      var ds=dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());
+      var mins=0;
+      if(ds===todayS){
+        if(d.dailySessionLog&&d.dailySessionLog.date===todayS){
+          var sess=d.dailySessionLog.sessions||[];
+          for(var s=0;s<sess.length;s++)mins+=(sess[s].min||0);
+        }
+      } else {
+        mins=(history[ds])||0;
+      }
+      if(mins>maxMin)maxMin=mins;
+      var isFuture=ds>todayS;
+      days.push({label:dayNames[i],mins:mins,isToday:ds===todayS,isFuture:isFuture});
+    }
+    var endDate=new Date(monday.getTime()+6*86400000);
+    var html='<div class="weekly-panel">'
+      +'<h2>WEEKLY FOCUS</h2>'
+      +'<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#5a5a7e;text-align:center;margin-bottom:10px;">'+fmtShort(monday)+' - '+fmtShort(endDate)+'</div>'
+      +'<div class="weekly-bars">';
+    var totalMins=0;
+    for(var j=0;j<days.length;j++){
+      var day=days[j];
+      totalMins+=day.mins;
+      var pct=day.isFuture?0:Math.max(day.mins>0?8:2,Math.round((day.mins/maxMin)*100));
+      var color=day.isToday?'#00ff88':(day.isFuture?'#1a1a2e':'#ff9f43');
+      var opacity=day.isFuture?'0.2':'1';
+      var barLabel='';
+      if(!day.isFuture&&day.mins>0){
+        var bh=Math.floor(day.mins/60);var bm=day.mins%60;
+        barLabel=bh>0?bh+'h'+(bm>0?' '+bm+'m':''):bm+'m';
+      }
+      html+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">'
+        +'<div style="font-family:\'Press Start 2P\',monospace;font-size:6px;color:#ff9f43;margin-bottom:2px;">'+barLabel+'</div>'
+        +'<div style="width:100%;border-radius:3px 3px 0 0;background:'+color+';opacity:'+opacity+';height:'+pct+'%;min-height:2px;"></div>'
+        +'</div>';
+    }
+    html+='</div><div class="weekly-labels">';
+    for(var k=0;k<days.length;k++){
+      var lc=days[k].isToday?'#00ff88':'#5a5a7e';
+      html+='<div style="flex:1;text-align:center;font-family:\'Press Start 2P\',monospace;font-size:6px;color:'+lc+';">'+days[k].label+'</div>';
+    }
+    html+='</div>';
+    var hrs=Math.floor(totalMins/60);var rm=totalMins%60;
+    var sumText=totalMins===0?'No focus data this week':(hrs>0?hrs+'h ':'')+(rm>0?rm+'m ':'')+' total';
+    html+='<div class="weekly-summary">'+sumText+'</div></div>';
     return html;
   }
   function buildDailyTasks(d){
@@ -309,10 +402,331 @@
       +statRow('Lives lost',String(d.livesLost||0),'','color:#ff6666')
       +'</div></div>'
       +buildTimeline(d)
+      +buildWeeklyFocus(d)
       +buildDailyTasks(d)
       +'<div class="footer-line">Filed with the clerks of standing on '+esc(fmtDate(d.profileCreated))+'.</div>'
       +'<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;font-style:italic;">Last synced '+esc(fmtDate(d.updatedAt))+'</div>'
       +'<div class="cta-bar"><a href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET TODO OF THE LOOM &rarr;</a></div>';
+
+    // v3.23.61: Render social panel (friend request + task adding)
+    renderSocialPanel(d);
+  }
+
+  // =========================================================================
+  // v3.23.61: Social panel — identify yourself, send friend request, add tasks
+  // =========================================================================
+  function renderSocialPanel(profileData) {
+    var layout = document.getElementById('profileLayout');
+    if (!layout) return;
+
+    // Don't show social panel if viewing your own profile
+    var myId = localStorage.getItem('totl_my_profile_id') || '';
+
+    var panel = document.createElement('div');
+    panel.className = 'social-panel';
+    panel.innerHTML = ''
+      + '<h2>FRIEND &amp; TASK SHARING</h2>'
+      + '<div id="socialIdentify" style="' + (myId ? 'display:none;' : '') + '">'
+      +   '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">To send a friend request or add tasks, enter your own Profile ID first:</div>'
+      +   '<div style="display:flex;gap:8px;align-items:center;">'
+      +     '<input type="text" id="myProfileIdInput" class="social-input" placeholder="Your Profile ID..." value="' + esc(myId) + '" style="flex:1;" />'
+      +     '<button class="social-btn" id="socialIdentifyBtn">SET</button>'
+      +   '</div>'
+      +   '<div id="socialIdentifyMsg" class="social-msg"></div>'
+      + '</div>'
+      + '<div id="socialActions" style="' + (myId ? '' : 'display:none;') + '">'
+      +   '<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">Logged in as: <span id="socialMyName" style="color:#5aadff;">' + esc(myId) + '</span> <a href="#" id="socialChangeId" style="color:var(--accent2);font-size:10px;margin-left:6px;">change</a></div>'
+      +   '<div id="socialFriendSection"></div>'
+      +   '<div id="socialTaskSection" style="display:none;margin-top:12px;">'
+      +     '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:var(--accent);margin-bottom:8px;letter-spacing:1px;">ADD A TASK</div>'
+      +     '<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Select a project:</div>'
+      +     '<div id="socialProjectPicker" style="margin-bottom:8px;"></div>'
+      +     '<div style="display:flex;gap:8px;">'
+      +       '<input type="text" id="socialTaskInput" class="social-input" placeholder="Task text..." maxlength="200" style="flex:1;" />'
+      +       '<button class="social-btn green" id="socialTaskSubmitBtn" disabled>SEND</button>'
+      +     '</div>'
+      +     '<div id="socialTaskMsg" class="social-msg"></div>'
+      +   '</div>'
+      + '</div>';
+    layout.appendChild(panel);
+
+    var identifySection = document.getElementById('socialIdentify');
+    var actionsSection = document.getElementById('socialActions');
+    var identifyBtn = document.getElementById('socialIdentifyBtn');
+    var myInput = document.getElementById('myProfileIdInput');
+    var identifyMsg = document.getElementById('socialIdentifyMsg');
+    var changeLink = document.getElementById('socialChangeId');
+    var friendSection = document.getElementById('socialFriendSection');
+    var taskSection = document.getElementById('socialTaskSection');
+    var projectPicker = document.getElementById('socialProjectPicker');
+    var taskInput = document.getElementById('socialTaskInput');
+    var taskSubmitBtn = document.getElementById('socialTaskSubmitBtn');
+    var taskMsg = document.getElementById('socialTaskMsg');
+    var myNameSpan = document.getElementById('socialMyName');
+
+    var selectedProject = null;
+
+    // Set identity
+    function setIdentity(id) {
+      myId = (id || '').trim().toLowerCase();
+      if (!myId || myId.length < 6) {
+        identifyMsg.className = 'social-msg err';
+        identifyMsg.textContent = 'Enter a valid Profile ID (at least 6 characters).';
+        return;
+      }
+      if (myId === profileId) {
+        identifyMsg.className = 'social-msg err';
+        identifyMsg.textContent = 'That\'s this profile! You can\'t friend yourself.';
+        return;
+      }
+      localStorage.setItem('totl_my_profile_id', myId);
+      identifySection.style.display = 'none';
+      actionsSection.style.display = 'block';
+      if (myNameSpan) myNameSpan.textContent = myId;
+      checkFriendStatus();
+    }
+
+    if (identifyBtn) {
+      identifyBtn.addEventListener('click', function() {
+        setIdentity(myInput.value);
+      });
+    }
+    if (myInput) {
+      myInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') setIdentity(myInput.value);
+      });
+    }
+    if (changeLink) {
+      changeLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        localStorage.removeItem('totl_my_profile_id');
+        myId = '';
+        identifySection.style.display = 'block';
+        actionsSection.style.display = 'none';
+        taskSection.style.display = 'none';
+      });
+    }
+
+    // Check if we're already friends with this profile
+    function checkFriendStatus() {
+      if (!myId) return;
+      friendSection.innerHTML = '<div style="font-size:11px;color:var(--text-dim);">Checking friend status...</div>';
+      // Check both sides — the profile owner's social data AND the viewer's own
+      Promise.all([
+        fetch(BASE + '/profiles/' + profileId + '/social/data?key=' + KEY)
+          .then(function(r) {
+            if (r.status === 404) return { friends: {} };
+            return r.json().then(function(doc) {
+              if (!doc || !doc.fields) return { friends: {} };
+              var result = {};
+              Object.keys(doc.fields).forEach(function(k) { result[k] = parseVal(doc.fields[k]); });
+              return result;
+            });
+          }),
+        fetch(BASE + '/profiles/' + myId + '/social/data?key=' + KEY)
+          .then(function(r) {
+            if (r.status === 404) return { friends: {} };
+            return r.json().then(function(doc) {
+              if (!doc || !doc.fields) return { friends: {} };
+              var result = {};
+              Object.keys(doc.fields).forEach(function(k) { result[k] = parseVal(doc.fields[k]); });
+              return result;
+            });
+          }).catch(function() { return { friends: {} }; })
+      ])
+        .then(function(results) {
+          var ownerSocial = results[0];
+          var mySocial = results[1];
+          var friends = ownerSocial.friends || {};
+          var me = friends[myId];
+          // Check both directions — if either side has accepted, they're friends
+          var myFriends = mySocial.friends || {};
+          var them = myFriends[profileId];
+          var isFriend = (me && me.status === 'accepted') || (them && them.status === 'accepted');
+          if (isFriend) {
+            // Use the owner's record for permissions if available, otherwise basic friend status
+            if (!me) me = { status: 'accepted', taskAccessGranted: false, permittedProjects: [] };
+            // We're friends!
+            var hasTaskAccess = me.taskAccessGranted === true;
+            var perms = me.permittedProjects || [];
+            var projects = profileData.projectNames || [];
+            friendSection.innerHTML = '<div style="font-size:12px;color:var(--accent);margin-bottom:8px;">✓ You are friends with ' + esc(profileData.displayName || 'this weaver') + '</div>';
+            if (!hasTaskAccess) {
+              // Friend but no task access — show request button
+              friendSection.innerHTML += ''
+                + '<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">You don\'t have task-adding access yet. Request it below — they\'ll choose which projects to share.</div>'
+                + '<button class="social-btn" id="requestAccessBtn">REQUEST TASK ACCESS</button>'
+                + '<div id="accessReqMsg" class="social-msg"></div>';
+              var reqAccessBtn = document.getElementById('requestAccessBtn');
+              var accessReqMsg = document.getElementById('accessReqMsg');
+              if (reqAccessBtn) {
+                reqAccessBtn.addEventListener('click', function() {
+                  reqAccessBtn.disabled = true;
+                  reqAccessBtn.textContent = 'SENDING...';
+                  fetch(BASE + '/profiles/' + myId + '?key=' + KEY)
+                    .then(function(r) { return r.ok ? r.json() : null; })
+                    .then(function(myDoc) {
+                      var myName = 'Unknown Weaver';
+                      if (myDoc && myDoc.fields && myDoc.fields.displayName) {
+                        myName = parseVal(myDoc.fields.displayName) || myName;
+                      }
+                      var msg = {
+                        type: { stringValue: 'access_request' },
+                        fromId: { stringValue: myId },
+                        fromName: { stringValue: myName },
+                        createdAt: { stringValue: new Date().toISOString() }
+                      };
+                      return fetch(BASE + '/profiles/' + profileId + '/inbox?key=' + KEY, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fields: msg })
+                      });
+                    })
+                    .then(function(resp) {
+                      if (!resp.ok) throw new Error('Failed');
+                      accessReqMsg.className = 'social-msg ok';
+                      accessReqMsg.textContent = 'Access requested! They\'ll see it in their extension and choose which projects to share.';
+                      reqAccessBtn.textContent = 'REQUESTED';
+                    })
+                    .catch(function() {
+                      accessReqMsg.className = 'social-msg err';
+                      accessReqMsg.textContent = 'Failed to send request. Try again.';
+                      reqAccessBtn.disabled = false;
+                      reqAccessBtn.textContent = 'REQUEST TASK ACCESS';
+                    });
+                });
+              }
+            } else if (perms.length === 0) {
+              taskSection.style.display = 'block';
+              taskSection.innerHTML = '<div style="font-size:11px;color:var(--text-dim);font-style:italic;">You have task access but no specific projects are shared yet. Ask ' + esc(profileData.displayName || 'them') + ' to check some project boxes in their extension.</div>';
+            } else {
+              taskSection.style.display = 'block';
+              // Show project picker
+              var pickerHtml = '';
+              var allowedProjects = projects.filter(function(p) { return perms.indexOf(p.id) !== -1; });
+              allowedProjects.forEach(function(p) {
+                pickerHtml += '<span class="task-form-project" data-pid="' + esc(p.id) + '">' + esc(p.name) + '</span>';
+              });
+              if (projectPicker) projectPicker.innerHTML = pickerHtml;
+              // Project selection
+              projectPicker.querySelectorAll('.task-form-project').forEach(function(el) {
+                el.addEventListener('click', function() {
+                  projectPicker.querySelectorAll('.task-form-project').forEach(function(x) { x.classList.remove('selected'); });
+                  el.classList.add('selected');
+                  selectedProject = el.getAttribute('data-pid');
+                  if (taskSubmitBtn) taskSubmitBtn.disabled = false;
+                });
+              });
+            }
+          } else if (me && me.status === 'declined') {
+            // They declined — don't show send button
+            friendSection.innerHTML = '<div style="font-size:11px;color:var(--text-dim);font-style:italic;">Friend request was declined.</div>';
+          } else if (them && them.status === 'accepted') {
+            // We already have them as a friend on our side (shouldn't reach here but just in case)
+            friendSection.innerHTML = '<div style="font-size:12px;color:var(--accent);">✓ Already friends</div>';
+          } else {
+            // Not friends — show friend request button
+            friendSection.innerHTML = ''
+              + '<button class="social-btn" id="sendFriendReqBtn">SEND FRIEND REQUEST</button>'
+              + '<div id="friendReqMsg" class="social-msg"></div>';
+            var sendBtn = document.getElementById('sendFriendReqBtn');
+            var friendReqMsg = document.getElementById('friendReqMsg');
+            if (sendBtn) {
+              sendBtn.addEventListener('click', function() {
+                sendBtn.disabled = true;
+                sendBtn.textContent = 'SENDING...';
+                // Look up our display name
+                fetch(BASE + '/profiles/' + myId + '?key=' + KEY)
+                  .then(function(r) { return r.ok ? r.json() : null; })
+                  .then(function(myDoc) {
+                    var myName = 'Unknown Weaver';
+                    if (myDoc && myDoc.fields && myDoc.fields.displayName) {
+                      myName = parseVal(myDoc.fields.displayName) || myName;
+                    }
+                    // Send inbox message
+                    var msg = {
+                      type: { stringValue: 'friend_request' },
+                      fromId: { stringValue: myId },
+                      fromName: { stringValue: myName },
+                      createdAt: { stringValue: new Date().toISOString() }
+                    };
+                    return fetch(BASE + '/profiles/' + profileId + '/inbox?key=' + KEY, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ fields: msg })
+                    });
+                  })
+                  .then(function(resp) {
+                    if (!resp.ok) throw new Error('Failed');
+                    friendReqMsg.className = 'social-msg ok';
+                    friendReqMsg.textContent = 'Friend request sent! They\'ll see it in their extension.';
+                    sendBtn.textContent = 'SENT!';
+                  })
+                  .catch(function() {
+                    friendReqMsg.className = 'social-msg err';
+                    friendReqMsg.textContent = 'Failed to send. Check your Profile ID and try again.';
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = 'SEND FRIEND REQUEST';
+                  });
+              });
+            }
+          }
+        })
+        .catch(function() {
+          friendSection.innerHTML = '<div style="font-size:11px;color:var(--accent2);">Could not check friend status.</div>';
+        });
+    }
+
+    // Task submit
+    if (taskSubmitBtn) {
+      taskSubmitBtn.addEventListener('click', function() {
+        var text = (taskInput.value || '').trim();
+        if (!text || !selectedProject || !myId) return;
+        taskSubmitBtn.disabled = true;
+        taskSubmitBtn.textContent = 'SENDING...';
+        // Look up our display name
+        fetch(BASE + '/profiles/' + myId + '?key=' + KEY)
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(myDoc) {
+            var myName = 'Unknown Weaver';
+            if (myDoc && myDoc.fields && myDoc.fields.displayName) {
+              myName = parseVal(myDoc.fields.displayName) || myName;
+            }
+            var msg = {
+              type: { stringValue: 'task' },
+              fromId: { stringValue: myId },
+              fromName: { stringValue: myName },
+              project: { stringValue: selectedProject },
+              text: { stringValue: text.substring(0, 200) },
+              createdAt: { stringValue: new Date().toISOString() }
+            };
+            return fetch(BASE + '/profiles/' + profileId + '/inbox?key=' + KEY, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields: msg })
+            });
+          })
+          .then(function(resp) {
+            if (!resp.ok) throw new Error('Failed');
+            taskMsg.className = 'social-msg ok';
+            taskMsg.textContent = 'Task sent! It will appear in their to-do list shortly.';
+            taskInput.value = '';
+            taskSubmitBtn.textContent = 'SEND';
+            taskSubmitBtn.disabled = false;
+          })
+          .catch(function() {
+            taskMsg.className = 'social-msg err';
+            taskMsg.textContent = 'Failed to send task. Try again.';
+            taskSubmitBtn.textContent = 'SEND';
+            taskSubmitBtn.disabled = false;
+          });
+      });
+    }
+
+    // Auto-check if already identified
+    if (myId) {
+      checkFriendStatus();
+    }
   }
 })();
 </script>

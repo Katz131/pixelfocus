@@ -369,8 +369,11 @@
 
   .timeline-panel { background: var(--surface); border: 1px solid var(--accent3); border-radius: 10px; padding: 18px 20px; }
   .timeline-panel h2 { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--accent3); margin-bottom: 12px; letter-spacing: 0.5px; }
-  .timeline-bar-wrap { position: relative; height: 32px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
-  .timeline-block { position: absolute; top: 4px; bottom: 4px; background: linear-gradient(180deg, var(--accent), var(--accent3)); border-radius: 3px; min-width: 3px; opacity: 0.85; }
+  .timeline-bar-wrap { position: relative; height: 32px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; overflow: visible; margin-bottom: 8px; }
+  .timeline-block { position: absolute; top: 4px; bottom: 4px; background: linear-gradient(180deg, var(--accent), var(--accent3)); border-radius: 3px; min-width: 6px; opacity: 0.85; cursor: pointer; z-index: 1; }
+  .timeline-block:hover { opacity: 1; box-shadow: 0 0 8px rgba(78,205,196,0.5); }
+  .timeline-block .tt { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1a1a3a; border: 1px solid var(--accent3); border-radius: 6px; padding: 6px 10px; font-family: 'Press Start 2P', monospace; font-size: 8px; color: var(--accent); white-space: nowrap; z-index: 10; pointer-events: none; }
+  .timeline-block:hover .tt { display: block; }
   .timeline-labels { display: flex; justify-content: space-between; font-family: 'Press Start 2P', monospace; font-size: 7px; color: var(--text-dim); padding: 0 2px; }
   .timeline-summary { font-size: 11px; color: var(--text-dim); text-align: center; margin-top: 8px; font-family: 'Courier New', monospace; }
   .timeline-summary strong { color: var(--accent); font-weight: normal; }
@@ -543,6 +546,14 @@
         <span class="stat-value" id="stLivesLost" style="color:#ff6666;" title="Total departures from the roster &mdash; research mishaps plus incinerator conversions. Persists across sessions.">0</span>
       </div>
     </div>
+  </div>
+
+  <!-- v3.23.55: Daily focus timeline (matches web profile) -->
+  <div class="timeline-panel" id="profileTimelinePanel" style="margin-top:16px;">
+    <h2>TODAY'S FOCUS TIMELINE</h2>
+    <div id="profileTimelineBar" class="timeline-bar-wrap"></div>
+    <div id="profileTimelineLabels" class="timeline-labels"><span>12AM</span><span>6AM</span><span>12PM</span><span>6PM</span><span>12AM</span></div>
+    <div id="profileTimelineSummary" class="timeline-summary"></div>
   </div>
 
   <!-- v3.22.27: Weekly focus history bar chart (moved from main popup) -->
