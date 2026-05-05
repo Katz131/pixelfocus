@@ -10986,12 +10986,16 @@ try {
                 fetchFriendAvatar(notice.fromId); // v3.23.64
                 notify(escHtml(notice.fromName || notice.fromId) + ' accepted your friend request!', '#00ff88');
                 try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
+                // v3.23.72: Persist requester's side to Firestore too (was local-only before)
+                try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
               });
 
               // Process access-granted notices
               accessGrantNotices.forEach(function(notice) {
                 notify(escHtml(notice.fromName || notice.fromId) + ' granted you task access!', '#4ecdc4');
                 try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
+                // v3.23.72: Persist to Firestore
+                try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
               });
 
               // Process remote tasks
