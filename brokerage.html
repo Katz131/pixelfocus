@@ -304,6 +304,59 @@ body {
 }
 .back-btn:hover { background: rgba(78,205,196,0.15); }
 
+/* Acumen system (v3.23.79) */
+.acumen-val { color: #c084fc !important; }
+.upgrade-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; margin-bottom: 12px; transition: all 0.3s;
+}
+.upgrade-card.owned { border-color: #7c3aed; }
+.upgrade-card.locked { opacity: 0.45; }
+.upgrade-card.affordable { border-color: #c084fc; box-shadow: 0 0 12px rgba(192,132,252,0.15); }
+.upgrade-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.upgrade-title { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--text); flex: 1; }
+.upgrade-cost { font-family: 'Press Start 2P', monospace; font-size: 9px; color: #c084fc; }
+.upgrade-cost.got { color: var(--green); }
+.upgrade-desc { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; }
+.upgrade-effect {
+  font-size: 11px; color: var(--accent3); padding: 6px 10px;
+  background: rgba(78,205,196,0.08); border-radius: 4px;
+  border-left: 3px solid var(--accent3); margin-bottom: 10px;
+}
+.upgrade-buy-btn {
+  font-family: 'Press Start 2P', monospace; font-size: 8px;
+  padding: 8px 16px; border: 1px solid #c084fc; border-radius: 4px;
+  cursor: pointer; background: rgba(192,132,252,0.1); color: #c084fc; transition: all 0.2s;
+}
+.upgrade-buy-btn:hover { background: rgba(192,132,252,0.25); }
+.upgrade-buy-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.upgrade-buy-btn.owned-btn { border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.08); cursor: default; }
+.ach-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 12px;
+}
+.ach-card.earned { border-color: #7c3aed; background: rgba(192,132,252,0.05); }
+.ach-name { font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--text); margin-bottom: 4px; }
+.ach-desc { font-size: 11px; color: var(--text-dim); }
+.ach-reward { font-family: 'Press Start 2P', monospace; font-size: 9px; color: #c084fc; white-space: nowrap; }
+.ach-bar { width: 100%; height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.ach-fill { height: 100%; background: #c084fc; border-radius: 2px; transition: width 0.5s; }
+.sentiment-pill {
+  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  padding: 2px 6px; border-radius: 3px; margin-left: 8px;
+}
+.sent-bull { color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+.sent-bear { color: var(--red); border: 1px solid rgba(255,68,102,0.3); }
+.sent-flat { color: var(--text-dim); border: 1px solid var(--border); }
+.acumen-toast {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+  background: rgba(192,132,252,0.95); color: #fff;
+  font-family: 'Press Start 2P', monospace; font-size: 9px;
+  padding: 10px 20px; border-radius: 6px; z-index: 9999;
+  transition: opacity 0.5s; pointer-events: none;
+}
+
 /* Deposit/withdraw bar */
 .deposit-bar {
   display: flex;
@@ -352,6 +405,7 @@ body {
   <div class="stat"><span class="label">BROKERAGE CASH:</span><span class="val" id="brokerageCash">0</span></div>
   <div class="stat"><span class="label">PORTFOLIO:</span><span class="val" id="portfolioVal">0</span></div>
   <div class="stat"><span class="label">P/L:</span><span class="val" id="totalPL">0</span></div>
+  <div class="stat"><span class="label">ACUMEN:</span><span class="val" id="acumenVal" style="color:#c084fc;">0</span></div>
 </div>
 
 <div class="deposit-bar">
@@ -370,6 +424,7 @@ body {
   <button class="tab-btn" data-panel="crypto">CRYPTO</button>
   <button class="tab-btn" data-panel="gambling">GAMBLING</button>
   <button class="tab-btn" data-panel="portfolio">PORTFOLIO</button>
+  <button class="tab-btn" data-panel="upgrades" style="color:#c084fc;border-color:#c084fc;">UPGRADES</button>
 </div>
 
 <div class="panel active" id="stocksPanel">
@@ -400,6 +455,13 @@ body {
 <div class="panel" id="portfolioPanel">
   <div class="section-title">YOUR PORTFOLIO</div>
   <div id="portfolioView"></div>
+</div>
+
+<div class="panel" id="upgradesPanel">
+  <div class="section-title" style="color:#c084fc;">BROKERAGE UPGRADES</div>
+  <div id="tierDisplay" style="text-align:center;padding:8px 0;"></div>
+  <div id="achievementsList" style="margin-bottom:16px;"></div>
+  <div id="upgradesList"></div>
 </div>
 
 <button class="back-btn" id="backBtn">&larr; BACK</button>
@@ -438,57 +500,57 @@ body {
 
   // ===== Market definitions =====
   var STOCKS = [
-    { id: 'LMC', name: 'LoomCorp', desc: 'Blue-chip textile conglomerate. Reliable, boring, profitable.', basePrice: 100, volatility: 0.02, drift: 0.001 },
-    { id: 'TTK', name: 'ThreadTech', desc: 'High-growth tech startup automating thread production.', basePrice: 45, volatility: 0.04, drift: 0.002 },
-    { id: 'WVI', name: 'Weave Industries', desc: 'Cyclical manufacturer. Booms when orders come in, busts when they don\'t.', basePrice: 72, volatility: 0.035, drift: 0.0005 },
-    { id: 'SRL', name: 'Silk Road Logistics', desc: 'Global shipping and freight. Moves the textiles nobody else can.', basePrice: 28, volatility: 0.03, drift: 0.0015 },
-    { id: 'DCC', name: 'Dye Chemical Co', desc: 'Raw materials supplier. Cheap stock, steady demand.', basePrice: 15, volatility: 0.025, drift: 0.001 },
-    { id: 'NFL', name: 'NanoFiber Labs', desc: 'Speculative biotech. Either the future of fabric or vaporware.', basePrice: 8, volatility: 0.07, drift: 0.003 }
+    { id: 'AAPL', name: 'Apex Industries', desc: 'Blue-chip conglomerate. Reliable, boring, profitable. The stock your grandparents would approve of.', basePrice: 185, volatility: 0.02, drift: 0.001 },
+    { id: 'NVEX', name: 'Novex Technologies', desc: 'High-growth AI and semiconductor company. Priced for perfection, which it occasionally delivers.', basePrice: 480, volatility: 0.04, drift: 0.002 },
+    { id: 'MRDN', name: 'Meridian Health', desc: 'Pharmaceutical giant. Steady revenue from existing drugs, pipeline gambles on new ones.', basePrice: 72, volatility: 0.03, drift: 0.001 },
+    { id: 'CSTL', name: 'Coastal Logistics', desc: 'Global shipping and freight. When the economy moves, so does their stock. Cyclical.', basePrice: 28, volatility: 0.035, drift: 0.0005 },
+    { id: 'GRNV', name: 'GreenVolt Energy', desc: 'Renewable energy. Government contracts keep the lights on, but margins are thin.', basePrice: 42, volatility: 0.03, drift: 0.0015 },
+    { id: 'QBIT', name: 'QuBit Labs', desc: 'Speculative quantum computing startup. Either the future of everything or vaporware. No middle ground.', basePrice: 8, volatility: 0.07, drift: 0.003 }
   ];
 
   var FUNDS = [
-    { id: 'TIF', name: 'Textile Index Fund', desc: 'Weighted basket of all listed stocks. Diversified and steady.', fee: 0.005 },
-    { id: 'GRF', name: 'Growth Fund', desc: 'Weighted toward TTK and NFL. Higher risk, higher potential.', fee: 0.008 }
+    { id: 'VIDX', name: 'Vanguard Total Market Index', desc: 'Weighted basket of all listed stocks. Diversified and steady. The boring choice that usually wins.', fee: 0.005 },
+    { id: 'GFND', name: 'Growth Opportunities Fund', desc: 'Weighted toward Novex and QuBit. Higher risk, higher potential. For the optimistic.', fee: 0.008 }
   ];
 
   var BONDS = [
-    { id: 'TB3', name: '3-Session Bond', desc: 'Matures after 3 focus sessions. Low yield, guaranteed.', sessions: 3, rate: 0.02 },
-    { id: 'TB7', name: '7-Session Bond', desc: 'Matures after 7 focus sessions. Moderate yield, guaranteed.', sessions: 7, rate: 0.05 },
-    { id: 'TB20', name: '20-Session Bond', desc: 'Matures after 20 focus sessions. High yield, long commitment.', sessions: 20, rate: 0.15 }
+    { id: 'TB3', name: '3-Session Treasury Note', desc: 'Matures after 3 focus sessions. Low yield, guaranteed return. The safest bet.', sessions: 3, rate: 0.02 },
+    { id: 'TB7', name: '7-Session Treasury Bond', desc: 'Matures after 7 focus sessions. Moderate yield, guaranteed. Patient money.', sessions: 7, rate: 0.05 },
+    { id: 'TB20', name: '20-Session Treasury Bond', desc: 'Matures after 20 focus sessions. Best yield available, long commitment. Set it and forget it.', sessions: 20, rate: 0.15 }
   ];
 
   var CRYPTOS = [
-    { id: 'THC', name: 'ThreadCoin', desc: 'The people\'s crypto. Wildly volatile. Community-driven.', basePrice: 0.50, volatility: 0.12, drift: 0.005 },
-    { id: 'LTK', name: 'LoomToken', desc: 'Utility token for decentralized weaving. Slightly less insane.', basePrice: 3.20, volatility: 0.08, drift: 0.003 }
+    { id: 'BTC', name: 'BitCoin', desc: 'The original cryptocurrency. Wild swings, true believers, and the occasional rug pull.', basePrice: 0.50, volatility: 0.12, drift: 0.005 },
+    { id: 'ETH', name: 'EtherToken', desc: 'Smart contract platform token. Slightly less volatile than BTC. Slightly.', basePrice: 3.20, volatility: 0.08, drift: 0.003 }
   ];
 
   var GAMBLING_GAMES = [
-    { id: 'coinflip', name: 'Coin Flip', desc: 'Double or nothing. 50/50.', odds: 0.5, payout: 2 },
-    { id: 'slots', name: 'The Loom Slots', desc: 'Spin to win. Mostly spin to lose.', odds: 0.15, payout: 5 },
-    { id: 'highroller', name: 'High Roller', desc: 'Big risk, big reward. 10% chance at 8x.', odds: 0.10, payout: 8 }
+    { id: 'coinflip', name: 'Coin Flip', desc: 'Double or nothing. 50/50 odds. The purest gamble there is.', odds: 0.5, payout: 2 },
+    { id: 'slots', name: 'Slot Machine', desc: 'Spin to win. Mostly spin to lose. The house edge is not subtle.', odds: 0.15, payout: 5 },
+    { id: 'highroller', name: 'High Roller Table', desc: 'Big risk, big reward. 10% chance at 8x your money. For the reckless.', odds: 0.10, payout: 8 }
   ];
 
   var NEWS = [
-    'LoomCorp reports record quarterly earnings.',
-    'ThreadTech announces revolutionary self-healing fabric.',
-    'Weave Industries hit by supply chain delays.',
-    'Silk Road Logistics expands into new markets.',
-    'Dye Chemical Co faces environmental review.',
-    'NanoFiber Labs publishes promising trial results.',
-    'ThreadCoin surges on social media hype.',
-    'LoomToken partnerships expand utility.',
-    'Markets steady as weaving sector consolidates.',
-    'Analysts warn of textile bubble forming.',
-    'Central Loom Bank holds interest rates steady.',
-    'Crypto markets in turmoil after exchange hack.',
-    'Mutual fund inflows hit record highs.',
-    'Bond yields remain attractive for cautious investors.',
-    'Retail investors pile into speculative fiber stocks.',
-    'Market regulators announce new trading rules.',
-    'NanoFiber plunges on failed clinical trial.',
-    'LoomCorp dividend announced: 2% yield.',
-    'ThreadTech CEO steps down. Stock wobbles.',
-    'Weave Industries wins massive government contract.'
+    'Apex Industries reports record quarterly earnings. Stock holds steady.',
+    'Novex Technologies unveils next-gen chip architecture. Analysts upgrade to buy.',
+    'Meridian Health faces FDA review on flagship drug. Shares dip.',
+    'Coastal Logistics expands into Southeast Asian markets.',
+    'GreenVolt wins $2B federal energy contract.',
+    'QuBit Labs publishes breakthrough quantum error correction paper.',
+    'BitCoin surges 15% on institutional adoption rumors.',
+    'EtherToken partnerships expand DeFi utility.',
+    'Markets steady as Fed signals rate pause.',
+    'Analysts warn of tech sector overvaluation.',
+    'Federal Reserve holds interest rates steady at 4.5%.',
+    'Crypto markets rattled after major exchange outage.',
+    'Index fund inflows hit record highs as retail investors diversify.',
+    'Bond yields tick up as inflation data exceeds expectations.',
+    'Retail investors pile into speculative biotech names.',
+    'SEC announces new cryptocurrency trading regulations.',
+    'QuBit Labs plunges 30% on failed proof-of-concept demo.',
+    'Apex Industries announces 2.1% dividend yield. Income investors rejoice.',
+    'Novex Technologies CEO announces retirement. Successor unnamed.',
+    'Coastal Logistics wins massive government defense contract.'
   ];
 
   // ===== State =====
@@ -509,6 +571,12 @@ body {
     if (typeof b.totalGamblingWon !== 'number') b.totalGamblingWon = 0;
     if (typeof b.lastMarketTick !== 'number') b.lastMarketTick = 0;
     if (typeof b.sessionsSinceBonds !== 'number') b.sessionsSinceBonds = 0;
+    if (typeof b.acumen !== 'number') b.acumen = 0;
+    if (!b.ownedUpgrades) b.ownedUpgrades = {};
+    if (!b.earnedAchievements) b.earnedAchievements = {};
+    if (typeof b.biggestSingleProfit !== 'number') b.biggestSingleProfit = 0;
+    if (typeof b.longestHoldTicks !== 'number') b.longestHoldTicks = 0;
+    if (typeof b.dipBuys !== 'number') b.dipBuys = 0;
     return b;
   }
 
@@ -607,14 +675,14 @@ body {
       STOCKS.forEach(function(s) { total += (b.prices[s.id] || s.basePrice); });
       return Math.round((total / STOCKS.length) * 100) / 100;
     } else if (fund.id === 'GRF') {
-      // Growth-weighted: 40% TTK, 30% NFL, 15% LMC, 15% rest
-      var ttk = b.prices['TTK'] || 45;
-      var nfl = b.prices['NFL'] || 8;
-      var lmc = b.prices['LMC'] || 100;
+      // Growth-weighted: 40% NVEX, 30% QBIT, 15% AAPL, 15% rest
+      var nvex = b.prices['NVEX'] || 480;
+      var qbit = b.prices['QBIT'] || 8;
+      var aapl = b.prices['AAPL'] || 185;
       var rest = 0;
-      STOCKS.forEach(function(s) { if (s.id !== 'TTK' && s.id !== 'NFL' && s.id !== 'LMC') rest += (b.prices[s.id] || s.basePrice); });
+      STOCKS.forEach(function(s) { if (s.id !== 'NVEX' && s.id !== 'QBIT' && s.id !== 'AAPL') rest += (b.prices[s.id] || s.basePrice); });
       rest = rest / Math.max(1, STOCKS.length - 3);
-      return Math.round((ttk * 0.4 + nfl * 0.3 + lmc * 0.15 + rest * 0.15) * 100) / 100;
+      return Math.round((nvex * 0.4 + qbit * 0.3 + aapl * 0.15 + rest * 0.15) * 100) / 100;
     }
     return 10;
   }
@@ -706,6 +774,10 @@ body {
     var plEl = document.getElementById('totalPL');
     plEl.textContent = (pl >= 0 ? '+' : '') + fmt(pl);
     plEl.className = 'val ' + (pl >= 0 ? 'green' : 'red');
+
+    // Acumen display
+    var acEl = document.getElementById('acumenVal');
+    if (acEl) acEl.textContent = b.acumen || 0;
   }
 
   function calcPortfolioValue(b) {
@@ -1110,8 +1182,16 @@ body {
     h.avgCost = Math.round(h.avgCost * 100) / 100;
     b.tradesCount++;
 
+    // Acumen: detect dip buy (price dropped >10% from recent high)
+    var hist = b.priceHistory[id] || [];
+    if (hist.length >= 5) {
+      var recentHigh = Math.max.apply(null, hist.slice(-10));
+      if (price < recentHigh * 0.9) b.dipBuys = (b.dipBuys || 0) + 1;
+    }
+
     SFX.buy();
     showNews('Bought ' + qty + ' ' + id + ' at $' + fmt(price) + '/ea.');
+    checkAchievements(b);
     save(function() { renderAll(); });
   }
 
@@ -1137,6 +1217,9 @@ body {
     if (!price) return;
 
     var revenue = qty * price;
+    var saleProfit = revenue - (qty * h.avgCost);
+    if (saleProfit > (b.biggestSingleProfit || 0)) b.biggestSingleProfit = saleProfit;
+
     b.cash += revenue;
     b.cash = Math.round(b.cash * 100) / 100;
     h.shares -= qty;
@@ -1145,6 +1228,7 @@ body {
 
     SFX.sell();
     showNews('Sold ' + qty + ' ' + id + ' at $' + fmt(price) + '/ea for $' + fmt(revenue) + '.');
+    checkAchievements(b);
     save(function() { renderAll(); });
   }
 
@@ -1287,6 +1371,246 @@ body {
     showNews(msg);
   }
 
+  // ===== Acumen System =====
+  var UPGRADES = [
+    { id: 'trendLines', name: 'Trend Lines', desc: 'Overlay SMA trend line on mini charts', cost: 5, icon: '↗' },
+    { id: 'sentiment', name: 'Market Sentiment', desc: 'Show bull/bear/flat badges on stocks', cost: 10, icon: '❤' },
+    { id: 'limitOrders', name: 'Limit Orders', desc: 'Set auto-buy price targets (coming soon)', cost: 25, icon: '⏰' },
+    { id: 'sectorView', name: 'Sector Analysis', desc: 'See sector groupings in portfolio', cost: 30, icon: '📁' },
+    { id: 'margin', name: 'Margin Trading', desc: 'Borrow up to 50% extra for trades (coming soon)', cost: 60, icon: '⚡' },
+    { id: 'shorts', name: 'Short Selling', desc: 'Bet against stocks (coming soon)', cost: 75, icon: '📉' },
+    { id: 'whispers', name: 'Insider Whispers', desc: 'Extra news hints before market moves', cost: 120, icon: '👂' },
+    { id: 'algo', name: 'Algorithmic Trading', desc: 'Auto-trade a % of portfolio (coming soon)', cost: 200, icon: '🤖' }
+  ];
+
+  var ACHIEVEMENTS = [
+    { id: 'firstTrade', name: 'First Blood', desc: 'Complete your first trade', reward: 2, check: function(b) { return b.tradesCount >= 1; } },
+    { id: 'tenTrades', name: 'Getting Started', desc: 'Complete 10 trades', reward: 5, check: function(b) { return b.tradesCount >= 10; } },
+    { id: 'fiftyTrades', name: 'Seasoned Trader', desc: 'Complete 50 trades', reward: 15, check: function(b) { return b.tradesCount >= 50; } },
+    { id: 'hundredTrades', name: 'Centurion', desc: 'Complete 100 trades', reward: 30, check: function(b) { return b.tradesCount >= 100; } },
+    { id: 'diversified', name: 'Diversified', desc: 'Hold 3+ different assets', reward: 8, check: function(b) { return Object.keys(b.portfolio).length >= 3; } },
+    { id: 'fullyDiversified', name: 'Fully Diversified', desc: 'Hold 6+ different assets', reward: 20, check: function(b) { return Object.keys(b.portfolio).length >= 6; } },
+    { id: 'profitTaker', name: 'Profit Taker', desc: 'Make $100+ profit on a single sale', reward: 5, check: function(b) { return (b.biggestSingleProfit || 0) >= 100; } },
+    { id: 'diamondHands', name: 'Diamond Hands', desc: 'Hold any asset for 48+ market ticks', reward: 12, check: function(b) { return (b.longestHoldTicks || 0) >= 48; } },
+    { id: 'buyTheDip', name: 'Buy the Dip', desc: 'Buy 5 assets that dropped 10%+', reward: 10, check: function(b) { return (b.dipBuys || 0) >= 5; } },
+    { id: 'bigPortfolio', name: 'Big Portfolio', desc: 'Portfolio value exceeds $5,000', reward: 15, check: function(b) { return calcPortfolioValue(b) >= 5000; } },
+    { id: 'whale', name: 'Whale', desc: 'Portfolio value exceeds $50,000', reward: 40, check: function(b) { return calcPortfolioValue(b) >= 50000; } },
+    { id: 'millionaire', name: 'Millionaire', desc: 'Total brokerage value exceeds $1,000,000', reward: 80, check: function(b) { return (b.cash + calcPortfolioValue(b)) >= 1000000; } }
+  ];
+
+  var TIERS = [
+    { name: 'Retail Investor', threshold: 0, color: '#8892b0' },
+    { name: 'Licensed Broker', threshold: 10, color: '#00ff88' },
+    { name: 'Certified Analyst', threshold: 40, color: '#4ecdc4' },
+    { name: 'Portfolio Strategist', threshold: 100, color: '#ffd700' },
+    { name: 'Institutional Trader', threshold: 200, color: '#c084fc' }
+  ];
+
+  function getCurrentTier(b) {
+    var ac = b.acumen || 0;
+    var tier = TIERS[0];
+    for (var i = TIERS.length - 1; i >= 0; i--) {
+      if (ac >= TIERS[i].threshold) { tier = TIERS[i]; break; }
+    }
+    return tier;
+  }
+
+  function getNextTier(b) {
+    var ac = b.acumen || 0;
+    for (var i = 0; i < TIERS.length; i++) {
+      if (ac < TIERS[i].threshold) return TIERS[i];
+    }
+    return null;
+  }
+
+  function showAcumenToast(msg) {
+    var toast = document.createElement('div');
+    toast.className = 'acumen-toast';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.style.opacity = '0'; }, 2500);
+    setTimeout(function() { toast.remove(); }, 3200);
+  }
+
+  function checkAchievements(b) {
+    if (!b.earnedAchievements) b.earnedAchievements = {};
+    ACHIEVEMENTS.forEach(function(ach) {
+      if (b.earnedAchievements[ach.id]) return;
+      if (ach.check(b)) {
+        b.earnedAchievements[ach.id] = Date.now();
+        b.acumen = (b.acumen || 0) + ach.reward;
+        SFX.cha_ching();
+        showAcumenToast('+' + ach.reward + ' ACUMEN: ' + ach.name);
+      }
+    });
+  }
+
+  function buyUpgrade(upgradeId) {
+    var b = getB();
+    if (b.ownedUpgrades[upgradeId]) return;
+    var upgrade = UPGRADES.filter(function(u) { return u.id === upgradeId; })[0];
+    if (!upgrade) return;
+    if ((b.acumen || 0) < upgrade.cost) {
+      SFX.lose();
+      showNews('Not enough Acumen. Keep trading to earn more.');
+      return;
+    }
+    b.acumen -= upgrade.cost;
+    b.ownedUpgrades[upgradeId] = Date.now();
+    SFX.win();
+    showAcumenToast('UNLOCKED: ' + upgrade.name);
+    save(function() { renderAll(); });
+  }
+
+  function renderUpgrades() {
+    var b = getB();
+    var tier = getCurrentTier(b);
+    var nextTier = getNextTier(b);
+
+    // Tier display
+    var tierEl = document.getElementById('tierDisplay');
+    if (tierEl) {
+      var tierHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:' + tier.color + ';">' + tier.name.toUpperCase() + '</div>';
+      tierHtml += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">' + (b.acumen || 0) + ' Acumen';
+      if (nextTier) tierHtml += ' — next tier at ' + nextTier.threshold;
+      tierHtml += '</div>';
+      if (nextTier) {
+        var prevThresh = tier.threshold;
+        var pct = Math.min(100, Math.round(((b.acumen || 0) - prevThresh) / (nextTier.threshold - prevThresh) * 100));
+        tierHtml += '<div style="width:200px;height:4px;background:var(--border);border-radius:2px;margin:6px auto 0;overflow:hidden;">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + nextTier.color + ';border-radius:2px;transition:width 0.5s;"></div></div>';
+      }
+      tierEl.innerHTML = tierHtml;
+    }
+
+    // Achievements
+    var achEl = document.getElementById('achievementsList');
+    if (achEl) {
+      var achHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:var(--text-dim);margin-bottom:8px;">ACHIEVEMENTS</div>';
+      achHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+      ACHIEVEMENTS.forEach(function(ach) {
+        var earned = b.earnedAchievements && b.earnedAchievements[ach.id];
+        achHtml += '<div class="achievement-card' + (earned ? ' earned' : '') + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span class="ach-name">' + esc(ach.name) + '</span>' +
+          '<span class="ach-reward">' + (earned ? '✓' : '+' + ach.reward) + '</span>' +
+          '</div>' +
+          '<div class="ach-desc">' + esc(ach.desc) + '</div>' +
+          (earned ? '' : '<div class="ach-bar"><div class="ach-fill" style="width:' + getAchProgress(ach, b) + '%;"></div></div>') +
+          '</div>';
+      });
+      achHtml += '</div>';
+      achEl.innerHTML = achHtml;
+    }
+
+    // Upgrades
+    var upEl = document.getElementById('upgradesList');
+    if (upEl) {
+      var upHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:var(--text-dim);margin-bottom:8px;">UPGRADES</div>';
+      upHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+      UPGRADES.forEach(function(u) {
+        var owned = b.ownedUpgrades && b.ownedUpgrades[u.id];
+        var canAfford = (b.acumen || 0) >= u.cost;
+        upHtml += '<div class="upgrade-card' + (owned ? ' owned' : '') + '">' +
+          '<div class="upgrade-icon">' + u.icon + '</div>' +
+          '<div class="upgrade-name">' + esc(u.name) + '</div>' +
+          '<div class="upgrade-desc">' + esc(u.desc) + '</div>' +
+          '<div class="upgrade-cost">' + (owned ? 'OWNED' : u.cost + ' Acumen') + '</div>' +
+          (owned ? '' : '<button class="upgrade-buy-btn' + (canAfford ? '' : ' disabled') + '" data-upgrade="' + u.id + '"' + (canAfford ? '' : ' disabled') + '>BUY</button>') +
+          '</div>';
+      });
+      upHtml += '</div>';
+      upEl.innerHTML = upHtml;
+
+      // Wire upgrade buy buttons
+      upEl.querySelectorAll('.upgrade-buy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          buyUpgrade(btn.getAttribute('data-upgrade'));
+        });
+      });
+    }
+  }
+
+  function getAchProgress(ach, b) {
+    // Return a rough % for progress bars
+    if (ach.id === 'firstTrade') return Math.min(100, (b.tradesCount / 1) * 100);
+    if (ach.id === 'tenTrades') return Math.min(100, (b.tradesCount / 10) * 100);
+    if (ach.id === 'fiftyTrades') return Math.min(100, (b.tradesCount / 50) * 100);
+    if (ach.id === 'hundredTrades') return Math.min(100, (b.tradesCount / 100) * 100);
+    if (ach.id === 'diversified') return Math.min(100, (Object.keys(b.portfolio).length / 3) * 100);
+    if (ach.id === 'fullyDiversified') return Math.min(100, (Object.keys(b.portfolio).length / 6) * 100);
+    if (ach.id === 'profitTaker') return Math.min(100, ((b.biggestSingleProfit || 0) / 100) * 100);
+    if (ach.id === 'diamondHands') return Math.min(100, ((b.longestHoldTicks || 0) / 48) * 100);
+    if (ach.id === 'buyTheDip') return Math.min(100, ((b.dipBuys || 0) / 5) * 100);
+    if (ach.id === 'bigPortfolio') return Math.min(100, (calcPortfolioValue(b) / 5000) * 100);
+    if (ach.id === 'whale') return Math.min(100, (calcPortfolioValue(b) / 50000) * 100);
+    if (ach.id === 'millionaire') return Math.min(100, ((b.cash + calcPortfolioValue(b)) / 1000000) * 100);
+    return 0;
+  }
+
+  // Add sentiment badges to renderStocks when upgrade is owned
+  var _origRenderStocks = renderStocks;
+  renderStocks = function() {
+    _origRenderStocks();
+    var b = getB();
+    if (b.ownedUpgrades && b.ownedUpgrades.sentiment) {
+      document.querySelectorAll('.stock-card').forEach(function(card) {
+        var tickerEl = card.querySelector('.stock-ticker');
+        if (!tickerEl) return;
+        var id = tickerEl.textContent.trim();
+        var hist = b.priceHistory[id] || [];
+        if (hist.length < 3) return;
+        var recent = hist.slice(-5);
+        var avg = recent.reduce(function(a,b){return a+b;},0) / recent.length;
+        var last = recent[recent.length - 1];
+        var sentClass = 'sent-flat', sentText = 'FLAT';
+        if (last > avg * 1.02) { sentClass = 'sent-bull'; sentText = 'BULL'; }
+        else if (last < avg * 0.98) { sentClass = 'sent-bear'; sentText = 'BEAR'; }
+        var pill = document.createElement('span');
+        pill.className = 'sentiment-pill ' + sentClass;
+        pill.textContent = sentText;
+        tickerEl.parentNode.insertBefore(pill, tickerEl.nextSibling);
+      });
+    }
+  };
+
+  // Enhance drawMiniChart for trend lines when upgrade is owned
+  var _origDrawMiniChart = drawMiniChart;
+  drawMiniChart = function(canvas, history, color) {
+    _origDrawMiniChart(canvas, history, color);
+    var b = getB();
+    if (b.ownedUpgrades && b.ownedUpgrades.trendLines && canvas && history && history.length >= 5) {
+      var ctx = canvas.getContext('2d');
+      var w = canvas.width;
+      var h = canvas.height;
+      var min = Math.min.apply(null, history);
+      var max = Math.max.apply(null, history);
+      if (max === min) max = min + 1;
+      var range = max - min;
+      // Simple moving average (5-period)
+      var sma = [];
+      for (var i = 0; i < history.length; i++) {
+        if (i < 4) { sma.push(null); continue; }
+        var sum = 0;
+        for (var j = i - 4; j <= i; j++) sum += history[j];
+        sma.push(sum / 5);
+      }
+      ctx.strokeStyle = 'rgba(192,132,252,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      var started = false;
+      sma.forEach(function(v, i) {
+        if (v === null) return;
+        var x = (i / (history.length - 1)) * w;
+        var y = h - ((v - min) / range) * (h * 0.9) - h * 0.05;
+        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  };
+
   // ===== Render all =====
   function renderAll() {
     renderWalletBar();
@@ -1296,6 +1620,7 @@ body {
     renderCrypto();
     renderGambling();
     renderPortfolio();
+    renderUpgrades();
   }
 
   // ===== Init =====

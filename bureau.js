@@ -322,6 +322,79 @@
         partial: function(s,a){ return { coins: 2000, line: 'The phone rang. No one spoke. A small envelope arrived a week later with a stamped number on it.' }; },
         blown:   function(s,a){ return { coins: 0,    line: 'The hat is still on the rack. We do not, at this time, know why it is there.' }; }
       }
+    },
+
+    // ---------- Market Intelligence (v3.23.87) ----------
+    // These operations feed state.marketBureauBonus which boosts market demand.
+    // The bonus decays by 0.02 per market tick (~20 seconds to zero from max).
+    {
+      id: 'marketRecon',
+      title: 'Market reconnaissance',
+      subtitle: 'The Case Officer visits the bazaar.',
+      desc: 'Send the Case Officer to survey competitor pricing and customer sentiment. Success grants a temporary market demand bonus.',
+      slot: 'caseOfficer',
+      cost: 400, minSeniority: 2, minLoyalty: 2,
+      outcomes: { success: 65, partial: 30, blown: 5 },
+      heatOnBlown: 2, burnOnBlown: false,
+      rewards: {
+        success: function(s, a) {
+          s.marketBureauBonus = Math.min(0.5, (s.marketBureauBonus || 0) + 0.15);
+          return { coins: 300, line: 'Competitor price sheets obtained. Three suppliers are undercutting us. We have adjusted.' };
+        },
+        partial: function(s, a) {
+          s.marketBureauBonus = Math.min(0.5, (s.marketBureauBonus || 0) + 0.05);
+          return { coins: 100, line: 'Partial intel. One supplier was talking but the market closed early.' };
+        },
+        blown: function(s, a) { return { coins: 0, line: 'A rival noticed our agent comparing price tags. Cover story: just shopping.' }; }
+      }
+    },
+    {
+      id: 'supplyChainInfiltration',
+      title: 'Supply chain infiltration',
+      subtitle: 'The Vault Runner follows the thread.',
+      desc: 'Infiltrate a competitor’s supply chain to identify cost advantages. Success reduces your effective production costs via a market bonus.',
+      slot: 'vaultRunner',
+      cost: 600, minSeniority: 2, minLoyalty: 3,
+      outcomes: { success: 55, partial: 35, blown: 10 },
+      heatOnBlown: 4, burnOnBlown: false,
+      rewards: {
+        success: function(s, a) {
+          s.marketBureauBonus = Math.min(0.5, (s.marketBureauBonus || 0) + 0.20);
+          return { coins: 500, line: 'Full supply manifest copied. Their dye supplier charges 40% less. We have made a call.' };
+        },
+        partial: function(s, a) {
+          s.marketBureauBonus = Math.min(0.5, (s.marketBureauBonus || 0) + 0.08);
+          return { coins: 150, line: 'Partial manifest. Enough to renegotiate one contract.' };
+        },
+        blown: function(s, a) {
+          s.marketBureauBonus = Math.max(0, (s.marketBureauBonus || 0) - 0.10);
+          return { coins: 0, line: 'Our agent was caught in the warehouse. The supplier has raised our prices.' };
+        }
+      }
+    },
+    {
+      id: 'demandManipulation',
+      title: 'Demand manipulation',
+      subtitle: 'The Strategist plants a rumour.',
+      desc: 'Plant favourable stories about your textiles in key markets. High risk, high reward. Requires the Chief of Station.',
+      slot: 'chiefOfStation',
+      cost: 1500, minSeniority: 3, minLoyalty: 3,
+      outcomes: { success: 50, partial: 35, blown: 15 },
+      heatOnBlown: 6, burnOnBlown: false,
+      rewards: {
+        success: function(s, a) {
+          s.marketBureauBonus = Math.min(0.5, (s.marketBureauBonus || 0) + 0.35);
+          return { coins: 2000, line: 'Three newspapers ran the story. Demand is surging. The phone has not stopped.' };
+        },
+        partial: function(s, a) {
+          s.marketBureauBonus = Math.min(0.5, (s.marketBureauBonus || 0) + 0.12);
+          return { coins: 400, line: 'One paper ran it below the fold. Some interest. Not the frenzy we wanted.' };
+        },
+        blown: function(s, a) {
+          s.marketBureauBonus = Math.max(0, (s.marketBureauBonus || 0) - 0.20);
+          return { coins: 0, line: 'The newspaper traced the story back to us. An editorial has been published. It is unflattering.' };
+        }
+      }
     }
   ];
 
@@ -487,7 +560,6 @@
     var coinsPaid = rewardResult.coins || 0;
     var line = rewardResult.line || '';
 
-    // Apply coin payout
     if (coinsPaid) state.coins = (state.coins || 0) + coinsPaid;
 
     // Side effects (string switchboard for simplicity in MVP)

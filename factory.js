@@ -106,7 +106,7 @@
       id: 'brokerageLevel',
       title: 'Brokerage License',
       tree: 'Commerce',
-      desc: 'Apply for a financial services license. Opens the Brokerage — a full investment market where you can trade stocks, buy bonds, speculate on crypto, and gamble your hard-earned coins. The brokerage operates on deposited cash; your wallet stays separate. One-time purchase.',
+      desc: 'Apply for a financial services license. Opens the Brokerage — a real investment market where you can trade stocks, buy treasury bonds, speculate on crypto, and gamble. Deposit money from your wallet to trade; withdraw profits back. One-time purchase.',
       effects: [
         'The Brokerage door appears on the home page.'
       ],
@@ -227,9 +227,12 @@
         'Streak trickle x2.8',
         'Streak trickle x4.0',
         'Streak trickle x6.0',
-        'Streak trickle x9.0'
+        'Streak trickle x9.0',
+        'Streak trickle x13.0',
+        'Streak trickle x19.0',
+        'Streak trickle x28.0'
       ],
-      costs: [50000, 400000, 3000000, 25000000, 250000000, 3000000000, 40000000000],
+      costs: [50000, 400000, 3000000, 25000000, 250000000, 3000000000, 40000000000, 500000000000, 7000000000000, 100000000000000],
       milestones: [
         'Local chamber of commerce retainer signed. Handshakes exchanged.',
         'A lobbyist is hired at the state capitol. They know a guy.',
@@ -237,7 +240,10 @@
         'Our think tank publishes a paper. It is well received.',
         'Super PAC formed. It has a calming, thoughtful name.',
         'Regulatory capture achieved. The rules feel... friendly.',
-        'Agency rules are drafted on our letterhead. For efficiency.'
+        'Agency rules are drafted on our letterhead. For efficiency.',
+        'International trade delegation seats our representative. Permanently.',
+        'Sovereign lobbying corridor established. Nations consult us on tariffs.',
+        'The concept of "regulation" now refers to our internal memos.'
       ]
     },
 

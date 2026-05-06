@@ -49,6 +49,7 @@ body.mirror-mode #showIntroBtn { display: none !important; }
 body.mirror-mode #addBlockedTimeBtn { display: none !important; }
 body.mirror-mode #sleepTimeBtn { display: none !important; }
 body.mirror-mode #dailyRemindersPanel { display: none !important; }
+body.mirror-mode #marketCard { display: none !important; }
 body.mirror-mode .msg-console-header,
 body.mirror-mode .msg-console { display: none !important; }
 body.mirror-mode #houseBtn, body.mirror-mode #galleryBtn,
@@ -583,6 +584,57 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <button class="btn" id="popOutTimerBtn" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3);" title="Pop out a small always-on-top timer window so you can see the countdown while you work in other tabs or apps. Closes automatically when the session ends.">POP OUT</button>
   </div>
   <div class="current-task-label" id="currentTaskLabel" title="The task currently being focused. Click FOCUS on a task in the list below to set it.">Select a task to focus on</div>
+</div>
+
+<!-- v3.23.80: MARKET ECONOMY card. Hidden until marketingLevel >= 1.
+     Pricing slider + live demand/cost/margin readouts.
+     Yield multiplier is SECRET until focus session completes.
+     Wired by market-engine.js + market-events.js (separate files). -->
+<div id="marketCard" style="display:none;margin:0 10px 8px;background:linear-gradient(180deg,#0a1a18,#0f2420);border:1px solid #00cc88;border-radius:6px;padding:10px;box-shadow:0 0 12px rgba(0,204,136,0.1) inset;" title="The textile market. Set your price and watch supply &amp; demand shift. Your next focus session payout is multiplied by current market conditions — but you won't see the result until the session completes.">
+  <!-- Header row -->
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#00cc88;letter-spacing:1px;text-shadow:0 0 6px rgba(0,204,136,0.5);">&#x1F4CA; MARKET</span>
+    <span class="tip" data-tip="The textile market reacts to your pricing, upgrades, and resource health. Set your price with the slider — higher prices mean better margins but lower demand. Your focus session payout is multiplied by market conditions, but the result stays hidden until the session completes. Upgrade marketing, lobbying, and other factory upgrades to shift demand in your favor.">?</span>
+    <span id="marketEraLabel" style="margin-left:auto;font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9a80;letter-spacing:0.5px;max-width:160px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Your current market era — determined by your highest active milestone.">Cottage Industry</span>
+  </div>
+
+  <!-- Pricing slider row -->
+  <div style="margin-bottom:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <span style="font-family:'Courier New',monospace;font-size:10px;color:#7ab8a0;">UNIT PRICE</span>
+      <span id="marketPriceLabel" style="font-family:'Press Start 2P',monospace;font-size:11px;color:#ffd700;">$12</span>
+    </div>
+    <input type="range" id="marketPriceSlider" min="1" max="30" value="12" step="1" style="width:100%;height:6px;-webkit-appearance:none;appearance:none;background:linear-gradient(90deg,#004433,#00cc88,#ffd700);border-radius:3px;outline:none;cursor:pointer;accent-color:#00cc88;" title="Drag to set your textile selling price. Lower prices attract more demand but shrink your margin. Higher prices boost margin but customers buy less." />
+    <div style="display:flex;justify-content:space-between;margin-top:2px;">
+      <span style="font-family:'Courier New',monospace;font-size:8px;color:#4a6a60;">$1 cheap</span>
+      <span style="font-family:'Courier New',monospace;font-size:8px;color:#4a6a60;">$30 premium</span>
+    </div>
+  </div>
+
+  <!-- Stats row: demand, costs, margin -->
+  <div style="display:flex;gap:6px;margin-bottom:6px;">
+    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Current market demand for your textiles. Driven by price, marketing level, lobbying, market share, and other upgrades. Higher is better.">
+      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">DEMAND</div>
+      <div id="marketDemandVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#00ff88;">50%</div>
+    </div>
+    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Production cost per textile unit. Driven by resource reserves (frames, gears, dye) and market oscillations. Depleted reserves spike costs.">
+      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">COST</div>
+      <div id="marketCostVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ff9966;">$10.0</div>
+    </div>
+    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Profit margin: how much of your price is actual profit after production costs. Negative margin means you are selling at a loss.">
+      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">MARGIN</div>
+      <div id="marketMarginVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ffd700;">17%</div>
+    </div>
+  </div>
+
+  <!-- Yield indicator (hidden/mystery until session completes) -->
+  <div style="background:#061510;border:1px solid #1a3a30;border-radius:4px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;" title="Your focus session yield multiplier is determined by market conditions when the session starts. You will not know the exact number until the session completes — that is part of the game.">
+    <span style="font-family:'Courier New',monospace;font-size:9px;color:#4a8a70;">YIELD MULTIPLIER</span>
+    <span id="marketYieldVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#7ab8a0;">? ? ?</span>
+  </div>
+
+  <!-- Active event ticker (shows current era phase if any) -->
+  <div id="marketEventTicker" style="display:none;margin-top:6px;background:#061510;border:1px dashed #1a3a30;border-radius:4px;padding:5px 10px;font-family:'Courier New',monospace;font-size:9px;color:#4a9a80;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Current market events affecting supply and demand."></div>
 </div>
 
 <!-- v3.20.26: HIGH PRIORITY section. Tasks added here open a blocking modal
@@ -1365,6 +1417,8 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <script src="events-catalog.js"></script>
 <script src="events-modal.js"></script>
 <script src="firebase-sync.js"></script>
+<script src="market-engine.js"></script>
+<script src="market-events.js"></script>
 <script src="app.js"></script>
 <!-- AI texts moved to house page only (house-dispatch.js) -->
 </body>

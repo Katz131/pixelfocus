@@ -905,7 +905,31 @@ try {
     // ------------------------------------------------------------
     ratiocinatoryUnlocked: false,      // flipped by the factory upgrade
     brokerageUnlocked: false,           // flipped by the factory upgrade (Brokerage)
+    // --- Financial tracking (v3.23.77) ---
+    lastPayrollDate: '',               // date string of last payroll deduction
+    lastBrokerageSnapshot: 0,          // portfolio value at last day rollover
+    totalWagesPaid: 0,                 // lifetime wages paid
+    totalLayoffEarnings: 0,            // lifetime money earned from layoffs
+    // --- Brokerage Acumen (v3.23.79) ---
+    // Note: acumen state lives inside state.brokerage and is initialized by getB() in brokerage.html
+    // These are just documentation references — actual defaults: acumen:0, ownedUpgrades:{}, earnedAchievements:{}, biggestSingleProfit:0, longestHoldTicks:0, dipBuys:0
     hasSeenRatiocinatoryIntro: false,  // first visit charter modal
+    // --- Market Economy (v3.23.82) ---
+    // Driven by market-engine.js + market-events.js (pure math, separate files).
+    // The market card appears on the main popup once marketingLevel >= 1.
+    marketPrice: 12,                   // player's chosen selling price (1-30)
+    marketTick: 0,                     // oscillation counter (advances every second popup is open)
+    marketYieldMultiplier: 1.0,        // computed by MarketEngine.tick() — multiplies focus payout
+    marketCosts: null,                 // { fiber, dye, thread, total } from MarketEngine
+    marketDemandPct: 50,               // 1-99 display value
+    marketMarginPct: 17,               // display value
+    marketEventsSeen: {},              // which milestone phases have been reached (one-way ratchet)
+    marketEventDemandMult: 1.0,        // combined demand multiplier from active era phases
+    marketEventCostMult: 1.0,          // combined cost multiplier from active era phases
+    marketActivePhases: [],            // current active phases (one per era)
+    marketActiveShocks: [],            // current active resource shocks
+    marketBureauBonus: 0,              // temporary bonus from bureau operations (decays)
+    hasSeenMarketIntro: false,         // first-use explainer modal gate
     // --- Procured resources (bought at the Clerisy Terminal) ---
     bandwidthWrits: 0,                 // cheapest; $100 each
     dataSachets: 0,                    // mid;      $40 each
@@ -1583,6 +1607,34 @@ try {
       var minsYesterday = (state.todayBlocks || 0) * 10;
       awardEndOfDayBonus(minsYesterday, state.streak);
 
+      // v3.23.77: Daily financial summary — payroll + investment tracking
+      try {
+        var wageCost = deductDailyPayroll();
+        var brokerageNow = getBrokeragePortfolioValue();
+        var brokeragePrev = state.lastBrokerageSnapshot || 0;
+        var investDelta = (brokerageNow && brokeragePrev) ? Math.round(brokerageNow - brokeragePrev) : 0;
+        state.lastBrokerageSnapshot = brokerageNow;
+
+        // Build financial summary lines for the notification
+        var finLines = [];
+        if (wageCost > 0) {
+          finLines.push('-$' + Math.floor(wageCost) + ' employee wages');
+        }
+        if (investDelta > 0) {
+          finLines.push('+$' + investDelta + ' investments');
+        } else if (investDelta < 0) {
+          finLines.push('-$' + Math.abs(investDelta) + ' investments');
+        }
+        if (finLines.length > 0) {
+          setTimeout(function() {
+            var summaryColor = (investDelta - wageCost) >= 0 ? '#4ecdc4' : '#ff6b6b';
+            notify('Daily ledger: ' + finLines.join(', '), summaryColor, { duration: 5000 });
+          }, 3000);
+        }
+      } catch (_dailyFinErr) {
+        console.warn('[DayRollover] Financial summary error:', _dailyFinErr);
+      }
+
       // v3.21.59: Archive yesterday's focus minutes into focusHistory
       // v3.22.94: Also archive whatever dailySessionLog holds (even if date
       // doesn't match lastActiveDate — covers edge cases like multi-day gaps).
@@ -1794,7 +1846,7 @@ try {
   }
 
   // Lobbying — Multiplies the passive streak-trickle money rate.
-  var LOBBY_MULT = [1, 1.2, 1.5, 2.0, 2.8, 4.0, 6.0, 9.0];
+  var LOBBY_MULT = [1, 1.2, 1.5, 2.0, 2.8, 4.0, 6.0, 9.0, 13.0, 19.0, 28.0];
   function getLobbyingMult() {
     var l = state.lobbyingLevel || 0;
     return LOBBY_MULT[Math.min(l, LOBBY_MULT.length - 1)];
@@ -2379,6 +2431,82 @@ try {
     if (reason) {
       notify('+$' + Math.floor(total) + ' (' + reason + ')', '#ffd700');
     }
+  }
+
+  // ===== Employee Payroll System (v3.23.77) =====
+  // Daily wage cost scales with employeesLevel. Deducted at day rollover.
+  // The idea: employees earn you passive income per-minute, but they also
+  // cost you a daily wage. Net positive at high streaks, net negative if
+  // you slack off. This creates a real tension around hiring.
+  //   L1=$5/day  L2=$18/day  L3=$50/day  L4=$150/day  L5=$400/day
+  function getDailyWageCost() {
+    var emp = state.employeesLevel || 0;
+    if (emp <= 0) return 0;
+    var costs = [0, 5, 18, 50, 150, 400];
+    return costs[Math.min(emp, 5)];
+  }
+
+  // Calculate total brokerage portfolio value (stocks + funds + crypto holdings
+  // at current prices, plus brokerage cash, plus active bond face values).
+  function getBrokeragePortfolioValue() {
+    if (!state.brokerage) return 0;
+    var b = state.brokerage;
+    var total = b.cash || 0;
+    // Holdings at current prices
+    if (b.portfolio && b.prices) {
+      var ids = Object.keys(b.portfolio);
+      for (var i = 0; i < ids.length; i++) {
+        var qty = b.portfolio[ids[i]] || 0;
+        var price = b.prices[ids[i]] || 0;
+        total += qty * price;
+      }
+    }
+    // Active bonds (face value — they pay out at maturity)
+    if (b.activeBonds) {
+      for (var j = 0; j < b.activeBonds.length; j++) {
+        total += b.activeBonds[j].invested || 0;
+      }
+    }
+    return Math.round(total * 100) / 100;
+  }
+
+  // Layoff: fire one employee tier, recoup a portion of the hiring cost.
+  // Called from factory.js or wherever the layoff button lives.
+  // Returns the payout amount, or 0 if no employees to fire.
+  function layoffEmployee() {
+    var emp = state.employeesLevel || 0;
+    if (emp <= 0) return 0;
+    // Recoup 40% of the cost of the CURRENT tier
+    var costs = [0, 3000, 15000, 75000, 400000, 2000000];
+    var payout = Math.round(costs[Math.min(emp, 5)] * 0.40);
+    state.employeesLevel = emp - 1;
+    state.coins = (state.coins || 0) + payout;
+    state.lifetimeCoins = (state.lifetimeCoins || 0) + payout;
+    state.totalLayoffEarnings = (state.totalLayoffEarnings || 0) + payout;
+    // Shrink roster if Personnel is available
+    try {
+      if (typeof Personnel !== 'undefined' && Personnel && Personnel.reconcileRoster) {
+        Personnel.reconcileRoster(state);
+      }
+    } catch (_) {}
+    save();
+    notify('+$' + payout + ' severance payout (downsized to L' + state.employeesLevel + ')', '#ff6b6b');
+    return payout;
+  }
+
+  // Deduct daily payroll and return the amount deducted.
+  // Called inside checkDayRollover(). Only deducts once per calendar day.
+  function deductDailyPayroll() {
+    var cost = getDailyWageCost();
+    if (cost <= 0) return 0;
+    var today = todayStr();
+    if (state.lastPayrollDate === today) return 0;
+    state.lastPayrollDate = today;
+    state.coins = (state.coins || 0) - cost;
+    // Don't let coins go below zero from payroll
+    if (state.coins < 0) { cost = cost + state.coins; state.coins = 0; }
+    state.totalWagesPaid = (state.totalWagesPaid || 0) + cost;
+    return cost;
   }
 
   // End-of-day streak bonus: fires ONCE when the day rolls over. Pays a
@@ -3679,6 +3807,7 @@ try {
     renderProfileAvatar();
     renderRatiocinatoryBtn();
     renderBrokerageBtn();
+    renderMarketCard();
     renderGameLockout();
     renderTodayTasks();
     renderDailyReminders();
@@ -3711,6 +3840,118 @@ try {
     } else {
       btn.style.display = 'none';
     }
+  }
+
+  // v3.23.82: Market card visibility — appears once marketingLevel >= 1.
+  // Also updates the live readouts (demand, cost, margin) from state.
+  function renderMarketCard() {
+    var card = document.getElementById('marketCard');
+    if (!card) return;
+    var unlocked = (state.marketingLevel || 0) >= 1;
+    card.style.display = unlocked ? 'block' : 'none';
+    if (!unlocked) return;
+
+    // Sync slider to state (in case state was loaded from storage)
+    var slider = document.getElementById('marketPriceSlider');
+    var priceLabel = document.getElementById('marketPriceLabel');
+    if (slider && state.marketPrice) {
+      slider.value = state.marketPrice;
+    }
+    if (priceLabel) priceLabel.textContent = '$' + (state.marketPrice || 12);
+
+    // Lock the slider while a focus session is active (running, paused, or
+    // countdown). Price is locked in at session start — no mid-session changes.
+    var timerActive = state.timerState === 'running' || state.timerState === 'paused' || state.timerState === 'countdown';
+    if (slider) {
+      slider.disabled = timerActive;
+      slider.style.opacity = timerActive ? '0.4' : '1';
+      slider.style.cursor = timerActive ? 'not-allowed' : 'pointer';
+    }
+
+    // Update readouts from state (populated by market tick loop)
+    var demandEl = document.getElementById('marketDemandVal');
+    var costEl   = document.getElementById('marketCostVal');
+    var marginEl = document.getElementById('marketMarginVal');
+    var yieldEl  = document.getElementById('marketYieldVal');
+    var eraEl    = document.getElementById('marketEraLabel');
+    var tickerEl = document.getElementById('marketEventTicker');
+
+    if (demandEl) {
+      var d = state.marketDemandPct || 50;
+      demandEl.textContent = d + '%';
+      demandEl.style.color = d > 60 ? '#00ff88' : d > 30 ? '#ffd700' : '#ff5555';
+    }
+    if (costEl && state.marketCosts) {
+      costEl.textContent = '$' + (state.marketCosts.total || '10.0');
+    }
+    if (marginEl) {
+      var m = state.marketMarginPct || 0;
+      marginEl.textContent = m + '%';
+      marginEl.style.color = m > 20 ? '#ffd700' : m > 0 ? '#ff9966' : '#ff5555';
+    }
+    // Yield stays hidden until session completes
+    if (yieldEl) {
+      yieldEl.textContent = '? ? ?';
+    }
+    // Era label — show the highest active phase name
+    if (eraEl && state.marketActivePhases && state.marketActivePhases.length > 0) {
+      var lastPhase = state.marketActivePhases[state.marketActivePhases.length - 1];
+      eraEl.textContent = lastPhase.name || 'Cottage Industry';
+    }
+    // Event ticker — show if there are active shocks
+    if (tickerEl) {
+      if (state.marketActiveShocks && state.marketActiveShocks.length > 0) {
+        var shockNames = [];
+        for (var i = 0; i < state.marketActiveShocks.length; i++) {
+          shockNames.push(state.marketActiveShocks[i].name);
+        }
+        tickerEl.textContent = shockNames.join(' | ');
+        tickerEl.style.display = 'block';
+      } else {
+        tickerEl.style.display = 'none';
+      }
+    }
+  }
+
+  // v3.23.82: Market first-use explainer modal.
+  // Shown once before the player's first focus session after the market unlocks.
+  // Sets state.hasSeenMarketIntro = true so it never fires again.
+  function showMarketIntroModal(onDismiss) {
+    var existing = document.getElementById('marketIntroModal');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'marketIntroModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:300;display:flex;align-items:center;justify-content:center;';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#0f2420;border:2px solid #00cc88;border-radius:10px;padding:20px;max-width:380px;width:90%;box-shadow:0 0 40px rgba(0,204,136,0.2);';
+
+    box.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#00cc88;margin-bottom:14px;text-align:center;text-shadow:0 0 8px rgba(0,204,136,0.5);">THE TEXTILE MARKET</div>'
+      + '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#7ab8a0;line-height:1.7;margin-bottom:14px;">'
+      + 'Your textiles are now sold on the open market. A new card has appeared below the timer.'
+      + '<br><br>'
+      + '<span style="color:#ffd700;">PRICE</span> — Drag the slider to set your selling price. Higher prices mean better profit margins but less demand.'
+      + '<br><br>'
+      + '<span style="color:#00ff88;">DEMAND</span> — How much the market wants your goods. Driven by your price, marketing level, lobbying, and other upgrades.'
+      + '<br><br>'
+      + '<span style="color:#ff9966;">COST</span> — Production costs. Affected by resource reserves. Depleted resources spike costs.'
+      + '<br><br>'
+      + '<span style="color:#7ab8a0;">YIELD</span> — Your focus session payout is multiplied by current market conditions. <span style="color:#ffd700;">But you will not see the multiplier until the session completes.</span> Experiment with different prices and upgrades to maximize your yield.'
+      + '</div>'
+      + '<div style="text-align:center;">'
+      + '<button id="marketIntroDismiss" style="background:#00cc88;color:#0f0f1a;border:none;border-radius:6px;padding:10px 24px;font-family:\'Press Start 2P\',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">UNDERSTOOD</button>'
+      + '</div>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    document.getElementById('marketIntroDismiss').addEventListener('click', function() {
+      overlay.remove();
+      state.hasSeenMarketIntro = true;
+      save();
+      if (typeof onDismiss === 'function') onDismiss();
+    });
   }
 
   // v3.21.7: Game lockout — blocks navigation to game windows (gallery,
@@ -6355,6 +6596,14 @@ try {
   }
 
   function _actuallyStartTimer() {
+    // v3.23.82: Market first-use modal — fires once before the player's
+    // first focus session after the market unlocks (marketingLevel >= 1).
+    if ((state.marketingLevel || 0) >= 1 && !state.hasSeenMarketIntro) {
+      showMarketIntroModal(function() {
+        _actuallyStartTimer(); // re-enter after dismissal
+      });
+      return;
+    }
     // Run the 15-second "get ready" countdown, THEN start the real session.
     cancelPreStartCountdown();
     countdownRemaining = COUNTDOWN_SECONDS;
@@ -6790,7 +7039,13 @@ try {
         var mktMult = [1, 1.25, 1.6, 2.0, 2.5, 3.0][Math.min(mktLevel, 5)];
         comboCoins = Math.round(comboCoins * mktMult);
       }
-      if (comboCoins > 0) awardCoins(comboCoins, state.combo + 'x chain');
+      // v3.23.84: Market yield multiplier — applies market conditions to
+      // focus session money. The multiplier was computed by MarketEngine at
+      // session start and stays between 0.3x and 2.5x. Default 1.0x if the
+      // market system hasn't been unlocked yet.
+      var marketYield = state.marketYieldMultiplier || 1.0;
+      comboCoins = Math.round(comboCoins * marketYield);
+      if (comboCoins > 0) awardCoins(comboCoins, state.combo + 'x chain' + (marketYield !== 1.0 ? ' [' + marketYield + 'x mkt]' : ''));
     }
 
     // Check daily marathon thresholds (1h/2h/3h/4h/6h/8h focus today)
@@ -6891,6 +7146,12 @@ try {
       subText += ' \u2694 CHALLENGE ACTIVE: 1.5x = ' + boosted + ' textile' + (boosted === 1 ? '' : 's') + '!';
     } else if (state.challengeActive && state.challengeSessionPaused) {
       subText += ' (Challenge voided — you paused during this session.)';
+    }
+    // v3.23.84: Reveal the market yield multiplier in the confirmation modal.
+    // This is the moment the player finally learns how their pricing affected the payout.
+    var mktYield = state.marketYieldMultiplier || 1.0;
+    if ((state.marketingLevel || 0) >= 1 && mktYield !== 1.0) {
+      subText += ' Market yield: ' + mktYield + 'x.';
     }
     if (modalSub) modalSub.textContent = subText;
     modal.style.display = 'flex';
@@ -10323,6 +10584,17 @@ try {
         });
       }
 
+      // v3.23.82: Market pricing slider — saves price to state on drag.
+      var mktSlider = $('marketPriceSlider');
+      if (mktSlider) {
+        mktSlider.addEventListener('input', function() {
+          state.marketPrice = parseInt(mktSlider.value) || 12;
+          var lbl = $('marketPriceLabel');
+          if (lbl) lbl.textContent = '$' + state.marketPrice;
+          save();
+        });
+      }
+
       // v3.19.17: Ratiocinatory button (Section IX, separate window).
       // Hidden by default; made visible once state.ratiocinatoryUnlocked
       // flips true (which happens when the Cogitorium Annex factory
@@ -10558,7 +10830,35 @@ try {
           }).catch(function() {});
         }
 
+        // v3.23.78: Helper — retry a Firestore social data write up to 3 times
+        function _retrySocialWrite(retries) {
+          retries = retries || 0;
+          try {
+            window.ProfileSync.putSocialData(state.profileId, { friends: state.friends })
+              .catch(function() {
+                if (retries < 3) setTimeout(function() { _retrySocialWrite(retries + 1); }, 5000);
+              });
+          } catch(_) {
+            if (retries < 3) setTimeout(function() { _retrySocialWrite(retries + 1); }, 5000);
+          }
+        }
+
+        // v3.23.78: Sanitize display name — cap at 100 chars, strip control chars
+        function _sanitizeName(name) {
+          if (!name || typeof name !== 'string') return '';
+          return name.replace(/[\x00-\x1f]/g, '').substring(0, 100);
+        }
+
+        // v3.23.78: Rate limit — track last request time
+        var _lastFriendReqTime = 0;
+
         function sendFriendRequest(targetId, targetName) {
+          // v3.23.78: Validate profile ID format (12-char lowercase alphanumeric)
+          if (!targetId || typeof targetId !== 'string' || !/^[a-z0-9]{8,20}$/.test(targetId)) {
+            addFriendMsg.style.color = '#ff4444';
+            addFriendMsg.textContent = 'Invalid profile ID.';
+            return;
+          }
           if (targetId === state.profileId) {
             addFriendMsg.style.color = '#ff4444';
             addFriendMsg.textContent = 'That\'s you!';
@@ -10569,6 +10869,14 @@ try {
             addFriendMsg.textContent = 'Already friends with ' + (targetName || targetId) + '!';
             return;
           }
+          // v3.23.78: Rate limit — 5 seconds between requests
+          var now = Date.now();
+          if (now - _lastFriendReqTime < 5000) {
+            addFriendMsg.style.color = '#ff9f43';
+            addFriendMsg.textContent = 'Slow down! Wait a few seconds.';
+            return;
+          }
+          _lastFriendReqTime = now;
           addFriendMsg.style.color = 'var(--text-dim)';
           addFriendMsg.textContent = 'Sending...';
           window.ProfileSync.sendInboxMessage(targetId, {
@@ -10770,7 +11078,7 @@ try {
             cb.addEventListener('change', function() {
               var fid = cb.getAttribute('data-fid');
               var pid = cb.getAttribute('data-pid');
-              if (!state.friends[fid]) return;
+              if (!state.friends[fid] || state.friends[fid].status !== 'accepted') return; // v3.23.78: guard
               var perms = state.friends[fid].permittedProjects || [];
               if (cb.checked && perms.indexOf(pid) === -1) {
                 perms.push(pid);
@@ -10779,7 +11087,7 @@ try {
               }
               state.friends[fid].permittedProjects = perms;
               save();
-              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              _retrySocialWrite(); // v3.23.78: retry on failure
             });
           });
 
@@ -10794,7 +11102,7 @@ try {
               save();
               renderFriends();
               notify('Revoked task access for ' + name, '#ff9f43');
-              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              _retrySocialWrite(); // v3.23.78: retry on failure
             });
           });
 
@@ -10809,7 +11117,7 @@ try {
               save();
               renderFriends();
               notify('Removed friend: ' + name, '#ff4444');
-              try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+              _retrySocialWrite(); // v3.23.78: retry on failure
             });
           });
 
@@ -10873,7 +11181,7 @@ try {
               var fname = btn.getAttribute('data-fname');
               if (!fid) return;
               state.friends[fid] = {
-                displayName: fname || fid,
+                displayName: _sanitizeName(fname) || fid,
                 status: 'accepted',
                 taskAccessGranted: false,
                 permittedProjects: [],
@@ -10920,6 +11228,7 @@ try {
               if (fid) {
                 state.friends[fid] = { displayName: '', status: 'declined', addedAt: new Date().toISOString() };
                 save();
+                _retrySocialWrite(); // v3.23.78: sync decline to Firestore so it persists
               }
               notify('Friend request declined.', '#ff4444');
               pollInbox();
@@ -10981,7 +11290,7 @@ try {
               // Ensure friend entry exists
               if (!state.friends[fid]) {
                 state.friends[fid] = {
-                  displayName: fname || fid,
+                  displayName: _sanitizeName(fname) || fid,
                   status: 'accepted',
                   taskAccessGranted: true,
                   permittedProjects: checkedProjects,
@@ -10993,12 +11302,26 @@ try {
               }
               save();
               try { window.ProfileSync.deleteInboxMessage(state.profileId, msgId); } catch(_) {}
-              // v3.23.71: Persist with retry
+              // v3.23.78: Persist with retry, THEN notify the friend (not before)
               var _grantWriteDone = false;
+              var _grantFid = fid;
+              var _grantProjects = checkedProjects.slice();
               function _writeGrantSocial() {
                 try {
                   window.ProfileSync.putSocialData(state.profileId, { friends: state.friends })
-                    .then(function() { _grantWriteDone = true; })
+                    .then(function() {
+                      _grantWriteDone = true;
+                      // Only send notification AFTER write succeeds
+                      try {
+                        window.ProfileSync.sendInboxMessage(_grantFid, {
+                          type: 'access_granted',
+                          fromId: state.profileId,
+                          fromName: state.displayName || 'A weaver',
+                          projects: _grantProjects,
+                          createdAt: new Date().toISOString()
+                        });
+                      } catch(_) {}
+                    })
                     .catch(function() {
                       if (!_grantWriteDone) setTimeout(_writeGrantSocial, 5000);
                     });
@@ -11007,16 +11330,6 @@ try {
                 }
               }
               _writeGrantSocial();
-              // Notify the friend that access was granted
-              try {
-                window.ProfileSync.sendInboxMessage(fid, {
-                  type: 'access_granted',
-                  fromId: state.profileId,
-                  fromName: state.displayName || 'A weaver',
-                  projects: checkedProjects,
-                  createdAt: new Date().toISOString()
-                });
-              } catch(_) {}
               notify('Granted task access to ' + (fname || fid), '#4ecdc4');
               renderFriends();
               pollInbox();
@@ -11103,7 +11416,7 @@ try {
               acceptNotices.forEach(function(notice) {
                 if (!state.friends[notice.fromId]) {
                   state.friends[notice.fromId] = {
-                    displayName: notice.fromName || notice.fromId,
+                    displayName: _sanitizeName(notice.fromName) || notice.fromId,
                     status: 'accepted',
                     taskAccessGranted: false,
                     permittedProjects: [],
@@ -11113,16 +11426,16 @@ try {
                 fetchFriendAvatar(notice.fromId); // v3.23.64
                 notify(escHtml(notice.fromName || notice.fromId) + ' accepted your friend request!', '#00ff88');
                 try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
-                // v3.23.72: Persist requester's side to Firestore too (was local-only before)
-                try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+                // v3.23.78: Persist with retry (was bare try/catch before)
+                _retrySocialWrite();
               });
 
               // Process access-granted notices
               accessGrantNotices.forEach(function(notice) {
                 notify(escHtml(notice.fromName || notice.fromId) + ' granted you task access!', '#4ecdc4');
                 try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
-                // v3.23.72: Persist to Firestore
-                try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
+                // v3.23.78: Persist with retry
+                _retrySocialWrite();
               });
 
               // Process remote tasks
@@ -11224,6 +11537,36 @@ try {
       try { tickLoomAbsence(); } catch (e) {}
       setInterval(function() { try { tickAutoloom(); } catch (e) {} }, 30 * 1000);
       setInterval(function() { try { tickCoins(); } catch (e) {} }, 10 * 1000);
+
+      // v3.23.85: Market engine tick — runs every second while popup is open.
+      // Calls MarketEngine.tick(state) and MarketEvents.evaluate(state) to
+      // update demand/cost oscillations and milestone-driven modifiers.
+      // Only does work when the market is unlocked (marketingLevel >= 1).
+      // UI readouts are refreshed via renderMarketCard() after each tick.
+      setInterval(function() {
+        try {
+          if ((state.marketingLevel || 0) < 1) return;
+          // Decay bureau market bonus (~0.02 per tick, zeroes out in ~25 seconds from max 0.5)
+          if (state.marketBureauBonus > 0) {
+            state.marketBureauBonus = Math.max(0, state.marketBureauBonus - 0.02);
+          }
+          if (typeof MarketEngine !== 'undefined') MarketEngine.tick(state);
+          if (typeof MarketEvents !== 'undefined') {
+            MarketEvents.evaluate(state);
+            // v3.23.86: Push commentary for newly reached market phases
+            var freshPhases = MarketEvents.consumeNewPhases(state);
+            for (var fp = 0; fp < freshPhases.length; fp++) {
+              if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+                MsgLog.push('[MARKET] ' + freshPhases[fp].commentary);
+              }
+            }
+          }
+          renderMarketCard();
+          // Persist every 5 ticks (~5 seconds) to avoid thrashing storage
+          if (state.marketTick % 5 === 0) save();
+        } catch (e) {}
+      }, 1000);
+
       // v3.20.0: Angry-machine absence scolder. Fires at most once per
       // escalation tier per absence, so a 5-minute cadence is fine.
       setInterval(function() { try { tickLoomAbsence(); } catch (e) {} }, 5 * 60 * 1000);
