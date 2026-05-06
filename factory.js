@@ -103,6 +103,19 @@
       ]
     },
     {
+      id: 'brokerageLevel',
+      title: 'Brokerage License',
+      tree: 'Commerce',
+      desc: 'Apply for a financial services license. Opens the Brokerage — a full investment market where you can trade stocks, buy bonds, speculate on crypto, and gamble your hard-earned coins. The brokerage operates on deposited cash; your wallet stays separate. One-time purchase.',
+      effects: [
+        'The Brokerage door appears on the home page.'
+      ],
+      costs: [3000],
+      milestones: [
+        'License granted after a cursory background check. The Brokerage is open for business. Your coins will never be the same.'
+      ]
+    },
+    {
       id: 'dyeResearchLevel',
       title: 'Dye Research',
       tree: 'Research',
@@ -1473,6 +1486,12 @@
           || (s.autoloomLevel || 0) >= 1;
     },
 
+    // --- Commerce: Brokerage ---
+    brokerageLevel: function(s) {
+      return (s.lifetimeCoins || 0) >= 2000
+          || (s.marketingLevel || 0) >= 1;
+    },
+
     // --- Bureaucracy ---
     legalDeptLevel: function(s) {
       return (s.lifetimeCoins || 0) >= 12000
@@ -2443,6 +2462,17 @@
       try {
         if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
           MsgLog.push('The door to the Ratiocinatory has been unlocked. A Clerisy Terminal blinks, once, and resumes its composure.');
+        }
+      } catch (_) {}
+    }
+
+    // v3.23.75: Buying the Brokerage License flips the unlock flag,
+    // showing the Brokerage nav button on the home page.
+    if (u.id === 'brokerageLevel' && (level + 1) === 1) {
+      state.brokerageUnlocked = true;
+      try {
+        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.push) {
+          MsgLog.push('Brokerage license approved. The trading floor is now open. Your coins have never felt more vulnerable.');
         }
       } catch (_) {}
     }

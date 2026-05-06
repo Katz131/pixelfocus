@@ -904,6 +904,7 @@ try {
     // occasionally spends resources on the player's behalf.
     // ------------------------------------------------------------
     ratiocinatoryUnlocked: false,      // flipped by the factory upgrade
+    brokerageUnlocked: false,           // flipped by the factory upgrade (Brokerage)
     hasSeenRatiocinatoryIntro: false,  // first visit charter modal
     // --- Procured resources (bought at the Clerisy Terminal) ---
     bandwidthWrits: 0,                 // cheapest; $100 each
@@ -3677,6 +3678,7 @@ try {
     renderCoins();
     renderProfileAvatar();
     renderRatiocinatoryBtn();
+    renderBrokerageBtn();
     renderGameLockout();
     renderTodayTasks();
     renderDailyReminders();
@@ -3694,6 +3696,17 @@ try {
     var btn = document.getElementById('ratiocinatoryBtn');
     if (!btn) return;
     if (state.ratiocinatoryUnlocked) {
+      btn.style.display = 'flex';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  // v3.23.75: Brokerage button visibility — same pattern as ratiocinatory.
+  function renderBrokerageBtn() {
+    var btn = document.getElementById('brokerageBtn');
+    if (!btn) return;
+    if (state.brokerageUnlocked) {
       btn.style.display = 'flex';
     } else {
       btn.style.display = 'none';
@@ -3730,20 +3743,28 @@ try {
   // the game is locked. Called from render() every cycle.
   function renderGameLockout() {
     var locked = isGameLocked();
-    var ids = ['galleryBtn', 'factoryBtn', 'houseBtn', 'ratiocinatoryBtn'];
+    var reason = locked ? getGameLockReason() : '';
+    var ids = ['galleryBtn', 'factoryBtn', 'houseBtn', 'ratiocinatoryBtn', 'brokerageBtn'];
     for (var i = 0; i < ids.length; i++) {
       var btn = document.getElementById(ids[i]);
       if (!btn) continue;
-      // Skip ratiocinatory if it's still hidden (not unlocked yet)
-      if (ids[i] === 'ratiocinatoryBtn' && btn.style.display === 'none') continue;
+      // Skip buttons that are still hidden (not unlocked yet)
+      if (btn.style.display === 'none') continue;
       if (locked) {
         btn.style.opacity = '0.35';
-        btn.style.pointerEvents = 'none';
         btn.style.filter = 'grayscale(80%)';
+        btn.style.cursor = 'not-allowed';
+        btn.setAttribute('data-tip', reason);
+        // Block clicks but allow hover for tooltip
+        if (!btn._lockHandler) {
+          btn._lockHandler = function(e) { if (isGameLocked()) { e.preventDefault(); e.stopImmediatePropagation(); } };
+          btn.addEventListener('click', btn._lockHandler, true);
+        }
       } else {
         btn.style.opacity = '';
-        btn.style.pointerEvents = '';
         btn.style.filter = '';
+        btn.style.cursor = '';
+        btn.removeAttribute('data-tip');
       }
     }
     // Profile is always accessible — never locked out.
@@ -3759,15 +3780,19 @@ try {
     // coins display (coins stat -> factory) shortcuts
     var blockCounter = document.getElementById('blockCounter');
     if (blockCounter) {
-      blockCounter.style.pointerEvents = locked ? 'none' : '';
       blockCounter.style.opacity = locked ? '0.35' : '';
+      blockCounter.style.cursor = locked ? 'not-allowed' : '';
+      if (locked) blockCounter.setAttribute('data-tip', reason);
+      else blockCounter.removeAttribute('data-tip');
     }
     var coinsDisplay = document.getElementById('coinsDisplay');
     if (coinsDisplay) {
       var coinsStat = coinsDisplay.closest('.stat');
       if (coinsStat) {
-        coinsStat.style.pointerEvents = locked ? 'none' : '';
         coinsStat.style.opacity = locked ? '0.35' : '';
+        coinsStat.style.cursor = locked ? 'not-allowed' : '';
+        if (locked) coinsStat.setAttribute('data-tip', reason);
+        else coinsStat.removeAttribute('data-tip');
       }
     }
   }
@@ -8618,6 +8643,32 @@ try {
     });
   })();
 
+  // ---- Drag-to-reorder Today's Tasks (v3.23.74) ----
+  var _draggedTodayId = null;
+
+  function reorderTodayTask(draggedId, targetId, place) {
+    if (draggedId === targetId) return false;
+    var list = state.todayTasks;
+    if (!Array.isArray(list)) return false;
+    var fromIdx = -1, toIdx = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === draggedId) fromIdx = i;
+      if (list[i].id === targetId) toIdx = i;
+    }
+    if (fromIdx < 0 || toIdx < 0) return false;
+    var moved = list.splice(fromIdx, 1)[0];
+    var insertIdx = -1;
+    for (var j = 0; j < list.length; j++) {
+      if (list[j].id === targetId) { insertIdx = j; break; }
+    }
+    if (insertIdx < 0) insertIdx = list.length;
+    if (place === 'after') insertIdx += 1;
+    list.splice(insertIdx, 0, moved);
+    save();
+    renderTodayTasks();
+    return true;
+  }
+
   // ---- Render Today's Tasks ----
   function renderTodayTasks() {
     pruneOrphanedTodayTasks();
@@ -8643,8 +8694,71 @@ try {
 
       // -- Main task row --
       var row = document.createElement('div');
+      row.className = 'today-task-row';
       row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:' +
-        (t.aqueducts.length > 0 ? 'none' : '1px solid rgba(184,115,26,0.3)') + ';';
+        (t.aqueducts.length > 0 ? 'none' : '1px solid rgba(184,115,26,0.3)') + ';transition:border-color 0.15s;';
+      row.dataset.todayId = t.id;
+
+      // v3.23.74: Drag handle + reorder wiring
+      row.setAttribute('draggable', 'true');
+      var dragHandle = document.createElement('span');
+      dragHandle.textContent = '☰';
+      dragHandle.title = 'Drag to reorder';
+      dragHandle.style.cssText = 'cursor:grab;color:#886655;font-size:11px;flex-shrink:0;user-select:none;padding:0 2px;';
+      row.appendChild(dragHandle);
+
+      (function(taskId) {
+        row.addEventListener('dragstart', function(e) {
+          _draggedTodayId = taskId;
+          row.style.opacity = '0.4';
+          try {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', taskId);
+          } catch (_) {}
+        });
+        row.addEventListener('dragend', function() {
+          _draggedTodayId = null;
+          row.style.opacity = '1';
+          var siblings = listEl.querySelectorAll('.today-task-row');
+          for (var s = 0; s < siblings.length; s++) {
+            siblings[s].style.borderTopColor = '';
+            siblings[s].style.borderBottomColor = '';
+            siblings[s].style.borderTopWidth = '';
+            siblings[s].style.borderBottomWidth = '';
+          }
+        });
+        row.addEventListener('dragover', function(e) {
+          if (!_draggedTodayId || _draggedTodayId === taskId) return;
+          e.preventDefault();
+          try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+          var rect = row.getBoundingClientRect();
+          var isAfter = (e.clientY - rect.top) > (rect.height / 2);
+          row.style.borderTopColor = isAfter ? '' : '#ffb43c';
+          row.style.borderTopWidth = isAfter ? '' : '2px';
+          row.style.borderBottomColor = isAfter ? '#ffb43c' : '';
+          row.style.borderBottomWidth = isAfter ? '2px' : '';
+        });
+        row.addEventListener('dragleave', function(e) {
+          if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+          row.style.borderTopColor = '';
+          row.style.borderBottomColor = '';
+          row.style.borderTopWidth = '';
+          row.style.borderBottomWidth = '';
+        });
+        row.addEventListener('drop', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var srcId = _draggedTodayId;
+          row.style.borderTopColor = '';
+          row.style.borderBottomColor = '';
+          row.style.borderTopWidth = '';
+          row.style.borderBottomWidth = '';
+          if (!srcId || srcId === taskId) return;
+          var rect = row.getBoundingClientRect();
+          var isAfter = (e.clientY - rect.top) > (rect.height / 2);
+          reorderTodayTask(srcId, taskId, isAfter ? 'after' : 'before');
+        });
+      })(t.id);
 
       var txt = document.createElement('div');
       txt.style.cssText = 'flex:1;color:#ffe0b2;font-size:12px;word-break:break-word;' +
@@ -10195,6 +10309,17 @@ try {
         factoryBtn.addEventListener('click', function() {
           SFX.tabSwitch();
           openPFWindow('factory.html');
+        });
+      }
+
+      // v3.23.75: Brokerage button (investment market, separate window).
+      // Hidden by default; made visible once state.brokerageUnlocked
+      // flips true (purchased from factory upgrades).
+      var brokerageBtn = $('brokerageBtn');
+      if (brokerageBtn) {
+        brokerageBtn.addEventListener('click', function() {
+          SFX.tabSwitch();
+          openPFWindow('brokerage.html');
         });
       }
 
@@ -12492,6 +12617,56 @@ try {
         });
       }
 
+      // v3.23.73: Blocked time pop-out alert toggle + test button
+      var blockAlertToggle = $('blockAlertToggle');
+      if (blockAlertToggle) {
+        blockAlertToggle.checked = state.blockAlertEnabled !== false;
+        blockAlertToggle.addEventListener('change', function() {
+          state.blockAlertEnabled = blockAlertToggle.checked;
+          save();
+        });
+      }
+      var blockAlertTestBtn = $('blockAlertTestBtn');
+      if (blockAlertTestBtn) {
+        blockAlertTestBtn.addEventListener('click', function() {
+          try {
+            // Play test sound immediately
+            if (typeof SFX !== 'undefined' && SFX.test) SFX.test();
+            // Open test alert popup
+            var now = new Date();
+            var hh = (now.getHours() < 10 ? '0' : '') + now.getHours();
+            var mm = (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+            var nowStr = hh + ':' + mm;
+            var testUrl = chrome.runtime.getURL('block-alert.html') +
+              '?type=prep&label=Test+Event&prepTime=' + nowStr +
+              '&eventTime=' + nowStr + '&endTime=' + nowStr +
+              '&prepMin=15&durMin=60&test=1';
+            chrome.windows.create({
+              url: testUrl,
+              type: 'popup',
+              width: 480,
+              height: 520,
+              focused: true
+            });
+            blockAlertTestBtn.textContent = 'OPENED!';
+            blockAlertTestBtn.style.color = '#00ff88';
+            blockAlertTestBtn.style.borderColor = '#00ff88';
+            setTimeout(function() {
+              blockAlertTestBtn.textContent = 'TEST';
+              blockAlertTestBtn.style.color = '#ff8c3a';
+              blockAlertTestBtn.style.borderColor = '#ff8c3a';
+            }, 3000);
+          } catch (_) {
+            blockAlertTestBtn.textContent = 'FAILED';
+            blockAlertTestBtn.style.color = '#ff6b6b';
+            setTimeout(function() {
+              blockAlertTestBtn.textContent = 'TEST';
+              blockAlertTestBtn.style.color = '#ff8c3a';
+            }, 3000);
+          }
+        });
+      }
+
       // v3.23.31: Separate test buttons for streak and rewards
       var testStreakBtn = $('testStreakBtn');
       if (testStreakBtn) {
@@ -12788,6 +12963,7 @@ try {
         if (coldTurkeyIdleToggle) coldTurkeyIdleToggle.checked = !!state.coldTurkeyIdleReminder;
         if (coldTurkeyBlockNameInput) coldTurkeyBlockNameInput.value = state.coldTurkeyBlockName || '';
         if (focusIdleToggle) focusIdleToggle.checked = state.focusIdleReminder !== false;
+        if (blockAlertToggle) blockAlertToggle.checked = state.blockAlertEnabled !== false;
         if (dailyRemindersToggle) dailyRemindersToggle.checked = state.dailyRemindersEnabled !== false;
         if (use24HourToggle) use24HourToggle.checked = !!state.use24Hour;
         if (blurCompletedToggle) blurCompletedToggle.checked = !!state.blurCompletedTasks;
@@ -13094,7 +13270,7 @@ try {
               title: {stringValue: lvl.level >= 100 ? 'Omnifabric Singularity' : (state.title || 'Would-Be Weaver')},
               streak: {integerValue: String(state.streak || 0)},
               longestStreak: {integerValue: String(Math.max(state.longestStreak || 0, state.streak || 0))},
-              focusMinutes: {integerValue: String(state.lifetimeFocusMinutes || 0)},
+              lifetimeBlocks: {integerValue: String(state.totalLifetimeBlocks || 0)},
               focusMinutes: {integerValue: String(state.lifetimeFocusMinutes || 0)},
               tasksCompleted: {integerValue: String(state.tasksCompletedLifetime || 0)},
               lifetimeCoins: {integerValue: String(state.lifetimeCoins || 0)},

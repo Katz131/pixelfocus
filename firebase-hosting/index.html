@@ -160,6 +160,11 @@
         var parts = doc.name.split('/');
         d._id = parts[parts.length - 1];
         return d;
+      }).filter(function(d) {
+        // v3.23.74: Hide empty/placeholder profiles (no name + no activity)
+        var hasName = d.displayName && d.displayName.trim() && d.displayName !== 'Anonymous Weaver';
+        var hasActivity = (parseInt(d.lifetimeBlocks, 10) || 0) > 0 || (d.level || 1) > 1;
+        return hasName || hasActivity;
       });
 
       var byTextiles = players.slice().sort(function(a, b) {
