@@ -729,6 +729,8 @@ try {
     // v3.21.30: Blocked-out times (appointments, errands, etc.)
     blockedTimes: [], // [{ id, startMs, endMs, prepMs, label, createdAt }]
     blockedTimeAlerts: {}, // { blockId: true } — tracks which alerts have fired today
+    blockedTimePopAlerts: {}, // { blockId_prep/blockId_event: true } — pop-out alerts fired
+    blockAlertEnabled: true, // v3.23.72: Pop-out blocked time alerts with sound
     // v3.21.16: Daily session timeline for public profile
     dailySessionLog: { date: '', sessions: [] }, // { date:'YYYY-MM-DD', sessions:[{start:ms,end:ms,min:N}] }
     // v3.21.15: Cold Turkey integration (off by default)

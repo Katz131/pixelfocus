@@ -1263,6 +1263,19 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       </div>
     </div>
     <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
+      <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ff6b6b;letter-spacing:1px;margin-bottom:6px;">BLOCKED TIME ALERTS</div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.6;margin-bottom:10px;">
+        Pop-out window with alarm sound when a blocked time's prep period starts or when the event itself starts. Can't miss it even if you're in another app.
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
+          <input type="checkbox" id="blockAlertToggle" checked style="width:16px;height:16px;accent-color:#ff6b6b;cursor:pointer;">
+          <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Pop-out alerts enabled</span>
+        </label>
+        <button id="blockAlertTestBtn" class="btn btn-small" type="button" style="font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border-color:#ff6b6b;color:#ff6b6b;">TEST</button>
+      </div>
+    </div>
+    <div style="padding:14px 18px;border-top:1px solid rgba(0,255,136,0.2);">
       <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ff9f43;letter-spacing:1px;margin-bottom:6px;">AUTO-OPEN TODO LIST</div>
       <div style="font-family:'Courier New',monospace;font-size:11px;color:var(--text);line-height:1.6;margin-bottom:10px;">
         Keep your todo list always open. If you close the tab, it reopens automatically within 5 minutes during wake hours (6 AM – 11:40 PM). You can also set it to open when your computer starts.

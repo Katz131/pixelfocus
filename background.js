@@ -62,6 +62,11 @@ function openNagPopup(htmlPath) {
   }
 }
 
+// v3.23.72: Format time as HH:MM for blocked time alerts
+function _fmtT(d) {
+  return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+}
+
 function openPixelFocusWindow(htmlPath) {
   var url = chrome.runtime.getURL(htmlPath);
   chrome.tabs.query({}, function(tabs) {
@@ -1331,6 +1336,83 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
     return;
   }
 
+  // v3.23.72: Blocked time pop-out alerts — fires when prep starts or event starts
+  if (alarm.name === 'pixelfocus-block-alert') {
+    chrome.storage.local.get('pixelFocusState', function(result) {
+      var state = result.pixelFocusState;
+      if (!state || !state.blockedTimes || !state.blockedTimes.length) return;
+      if (state.blockAlertEnabled === false) return; // respect settings toggle
+      var now = Date.now();
+      var windowMs = 90 * 1000; // 90-second check window (alarm fires every 60s)
+      if (!state.blockedTimePopAlerts) state.blockedTimePopAlerts = {};
+      var changed = false;
+
+      for (var i = 0; i < state.blockedTimes.length; i++) {
+        var bt = state.blockedTimes[i];
+        if (!bt || bt.endMs < now) continue;
+        var eventStartMs = bt.eventStartMs || bt.startMs;
+        var hasPrepPhase = bt.prepMin > 0 && bt.startMs < eventStartMs;
+
+        // Check prep start
+        if (hasPrepPhase) {
+          var prepKey = bt.id + '_prep';
+          if (!state.blockedTimePopAlerts[prepKey] && now >= bt.startMs && now < bt.startMs + windowMs) {
+            state.blockedTimePopAlerts[prepKey] = true;
+            changed = true;
+            var prepDate = new Date(bt.startMs);
+            var eventDate = new Date(eventStartMs);
+            var endDate = new Date(bt.endMs);
+            var durMin = bt.durationMin || Math.round((bt.endMs - eventStartMs) / 60000);
+            var params = 'type=prep'
+              + '&label=' + encodeURIComponent(bt.label || 'Commitment')
+              + '&prepTime=' + _fmtT(prepDate)
+              + '&eventTime=' + _fmtT(eventDate)
+              + '&endTime=' + _fmtT(endDate)
+              + '&prepMin=' + bt.prepMin
+              + '&durMin=' + durMin;
+            chrome.windows.create({
+              url: chrome.runtime.getURL('block-alert.html?' + params),
+              type: 'popup',
+              width: 440,
+              height: 520,
+              focused: true
+            });
+            break;
+          }
+        }
+
+        // Check event start
+        var eventKey = bt.id + '_event';
+        if (!state.blockedTimePopAlerts[eventKey] && now >= eventStartMs && now < eventStartMs + windowMs) {
+          state.blockedTimePopAlerts[eventKey] = true;
+          changed = true;
+          var evDate = new Date(eventStartMs);
+          var evEndDate = new Date(bt.endMs);
+          var evDurMin = bt.durationMin || Math.round((bt.endMs - eventStartMs) / 60000);
+          var evParams = 'type=event'
+            + '&label=' + encodeURIComponent(bt.label || 'Commitment')
+            + '&eventTime=' + _fmtT(evDate)
+            + '&endTime=' + _fmtT(evEndDate)
+            + '&durMin=' + evDurMin;
+          chrome.windows.create({
+            url: chrome.runtime.getURL('block-alert.html?' + evParams),
+            type: 'popup',
+            width: 440,
+            height: 520,
+            focused: true
+          });
+          break;
+        }
+      }
+
+      if (changed) {
+        state.blockedTimePopAlerts = state.blockedTimePopAlerts || {};
+        _safeSaveState(state);
+      }
+    });
+    return;
+  }
+
   // v3.21.49: Auto-reopen todo list if closed (persistent mode)
   if (alarm.name === 'pixelfocus-keepopen') {
     chrome.storage.local.get('pixelFocusState', function(result) {
@@ -1456,6 +1538,7 @@ chrome.runtime.onInstalled.addListener(function(details) {
   chrome.alarms.create('pixelfocus-site-nag', { periodInMinutes: 2 });
   chrome.alarms.create('pixelfocus-volume-mute', { periodInMinutes: 10 });
   chrome.alarms.create('pixelfocus-inbox-poll', { periodInMinutes: 1 }); // v3.23.61: Remote task inbox
+  chrome.alarms.create('pixelfocus-block-alert', { periodInMinutes: 1 }); // v3.23.72: Blocked time pop-out alerts
   chrome.alarms.clear('pixelfocus-tick');
 
   // v3.22.32: After extension reload, close stale extension tabs and reopen fresh.
@@ -1508,6 +1591,7 @@ chrome.runtime.onStartup.addListener(function() {
   chrome.alarms.create('pixelfocus-site-nag', { periodInMinutes: 2 });
   chrome.alarms.create('pixelfocus-volume-mute', { periodInMinutes: 10 });
   chrome.alarms.create('pixelfocus-inbox-poll', { periodInMinutes: 1 }); // v3.23.61: Remote task inbox
+  chrome.alarms.create('pixelfocus-block-alert', { periodInMinutes: 1 }); // v3.23.72: Blocked time pop-out alerts
   chrome.alarms.clear('pixelfocus-tick');
 
   // v3.21.49: Auto-open todo list on browser startup if enabled
