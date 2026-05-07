@@ -397,12 +397,12 @@ body {
 
 <div class="header">
   <h1>BROKERAGE</h1>
-  <div class="subtitle">Invest your hard-earned money. Or lose it trying.</div>
+  <div class="subtitle">Invest your hard-earned coins. Or lose them trying.</div>
 </div>
 
 <div class="wallet-bar">
-  <div class="stat" title="Your main money balance from the extension. Deposit money here to trade."><span class="label">WALLET:</span><span class="val" id="walletCoins">0</span></div>
-  <div class="stat" title="Cash available inside the brokerage for buying stocks, funds, crypto, and gambling. Deposit money from your wallet to add more."><span class="label">BROKERAGE CASH:</span><span class="val" id="brokerageCash">0</span></div>
+  <div class="stat" title="Your main coin balance from the extension. Deposit coins here to trade."><span class="label">WALLET:</span><span class="val" id="walletCoins">0</span></div>
+  <div class="stat" title="Cash available inside the brokerage for buying stocks, funds, crypto, and gambling. Deposit from your wallet to add more."><span class="label">BROKERAGE CASH:</span><span class="val" id="brokerageCash">0</span></div>
   <div class="stat" title="Total current market value of all your holdings — stocks, funds, crypto, and active bonds combined."><span class="label">PORTFOLIO:</span><span class="val" id="portfolioVal">0</span></div>
   <div class="stat" title="Profit or Loss — the difference between what you paid for your investments and what they are worth now. Green = profit, Red = loss."><span class="label">P/L:</span><span class="val" id="totalPL">0</span></div>
   <div class="stat" title="Acumen points earned from trading activity and achievements. Spend these on permanent brokerage upgrades in the UPGRADES tab."><span class="label">ACUMEN:</span><span class="val" id="acumenVal" style="color:#c084fc;">0</span></div>
@@ -410,9 +410,9 @@ body {
 
 <div class="deposit-bar">
   <span style="font-size:10px;color:var(--text-dim);">Transfer:</span>
-  <input type="number" id="transferAmt" value="100" min="1" step="100" title="Enter the amount to transfer between your wallet and the brokerage.">
-  <button class="deposit-btn" id="depositBtn" title="Move money from your wallet INTO the brokerage so you can trade.">DEPOSIT &rarr;</button>
-  <button class="withdraw-btn" id="withdrawBtn" title="Move money from the brokerage back INTO your wallet.">&larr; WITHDRAW</button>
+  <input type="number" id="transferAmt" value="100" min="1" step="100" title="Enter the amount of coins to transfer between your wallet and the brokerage.">
+  <button class="deposit-btn" id="depositBtn" title="Move coins from your wallet INTO the brokerage so you can trade.">DEPOSIT &rarr;</button>
+  <button class="withdraw-btn" id="withdrawBtn" title="Move coins from the brokerage back INTO your wallet.">&larr; WITHDRAW</button>
 </div>
 
 <div id="newsTicker" class="news-ticker" title="Market news ticker — random headlines cycle through to set the mood. Purely cosmetic.">Welcome to the Brokerage. Markets are open.</div>
@@ -1376,7 +1376,7 @@ body {
       var amt = parseInt(document.getElementById('transferAmt').value) || 0;
       if (amt < 1 || state.coins < amt) {
         SFX.lose();
-        showNews(state.coins < amt ? 'Not enough money in wallet ($' + fmt(state.coins) + ' available).' : 'Enter a valid amount.');
+        showNews(state.coins < amt ? 'Not enough coins in wallet ($' + fmt(state.coins) + ' available).' : 'Enter a valid amount.');
         return;
       }
       state.coins -= amt;
@@ -1663,59 +1663,30 @@ body {
 
   // ===== Render all =====
   function renderAll() {
-    var steps = [
-      ['WalletBar', renderWalletBar],
-      ['Stocks', renderStocks],
-      ['Funds', renderFunds],
-      ['Bonds', renderBonds],
-      ['Crypto', renderCrypto],
-      ['Gambling', renderGambling],
-      ['Portfolio', renderPortfolio],
-      ['Upgrades', renderUpgrades]
-    ];
-    for (var i = 0; i < steps.length; i++) {
-      try {
-        steps[i][1]();
-      } catch(e) {
-        console.error('[Brokerage] render' + steps[i][0] + ' crashed:', e);
-        document.body.insertAdjacentHTML('afterbegin',
-          '<div style="background:#ff4400;color:#fff;padding:8px;font-family:monospace;font-size:11px;z-index:9999;position:relative;">' +
-          'CRASH in render' + steps[i][0] + ': ' + e.message +
-          '</div>');
-      }
-    }
+    renderWalletBar();
+    renderStocks();
+    renderFunds();
+    renderBonds();
+    renderCrypto();
+    renderGambling();
+    renderPortfolio();
+    renderUpgrades();
   }
 
   // ===== Init =====
-  try {
-    load(function() {
-      try {
-        renderAll();
-      } catch(renderErr) {
-        console.error('[Brokerage] renderAll crash:', renderErr);
-        document.body.insertAdjacentHTML('afterbegin',
-          '<div style="background:#ff0000;color:#fff;padding:12px;font-family:monospace;font-size:12px;z-index:9999;position:fixed;top:0;left:0;right:0;">' +
-          'RENDER ERROR: ' + renderErr.message + ' (line ' + (renderErr.stack||'').split('\n')[1] + ')' +
-          '</div>');
-      }
+  load(function() {
+    renderAll();
 
-      // Rotate news every 15 seconds
-      setInterval(randomNews, 15000);
+    // Rotate news every 15 seconds
+    setInterval(randomNews, 15000);
 
-      // Tick market every hour while page is open
-      setInterval(function() {
-        var b = getB();
-        tickMarket(b);
-        save(function() { renderAll(); });
-      }, 60 * 60 * 1000);
-    });
-  } catch(initErr) {
-    console.error('[Brokerage] init crash:', initErr);
-    document.body.insertAdjacentHTML('afterbegin',
-      '<div style="background:#ff0000;color:#fff;padding:12px;font-family:monospace;font-size:12px;z-index:9999;position:fixed;top:0;left:0;right:0;">' +
-      'INIT ERROR: ' + initErr.message +
-      '</div>');
-  }
+    // Tick market every hour while page is open
+    setInterval(function() {
+      var b = getB();
+      tickMarket(b);
+      save(function() { renderAll(); });
+    }, 60 * 60 * 1000);
+  });
 
   // Wire deposit/withdraw
   document.getElementById('depositBtn').addEventListener('click', deposit);
@@ -1723,11 +1694,7 @@ body {
 
   // Back button
   document.getElementById('backBtn').addEventListener('click', function() {
-    try {
-      chrome.tabs.getCurrent(function(tab) {
-        if (tab && tab.id) chrome.tabs.remove(tab.id);
-      });
-    } catch(_) { window.close(); }
+    window.close();
   });
 
 })();
