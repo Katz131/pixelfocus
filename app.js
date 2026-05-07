@@ -1355,6 +1355,26 @@ try {
         }
         if (!state.realStreak) state.realStreak = 0;
         if (!state.longestRealStreak) state.longestRealStreak = state.realStreak || 0;
+
+        // v3.23.114: Owl streak was broken by a bug that required todayBlocks > 0
+        // (same as real streak). If streak was wrongly zeroed, restore it from
+        // longestStreak (which preserved the pre-bug value) — but only if the
+        // user has been opening the app consecutively (lastActiveDate is recent).
+        if (!state._owlStreakRestore114) {
+          state._owlStreakRestore114 = true;
+          var _today114 = new Date();
+          var _last114 = state.lastActiveDate ? new Date(state.lastActiveDate) : null;
+          var _daysSince = _last114 ? Math.floor((_today114 - _last114) / 86400000) : 999;
+          // Only restore if user was active yesterday or today (streak not genuinely broken)
+          if (_daysSince <= 1 && (state.streak || 0) < (state.longestStreak || 0)) {
+            // Restore to longestStreak — it holds the value from before the bug zeroed it
+            state.streak = state.longestStreak;
+          }
+          // Owl streak must always be >= real streak
+          if ((state.streak || 0) < (state.realStreak || 0)) {
+            state.streak = state.realStreak;
+          }
+        }
         // v3.23.110: Compute real lifetimeSessions from focusHistory.
         // focusHistory = { 'YYYY-MM-DD': minutes }. Each day's minutes / focusDuration = sessions that day.
         if (!state._sessionBackfill110) {
@@ -1647,7 +1667,7 @@ try {
       const now = new Date(today);
       const diffDays = Math.floor((now - last) / 86400000);
       // Owl streak (lenient): survives if you open but don't focus
-      if (diffDays === 1 && state.todayBlocks > 0) {
+      if (diffDays === 1) {
         state.streak++;
         if (state.streak > (state.longestStreak || 0)) state.longestStreak = state.streak;
       } else if (diffDays > 1) {
@@ -10114,6 +10134,16 @@ try {
         } else {
           streakCount.textContent = String(streak);
           streakMsg.textContent = _getStreakMessage(streak);
+
+          // v3.23.114: Show real streak below owl streak message
+          var _realStreak = state.realStreak || 0;
+          if (_realStreak > 0) {
+            var _rsEl = document.createElement('div');
+            _rsEl.style.cssText = 'font-size:11px;color:#ff8c3a;margin-top:8px;font-family:"Press Start 2P",monospace;letter-spacing:1px;opacity:0;transition:opacity 0.5s;';
+            _rsEl.innerHTML = '\uD83D\uDD25 Real Streak: ' + _realStreak + ' day' + (_realStreak === 1 ? '' : 's');
+            streakMsg.parentNode.insertBefore(_rsEl, streakMsg.nextSibling);
+            setTimeout(function() { _rsEl.style.opacity = '1'; }, 300);
+          }
           streakMsg.style.opacity = '1';
           _celebLandSound(streak);
           // v3.23.24: Show today's gold arc on the ring
@@ -10143,8 +10173,8 @@ try {
           var _sDays = _sRem % 30;
           var _tiers = [];
           if (_sYears > 0) _tiers.push({count: _sYears, icon: '\uD83D\uDC51', label: _sYears === 1 ? 'year' : 'years', baseFreq: 784, size: 18});
-          if (_sMonths > 0) _tiers.push({count: _sMonths, icon: '\u2B50', label: _sMonths === 1 ? 'month' : 'months', baseFreq: 523, size: 16});
-          if (_sDays > 0 || _tiers.length === 0) _tiers.push({count: _sDays, icon: '\uD83D\uDD25', label: _sDays === 1 ? 'day' : 'days', baseFreq: 330, size: 14});
+          if (_sMonths > 0) _tiers.push({count: _sMonths, icon: '\uD83C\uDF19', label: _sMonths === 1 ? 'month' : 'months', baseFreq: 523, size: 16});
+          if (_sDays > 0 || _tiers.length === 0) _tiers.push({count: _sDays, icon: '\uD83E\uDD89', label: _sDays === 1 ? 'day' : 'days', baseFreq: 330, size: 14});
           // Show breakdown text
           var _bdParts = [];
           if (_sYears > 0) _bdParts.push(_sYears + (_sYears === 1 ? ' year' : ' years'));
