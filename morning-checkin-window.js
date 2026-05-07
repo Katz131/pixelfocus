@@ -1,4 +1,4 @@
-// morning-checkin-window.js — v3.23.98
+// morning-checkin-window.js — v3.23.99
 // Handles the morning bedtime check-in pop-out.
 // Two-step flow:
 //   Step 1: "Is this the morning after, or are you still up?"
@@ -36,14 +36,21 @@
 
   // Badge definitions (sleep only -- keep in sync with badges-window.js)
   var BADGES = [
-    { id: 'early_bird_1',   name: 'Early Bird',      icon: '🐤', desc: '5 nights on time',   req: 5 },
-    { id: 'sleep_warrior',  name: 'Sleep Warrior',   icon: '🛡️', desc: '10 nights on time',  req: 10 },
-    { id: 'dream_weaver',   name: 'Dream Weaver',    icon: '🌀', desc: '15 nights on time',  req: 15 },
-    { id: 'night_master',   name: 'Night Master',    icon: '🌙', desc: '25 nights on time',  req: 25 },
-    { id: 'sleep_sage',     name: 'Sleep Sage',      icon: '🧘', desc: '40 nights on time',  req: 40 },
-    { id: 'lunar_legend',   name: 'Lunar Legend',    icon: '🌕', desc: '60 nights on time',  req: 60 },
-    { id: 'rest_royalty',   name: 'Rest Royalty',    icon: '👑', desc: '90 nights on time',  req: 90 },
-    { id: 'eternal_dreamer',name: 'Eternal Dreamer', icon: '💫', desc: '150 nights on time', req: 150 }
+    { id: 'early_bird_1', name: 'Early Bird', icon: '🐤', desc: 'You went to bed on time 5 nights. Your sleep schedule is taking shape!', req: 5 },
+    { id: 'sleep_warrior', name: 'Sleep Warrior', icon: '🛡️', desc: '10 nights of hitting the pillow on schedule. That takes real discipline.', req: 10 },
+    { id: 'dream_weaver', name: 'Dream Weaver', icon: '🌀', desc: '15 nights on time. You\'re building a genuine bedtime habit.', req: 15 },
+    { id: 'night_master', name: 'Night Master', icon: '🌙', desc: '25 nights on time. Most people can\'t do this for a week — you did it 25 times.', req: 25 },
+    { id: 'sleep_sage', name: 'Sleep Sage', icon: '🧘', desc: '40 nights of keeping your bedtime commitment. Your body clock thanks you.', req: 40 },
+    { id: 'lunar_legend', name: 'Lunar Legend', icon: '🌕', desc: '60 nights on time. That\'s two solid months of sleep discipline.', req: 60 },
+    { id: 'rest_royalty', name: 'Rest Royalty', icon: '👑', desc: '90 nights on time — a full quarter of the year spent sleeping right.', req: 90 },
+    { id: 'eternal_dreamer', name: 'Eternal Dreamer', icon: '💫', desc: '150 nights on time. You\'ve made good sleep a core part of who you are.', req: 150 },
+    { id: 'sleep_deity', name: 'Sleep Deity', icon: '✨', desc: '200 nights! Sleep isn\'t a chore for you anymore — it\'s a lifestyle.', req: 200 },
+    { id: 'year_of_rest', name: 'Year of Rest', icon: '📅', desc: '365 nights on time. An entire year of keeping your bedtime promise.', req: 365 },
+    { id: 'sleep_olympian', name: 'Sleep Olympian', icon: '🏅', desc: '500 nights! You could teach a masterclass on sleep discipline.', req: 500 },
+    { id: 'sleep_transcendent', name: 'Transcendent Sleeper', icon: '🌌', desc: '750 nights on time. At this point your circadian rhythm runs like a Swiss watch.', req: 750 },
+    { id: 'millennium_sleeper', name: 'Millennium Sleeper', icon: '🏛️', desc: '1,000 nights on time. A thousand bedtimes honored. Absolutely legendary.', req: 1000 },
+    { id: 'no_phone_zone', name: 'No Phone Zone', icon: '📵', desc: '10 bedtime commitments made. You\'re taking screen-free sleep seriously.', req: 10 },
+    { id: 'melatonin_machine', name: 'Melatonin Machine', icon: '💊', desc: '50 nights of on-time sleep. Your brain\'s sleep chemistry is dialed in.', req: 50 },
   ];
 
   var state = {};
