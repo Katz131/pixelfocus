@@ -658,6 +658,7 @@ try {
     selectedTaskId: null,
     blocks: 0,
     totalLifetimeBlocks: 0,
+    lifetimeSessions: 0,            // total completed focus sessions (lifetime)
     todayBlocks: 0,
     lastActiveDate: null,
     streak: 0,
@@ -1312,6 +1313,11 @@ try {
         if (state.totalBlocks && !state.totalLifetimeBlocks) state.totalLifetimeBlocks = state.totalBlocks;
         if (!state.unlockedColors) state.unlockedColors = ['#00ff88'];
         if (!state.totalLifetimeBlocks) state.totalLifetimeBlocks = 0;
+        // v3.23.106: Backfill lifetimeSessions for existing users who played before this counter existed.
+        // Estimate: each session earns ~1 block minimum, so totalLifetimeBlocks is a reasonable lower bound.
+        if (!state.lifetimeSessions && state.totalLifetimeBlocks > 0) {
+          state.lifetimeSessions = state.totalLifetimeBlocks;
+        }
         // ===== Canvas purchase tracking (explicit ownership, NOT inferred) =====
         // Older saves used `state.canvasSize >= u.size` to decide ownership. If
         // canvasSize was ever bumped (bug, getGridSize fallback, etc) all smaller
@@ -7047,6 +7053,7 @@ try {
       if (state.longestStreak < 1) state.longestStreak = 1;
     }
     state.sessionBlocks++; // still counts 1 session regardless of haul
+    state.lifetimeSessions = (state.lifetimeSessions || 0) + 1; // lifetime session counter for badges
     // Drain the resource pools by the amount actually produced. This
     // call also fires depletion milestone chat lines and may flip the
     // ledger reveal on factory.html.
@@ -13852,19 +13859,4 @@ try {
             fetch(url, {
               method: 'PATCH',
               headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({fields: fields})
-            }).then(function(r) {
-              console.log('[FallbackSync] ' + (r.ok ? 'OK' : 'Failed: ' + r.status));
-            }).catch(function(e) {
-              console.warn('[FallbackSync] Error:', e);
-            });
-          })();
-        }
-      } catch (_) {}
-    }, 3000);
-  }
-
-})();
-} catch (pixelFocusInitError) {
-  console.error('PixelFocus app.js fatal error:', pixelFocusInitError);
-}
+              body: JSON.stringify({fields: fie

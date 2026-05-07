@@ -215,6 +215,84 @@
     { id: 'sales_250', cat: 'business', name: 'Art Merchant', icon: '🏪', desc: 'You\'ve earned $250 from selling your pixel art creations.', req: {"type": "loomSalesCoins", "count": 250} },
     { id: 'sales_2500', cat: 'business', name: 'Canvas Capitalist', icon: '💰', desc: '$2,500 earned from art sales. Your loom is a money-printing machine.', req: {"type": "loomSalesCoins", "count": 2500} },
     { id: 'canvas_buyer_4', cat: 'business', name: 'Canvas Hoarder', icon: '📦', desc: '4 canvas sizes purchased. You\'re collecting them like trading cards.', req: {"type": "canvasCount", "count": 4} },
+
+    // ===== ENDGAME / ULTRA-HARD BADGES (v3.23.106) =====
+    // These are meant to be nearly impossible, requiring months or years of play.
+    // --- Sleep Endgame ---
+    { id: 'sleep_eternal_1500', cat: 'sleep', name: 'Eternal Rest', icon: '⚰️', desc: '1,500 nights on time. Four years of keeping your bedtime promise. Unreal.', req: {"type": "bedtimeTotal", "count": 1500} },
+    { id: 'sleep_2000', cat: 'sleep', name: 'Two Thousand Nights', icon: '🌠', desc: '2,000 bedtimes honored. Over five years of sleep discipline.', req: {"type": "bedtimeTotal", "count": 2000} },
+    { id: 'sleep_3000', cat: 'sleep', name: 'Sleep Immortal', icon: '🕊️', desc: '3,000 nights on time. You are not a person — you are a sleep algorithm.', req: {"type": "bedtimeTotal", "count": 3000} },
+    { id: 'streak_sleep_500', cat: 'sleep', name: 'Five Hundred Nights', icon: '🗿', desc: '500 nights in a row. Over 16 months without a single broken bedtime.', req: {"type": "bedtimeStreak", "count": 500} },
+    { id: 'streak_sleep_730', cat: 'sleep', name: 'Two Perfect Years', icon: '🏛️', desc: '730 consecutive nights on time. Two full years of unbroken discipline.', req: {"type": "bedtimeStreak", "count": 730} },
+    { id: 'streak_sleep_1000', cat: 'sleep', name: 'Thousand-Night Streak', icon: '🔱', desc: 'One thousand consecutive nights. Nearly three years without missing one.', req: {"type": "bedtimeStreak", "count": 1000} },
+
+    // --- Focus Endgame ---
+    { id: 'focus_15000', cat: 'focus', name: 'Fifteen Thousand', icon: '🏔️', desc: '15,000 sessions. You could have climbed Everest in the time you spent focusing.', req: {"type": "sessions", "count": 15000} },
+    { id: 'focus_25000', cat: 'focus', name: 'Quarter-Hundred-K', icon: '🪨', desc: '25,000 sessions. Twenty-five thousand times you chose to sit down and work.', req: {"type": "sessions", "count": 25000} },
+    { id: 'focus_50000', cat: 'focus', name: 'Fifty Thousand', icon: '🗻', desc: '50,000 focus sessions. This badge shouldn\'t exist. And yet here you are.', req: {"type": "sessions", "count": 50000} },
+    { id: 'focus_100000', cat: 'focus', name: 'One Hundred Thousand', icon: '🌋', desc: '100,000 sessions. We genuinely did not think anyone would earn this.', req: {"type": "sessions", "count": 100000} },
+    { id: 'streak_120', cat: 'focus', name: 'Four-Month Flame', icon: '🕯️', desc: '120 consecutive days. Four months of never missing a single day of focus.', req: {"type": "streak", "count": 120} },
+    { id: 'streak_270', cat: 'focus', name: 'Nine-Month March', icon: '🫃', desc: '270 days straight. Nine months. You could have gestated a human.', req: {"type": "streak", "count": 270} },
+    { id: 'streak_500', cat: 'focus', name: 'Five Hundred Days', icon: '🏺', desc: '500 consecutive days of daily focus. Over 16 months. Absurd.', req: {"type": "streak", "count": 500} },
+    { id: 'streak_730', cat: 'focus', name: 'Two-Year Streak', icon: '📜', desc: '730 days in a row. Two full years of daily focus sessions. Inhuman.', req: {"type": "streak", "count": 730} },
+    { id: 'streak_1000', cat: 'focus', name: 'Thousand-Day Streak', icon: '🔱', desc: '1,000 consecutive days. Nearly three years without missing one. Impossible made real.', req: {"type": "streak", "count": 1000} },
+    { id: 'streak_1461', cat: 'focus', name: 'Four-Year Streak', icon: '⚜️', desc: '1,461 days. Four full years. An entire presidential term of daily focus.', req: {"type": "streak", "count": 1461} },
+    { id: 'combo_150', cat: 'focus', name: 'Combo Legend', icon: '💫', desc: '150x combo. One hundred fifty sessions chained. You didn\'t eat or sleep, did you?', req: {"type": "combo", "count": 150} },
+    { id: 'combo_200', cat: 'focus', name: 'Combo Immortal', icon: '☄️', desc: '200x combo. Two hundred consecutive sessions. The machine became sentient.', req: {"type": "combo", "count": 200} },
+    { id: 'combo_500', cat: 'focus', name: 'Five Hundred Chain', icon: '⛓️', desc: '500 sessions back-to-back. If you\'re seeing this badge, we\'re concerned.', req: {"type": "combo", "count": 500} },
+    { id: 'blocks_15000', cat: 'focus', name: 'Fifteen K Textiles', icon: '🏗️', desc: '15,000 textiles. 2,500 hours of focused time. Over 100 days of work.', req: {"type": "lifetimeBlocks", "count": 15000} },
+    { id: 'blocks_25000', cat: 'focus', name: 'Twenty-Five Thousand', icon: '🗽', desc: '25,000 textiles. 4,166 hours. 173 full days of deep focus.', req: {"type": "lifetimeBlocks", "count": 25000} },
+    { id: 'blocks_50000', cat: 'focus', name: 'Fifty Thousand Bolts', icon: '🌍', desc: '50,000 textiles. Over 8,300 hours. A full year of non-stop focus.', req: {"type": "lifetimeBlocks", "count": 50000} },
+    { id: 'blocks_100000', cat: 'focus', name: 'Hundred K Textiles', icon: '🪐', desc: '100,000 textiles woven. We are not sure this is possible. Prove us wrong.', req: {"type": "lifetimeBlocks", "count": 100000} },
+
+    // --- Mastery Endgame ---
+    { id: 'level_750', cat: 'mastery', name: 'Three Quarter K', icon: '🌋', desc: 'Level 750. The XP requirements at this level are genuinely staggering.', req: {"type": "level", "count": 750} },
+    { id: 'level_1000', cat: 'mastery', name: 'Level Thousand', icon: '🏛️', desc: 'Level 1,000. One thousand levels. If this game had a final boss, you\'d be it.', req: {"type": "level", "count": 1000} },
+    { id: 'level_1500', cat: 'mastery', name: 'Beyond Mortal', icon: '👁️', desc: 'Level 1,500. We stopped writing level titles after 500 because we didn\'t think anyone would get here.', req: {"type": "level", "count": 1500} },
+    { id: 'level_2000', cat: 'mastery', name: 'Two Thousand', icon: '🔮', desc: 'Level 2,000. This badge is a monument to patience. And possibly insanity.', req: {"type": "level", "count": 2000} },
+    { id: 'rich_2000000', cat: 'mastery', name: 'Double Millionaire', icon: '💰', desc: '$2,000,000 lifetime earnings. Two million from pure productivity.', req: {"type": "lifetimeCoins", "count": 2000000} },
+    { id: 'rich_5000000', cat: 'mastery', name: 'Multi-Millionaire', icon: '🏝️', desc: '$5,000,000 earned. Five million. You could buy a private island.', req: {"type": "lifetimeCoins", "count": 5000000} },
+    { id: 'rich_10000000', cat: 'mastery', name: 'Deca-Millionaire', icon: '🛸', desc: '$10,000,000 lifetime. Ten million coins earned through sheer discipline.', req: {"type": "lifetimeCoins", "count": 10000000} },
+    { id: 'rich_50000000', cat: 'mastery', name: 'Fifty Million', icon: '🌌', desc: '$50,000,000 earned. This is more money than some countries have.', req: {"type": "lifetimeCoins", "count": 50000000} },
+    { id: 'rich_100000000', cat: 'mastery', name: 'Hundred Million', icon: '🏰', desc: '$100,000,000. One. Hundred. Million. Coins.', req: {"type": "lifetimeCoins", "count": 100000000} },
+    { id: 'hoard_1000000', cat: 'mastery', name: 'Million in Pocket', icon: '🐉', desc: 'One million coins in your wallet at once. Not lifetime — held simultaneously.', req: {"type": "currentCoins", "count": 1000000} },
+    { id: 'hoard_5000000', cat: 'mastery', name: 'Five Mil Hoard', icon: '🗝️', desc: '$5,000,000 held at once. Your wallet weighs more than your principles.', req: {"type": "currentCoins", "count": 5000000} },
+    { id: 'hoard_10000000', cat: 'mastery', name: 'Infinite Restraint', icon: '♾️', desc: 'Ten million coins held simultaneously. You could buy everything. But you don\'t.', req: {"type": "currentCoins", "count": 10000000} },
+
+    // --- Creative Endgame ---
+    { id: 'gallery_500', cat: 'creative', name: 'Art Factory', icon: '🏭', desc: '500 artworks saved. Half a thousand pieces of pixel art.', req: {"type": "gallery", "count": 500} },
+    { id: 'gallery_1000', cat: 'creative', name: 'Thousand Canvases', icon: '🌌', desc: '1,000 artworks saved. A thousand original pixel creations.', req: {"type": "gallery", "count": 1000} },
+    { id: 'gallery_2500', cat: 'creative', name: 'Pixel Picasso', icon: '🎭', desc: '2,500 artworks. At this point you ARE the gallery.', req: {"type": "gallery", "count": 2500} },
+    { id: 'sales_10', cat: 'creative', name: 'Ten Sales', icon: '💲', desc: 'You sold 10 canvases. People actually want your art!', req: {"type": "loomSales", "count": 10} },
+    { id: 'sales_25', cat: 'creative', name: 'Quarter Century Sales', icon: '🏪', desc: '25 canvases sold. You have an established art business.', req: {"type": "loomSales", "count": 25} },
+    { id: 'sales_50', cat: 'creative', name: 'Fifty Sales', icon: '🏬', desc: '50 canvases sold. Your art is in demand.', req: {"type": "loomSales", "count": 50} },
+    { id: 'sales_100_count', cat: 'creative', name: 'Century Sales', icon: '🎪', desc: '100 canvas sales. One hundred different pieces bought.', req: {"type": "loomSales", "count": 100} },
+    { id: 'sales_250_count', cat: 'creative', name: 'Gallery Tycoon', icon: '🏛️', desc: '250 canvases sold. Your gallery has a waiting list.', req: {"type": "loomSales", "count": 250} },
+
+    // --- Business Endgame ---
+    { id: 'sales_25000', cat: 'business', name: 'Art Baron', icon: '🏰', desc: '$25,000 from art sales. Twenty-five grand from pixel art alone.', req: {"type": "loomSalesCoins", "count": 25000} },
+    { id: 'sales_50000', cat: 'business', name: 'Art Tycoon', icon: '🌍', desc: '$50,000 from selling artwork. Your gallery is a serious business.', req: {"type": "loomSalesCoins", "count": 50000} },
+    { id: 'sales_100000', cat: 'business', name: 'Art Mogul', icon: '💎', desc: '$100,000 from art sales alone. Six figures from pixel art. Legendary.', req: {"type": "loomSalesCoins", "count": 100000} },
+    { id: 'stocks_10', cat: 'business', name: 'Day Trader', icon: '📈', desc: 'You\'ve bought 10 stocks total. You\'re an active trader now.', req: {"type": "stocksBought", "count": 10} },
+    { id: 'stocks_25', cat: 'business', name: 'Trading Desk', icon: '💻', desc: '25 stock purchases made. Your trading desk is busy.', req: {"type": "stocksBought", "count": 25} },
+    { id: 'stocks_50', cat: 'business', name: 'Floor Trader', icon: '🏦', desc: '50 stock trades executed. You could work on Wall Street.', req: {"type": "stocksBought", "count": 50} },
+    { id: 'stocks_100', cat: 'business', name: 'Hedge Fund', icon: '🏢', desc: '100 trades. You\'re running a one-person hedge fund.', req: {"type": "stocksBought", "count": 100} },
+    { id: 'market_events_3', cat: 'business', name: 'Weathered Investor', icon: '🌧️', desc: 'Survived 3 market events. Crashes, booms, bubbles — you\'ve seen them all.', req: {"type": "marketEvents", "count": 3} },
+    { id: 'market_events_5', cat: 'business', name: 'Battle-Scarred', icon: '⚔️', desc: '5 market events endured. Your portfolio has the scars to prove it.', req: {"type": "marketEvents", "count": 5} },
+    { id: 'market_events_10', cat: 'business', name: 'Market Veteran', icon: '🎖️', desc: '10 market events survived. You\'ve been through every kind of market.', req: {"type": "marketEvents", "count": 10} },
+    { id: 'market_events_25', cat: 'business', name: 'Market Immortal', icon: '🛡️', desc: '25 market events. Nothing the market throws at you can break you.', req: {"type": "marketEvents", "count": 25} },
+    { id: 'portfolio_8', cat: 'business', name: 'Full Portfolio', icon: '📊', desc: '8 different stocks owned simultaneously. Maximum diversification.', req: {"type": "stocksOwned", "count": 8} },
+    { id: 'portfolio_10', cat: 'business', name: 'Index Fund', icon: '📋', desc: '10 different stocks at once. You own a piece of everything.', req: {"type": "stocksOwned", "count": 10} },
+    { id: 'employees_8', cat: 'business', name: 'Full Floor', icon: '🏗️', desc: 'Employee level 8. Your factory floor is packed.', req: {"type": "employees", "count": 8} },
+    { id: 'canvas_buyer_6', cat: 'business', name: 'Canvas Empire', icon: '🎨', desc: '6 canvas sizes purchased. You own every available size.', req: {"type": "canvasCount", "count": 6} },
+    { id: 'canvas_buyer_7', cat: 'business', name: 'Complete Collection', icon: '🏆', desc: '7 canvas sizes purchased. You\'ve bought the full set.', req: {"type": "canvasCount", "count": 7} },
+
+    // --- Social Endgame ---
+    { id: 'social_75', cat: 'social', name: 'Social Titan', icon: '🗿', desc: '75 friends! You\'re a social titan on the platform.', req: {"type": "friends", "count": 75} },
+    { id: 'social_100', cat: 'social', name: 'Century Club', icon: '💯', desc: '100 friends. One hundred people watching your journey.', req: {"type": "friends", "count": 100} },
+    { id: 'social_150', cat: 'social', name: 'Small Following', icon: '📢', desc: '150 friends. You have a legitimate following.', req: {"type": "friends", "count": 150} },
+    { id: 'social_250', cat: 'social', name: 'Micro-Celebrity', icon: '🎬', desc: '250 friends. A quarter-thousand people connected to you.', req: {"type": "friends", "count": 250} },
+    { id: 'social_500', cat: 'social', name: 'Social Phenomenon', icon: '🌊', desc: '500 friends. Half a thousand connections. You ARE the community.', req: {"type": "friends", "count": 500} },
   ];
 
   var CAT_LABELS = {
