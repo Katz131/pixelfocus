@@ -10139,7 +10139,9 @@ try {
           var _realStreak = state.realStreak || 0;
           if (_realStreak > 0) {
             var _rsEl = document.createElement('div');
-            _rsEl.style.cssText = 'font-size:11px;color:#ff8c3a;margin-top:8px;font-family:"Press Start 2P",monospace;letter-spacing:1px;opacity:0;transition:opacity 0.5s;';
+            _rsEl.style.cssText = 'font-size:11px;color:#ff8c3a;margin-top:8px;font-family:"Press Start 2P",monospace;letter-spacing:1px;opacity:0;transition:opacity 0.5s;cursor:help;';
+            _rsEl.title = 'Real Streak (strict) \u2014 only counts days you actually completed a focus session. This is the true measure of your discipline.';
+            _rsEl.id = 'celebRealStreak';
             _rsEl.innerHTML = '\uD83D\uDD25 Real Streak: ' + _realStreak + ' day' + (_realStreak === 1 ? '' : 's');
             streakMsg.parentNode.insertBefore(_rsEl, streakMsg.nextSibling);
             setTimeout(function() { _rsEl.style.opacity = '1'; }, 300);
