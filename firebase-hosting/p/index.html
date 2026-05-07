@@ -111,7 +111,6 @@
 <div class="top-bar"><h1>TODO OF THE LOOM</h1></div>
 <div class="site-nav">
   <a class="nav-link gold" href="/">&larr; LEADERBOARD</a>
-  <a class="nav-link accent" id="openTodoBtn" href="#" style="display:none;" title="Open your to-do list in the extension.">&larr; TO-DO LIST</a>
   <a class="nav-link accent" href="https://chromewebstore.google.com/detail/pixelfocus/jlfiokfngdjebicfaagoeiciihbfeeil" target="_blank">GET THE EXTENSION &rarr;</a>
 </div>
 <div class="hero"><div class="hero-label">CARD OF STANDING</div></div>
@@ -137,11 +136,10 @@
       var d=parseDoc(doc.fields||{});
       document.title=(d.displayName||'Profile')+' \u2014 Todo of the Loom';
       renderProfile(d);
-      // Show "TO-DO LIST" button if the extension URL is known
-      if (d.extensionUrl) {
-        var todoBtn = document.getElementById('openTodoBtn');
-        if (todoBtn) { todoBtn.href = d.extensionUrl; todoBtn.style.display = ''; }
-      }
+      // v3.23.113: Removed "TO-DO LIST" button — extensionUrl is a chrome-extension://
+      // URL unique to one machine. On any other machine it navigates to
+      // chrome-extension://invalid/ and crashes. The "GET THE EXTENSION" link
+      // already serves the same purpose for visitors who don't have it.
     })
     .catch(function(err){
       if(err.message==='not_found'){showError('Profile not found. It may not have been synced yet.');}
