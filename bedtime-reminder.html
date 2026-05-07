@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bedtime Reminder — Todo of the Loom</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#08080f; --surface:#12122a; --surface2:#1a1a3a; --accent:#6b6bff; --accent2:#9b9bff;
+           --gold:#ffd700; --text:#e0e0e0; --text-dim:#5a5a7e; --border:#2a2a4a; --success:#00ff88; --danger:#ff6b6b; }
+  body { background:radial-gradient(ellipse at 50% 30%, #15152e 0%, var(--bg) 60%);
+         color:var(--text); font-family:'Segoe UI',sans-serif; min-height:100vh;
+         display:flex; align-items:center; justify-content:center; padding:20px; }
+
+  .card { background:var(--surface); border:2px solid var(--accent); border-radius:16px;
+          max-width:400px; width:100%; box-shadow:0 0 40px rgba(107,107,255,0.2); overflow:hidden; }
+
+  .header { padding:20px 24px 14px; text-align:center; border-bottom:1px solid rgba(107,107,255,0.2); }
+  .moon { font-size:36px; margin-bottom:8px; animation: float 3s ease-in-out infinite; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+  .title { font-family:'Press Start 2P',monospace; font-size:12px; color:var(--accent); letter-spacing:1px; }
+  .subtitle { font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.5; }
+  .time-display { font-family:'Press Start 2P',monospace; font-size:18px; color:var(--gold);
+                  text-shadow:0 0 12px rgba(255,215,0,0.4); margin-top:10px; }
+
+  .checklist { padding:16px 24px; }
+  .checklist-title { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--accent2);
+                     letter-spacing:2px; margin-bottom:12px; text-transform:uppercase; }
+  .check-item { display:flex; align-items:flex-start; gap:10px; padding:8px 0;
+                border-bottom:1px solid rgba(107,107,255,0.08); cursor:pointer;
+                transition: opacity 0.2s ease; }
+  .check-item:last-child { border-bottom:none; }
+  .check-item:hover { opacity:0.85; }
+  .check-box { width:20px; height:20px; border:2px solid var(--accent); border-radius:4px;
+               flex-shrink:0; display:flex; align-items:center; justify-content:center;
+               transition: all 0.2s ease; margin-top:1px; }
+  .check-box.checked { background:var(--accent); border-color:var(--accent); }
+  .check-box.checked::after { content:'✓'; color:var(--bg); font-size:13px; font-weight:bold; }
+  .check-label { font-size:13px; line-height:1.5; color:var(--text); }
+  .check-item.done .check-label { text-decoration:line-through; color:var(--text-dim); }
+
+  .streak-bar { padding:10px 24px; text-align:center; }
+  .streak-text { font-family:'Press Start 2P',monospace; font-size:9px; color:var(--gold);
+                 letter-spacing:0.5px; }
+  .streak-dots { display:flex; justify-content:center; gap:6px; margin-top:8px; }
+  .streak-dot { width:14px; height:14px; border-radius:50%; border:2px solid var(--accent);
+                background:transparent; transition:all 0.3s ease; }
+  .streak-dot.filled { background:var(--gold); border-color:var(--gold);
+                       box-shadow:0 0 8px rgba(255,215,0,0.5); }
+  .streak-dot.current { animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 4px rgba(107,107,255,0.3)} 50%{box-shadow:0 0 14px rgba(107,107,255,0.7)} }
+
+  .actions { padding:16px 24px 20px; display:flex; gap:10px; }
+  .btn { flex:1; padding:14px 10px; border-radius:8px; font-family:'Press Start 2P',monospace;
+         font-size:10px; cursor:pointer; border:2px solid; transition:all 0.15s ease; letter-spacing:0.5px; }
+  .btn:hover { transform:scale(1.03); }
+  .btn:active { transform:scale(0.97); }
+  .btn-yes { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff;
+             border-color:var(--accent); box-shadow:0 0 16px rgba(107,107,255,0.3); }
+  .btn-no { background:transparent; border-color:var(--text-dim); color:var(--text-dim); }
+  .btn-no:hover { border-color:var(--danger); color:var(--danger); }
+
+  .result { display:none; padding:24px; text-align:center; }
+  .result-icon { font-size:40px; margin-bottom:12px; }
+  .result-text { font-family:'Press Start 2P',monospace; font-size:11px; color:var(--accent);
+                 line-height:1.8; }
+  .result-sub { font-size:12px; color:var(--text-dim); margin-top:10px; line-height:1.5; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="header">
+    <div class="moon">🌙</div>
+    <div class="title">BEDTIME REMINDER</div>
+    <div class="subtitle">It's almost time to wind down.</div>
+    <div class="time-display" id="bedtimeDisplay">23:00</div>
+  </div>
+
+  <div class="checklist" id="checklistSection">
+    <div class="checklist-title">Wind-down checklist</div>
+
+    <div class="check-item" data-idx="0">
+      <div class="check-box" id="cb0"></div>
+      <div class="check-label">Close all tabs, apps, and screens</div>
+    </div>
+    <div class="check-item" data-idx="1">
+      <div class="check-box" id="cb1"></div>
+      <div class="check-label">Lock your phone and place it away from the bed</div>
+    </div>
+    <div class="check-item" data-idx="2">
+      <div class="check-box" id="cb2"></div>
+      <div class="check-label">Turn off the lights</div>
+    </div>
+    <div class="check-item" data-idx="3">
+      <div class="check-box" id="cb3"></div>
+      <div class="check-label">Place water next to the bed</div>
+    </div>
+    <div class="check-item" data-idx="4">
+      <div class="check-box" id="cb4"></div>
+      <div class="check-label">Run through sleep sequences in your mind</div>
+    </div>
+  </div>
+
+  <div class="streak-bar" id="streakBar">
+    <div class="streak-text" id="streakText">STREAK: 0 / 5 NIGHTS</div>
+    <div class="streak-dots" id="streakDots"></div>
+  </div>
+
+  <div class="actions" id="actionBtns">
+    <button class="btn btn-yes" id="yesBtn">YES, I'LL GO</button>
+    <button class="btn btn-no" id="noBtn">NOT TONIGHT</button>
+  </div>
+
+  <div class="result" id="resultSection">
+    <div class="result-icon" id="resultIcon"></div>
+    <div class="result-text" id="resultText"></div>
+    <div class="result-sub" id="resultSub"></div>
+  </div>
+</div>
+
+<script src="bedtime-window.js"></script>
+</body>
+</html>

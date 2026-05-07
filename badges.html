@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Badges — Todo of the Loom</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#08080f; --surface:#12122a; --surface2:#1a1a3a; --accent:#ffd700; --accent2:#ffb64c;
+           --text:#e0e0e0; --text-dim:#5a5a7e; --border:#2a2a4a; --success:#00ff88; }
+  body { background:radial-gradient(ellipse at 50% 10%, #1a1816 0%, var(--bg) 55%);
+         color:var(--text); font-family:'Segoe UI',sans-serif; min-height:100vh; padding:0; }
+
+  .top-bar { width:100%; background:var(--surface); border-bottom:2px solid var(--accent);
+             padding:12px 20px; display:flex; align-items:center; gap:12px;
+             box-shadow:0 0 20px rgba(255,215,0,0.12); }
+  .back-btn { background:none; border:1px solid var(--text-dim); color:var(--text-dim);
+              font-family:'Press Start 2P',monospace; font-size:8px; padding:6px 10px;
+              border-radius:4px; cursor:pointer; transition:all 0.15s; }
+  .back-btn:hover { border-color:var(--accent); color:var(--accent); transform:scale(1.04); }
+  .top-title { font-family:'Press Start 2P',monospace; font-size:12px; color:var(--accent);
+               text-shadow:0 0 10px rgba(255,215,0,0.35); letter-spacing:1px; }
+  .badge-count { font-family:'Press Start 2P',monospace; font-size:9px; color:var(--text-dim);
+                 margin-left:auto; }
+
+  .layout { max-width:800px; margin:0 auto; padding:24px 20px 40px; }
+
+  .section { margin-bottom:28px; }
+  .section-title { font-family:'Press Start 2P',monospace; font-size:10px; letter-spacing:2px;
+                   margin-bottom:14px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  .section-title.sleep { color:#6b6bff; }
+  .section-title.focus { color:#00ff88; }
+  .section-title.social { color:#ff6b9d; }
+  .section-title.mastery { color:#ffd700; }
+
+  .badge-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:12px; }
+
+  .badge-card { background:var(--surface); border:2px solid var(--border); border-radius:12px;
+                padding:18px 14px; text-align:center; transition:all 0.2s ease; position:relative; overflow:hidden; }
+  .badge-card.earned { border-color:var(--accent); box-shadow:0 0 12px rgba(255,215,0,0.15); }
+  .badge-card.locked { opacity:0.45; filter:grayscale(0.8); }
+  .badge-card.earned:hover { transform:translateY(-3px); box-shadow:0 0 20px rgba(255,215,0,0.25); }
+
+  .badge-icon { font-size:36px; margin-bottom:8px; }
+  .badge-card.locked .badge-icon { filter:grayscale(1); }
+  .badge-name { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--text);
+                letter-spacing:0.5px; margin-bottom:6px; line-height:1.5; }
+  .badge-card.locked .badge-name { color:var(--text-dim); }
+  .badge-desc { font-size:11px; color:var(--text-dim); line-height:1.4; }
+  .badge-date { font-size:9px; color:var(--accent); margin-top:6px; font-style:italic; }
+
+  .badge-card.locked .lock-overlay { position:absolute; top:8px; right:8px;
+    font-size:12px; opacity:0.6; }
+
+  .stats-bar { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+               padding:16px 20px; margin-bottom:24px; display:flex; justify-content:space-around;
+               flex-wrap:wrap; gap:12px; }
+  .stat { text-align:center; }
+  .stat-value { font-family:'Press Start 2P',monospace; font-size:16px; color:var(--accent); }
+  .stat-label { font-size:10px; color:var(--text-dim); margin-top:4px; text-transform:uppercase; letter-spacing:1px; }
+
+  .empty-state { text-align:center; padding:40px 20px; }
+  .empty-icon { font-size:48px; margin-bottom:16px; opacity:0.4; }
+  .empty-text { font-family:'Press Start 2P',monospace; font-size:10px; color:var(--text-dim);
+                line-height:2; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <button class="back-btn" id="backBtn" title="Return to the main extension.">&larr; BACK</button>
+  <span class="top-title">🏆 BADGES</span>
+  <span class="badge-count" id="badgeCount">0 / 0</span>
+</div>
+
+<div class="layout">
+  <div class="stats-bar" id="statsBar">
+    <div class="stat">
+      <div class="stat-value" id="totalBadges">0</div>
+      <div class="stat-label">Earned</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="bedtimeStreak">0</div>
+      <div class="stat-label">Bedtime Streak</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="bestStreak">0</div>
+      <div class="stat-label">Best Streak</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="totalNights">0</div>
+      <div class="stat-label">Total Nights</div>
+    </div>
+  </div>
+
+  <div id="badgeContent"></div>
+</div>
+
+<script src="lockout-guard.js"></script>
+<script src="tooltip.js"></script>
+<script src="badges-window.js"></script>
+</body>
+</html>

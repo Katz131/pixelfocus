@@ -135,13 +135,13 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 .btn-small { padding:4px 10px; font-size:8px; }
 /* ========== Duolingo-style juicy game buttons ========== */
 /* Shared transition + transform origin for all game-nav buttons */
-#houseBtn, #galleryBtn, #factoryBtn, #brokerageBtn, #ratiocinatoryBtn {
+#houseBtn, #galleryBtn, #factoryBtn, #brokerageBtn, #ratiocinatoryBtn, #badgesBtn {
   transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 /* Shimmer sweep on hover */
-#houseBtn::after, #galleryBtn::after, #factoryBtn::after, #brokerageBtn::after, #ratiocinatoryBtn::after {
+#houseBtn::after, #galleryBtn::after, #factoryBtn::after, #brokerageBtn::after, #ratiocinatoryBtn::after, #badgesBtn::after {
   content: '';
   position: absolute;
   top: 0; left: -100%; width: 60%; height: 100%;
@@ -155,11 +155,12 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 #factoryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,215,0,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe44d; }
 #brokerageBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(78,205,196,0.55), 0 4px 14px rgba(0,0,0,0.4); border-color: #7eeee6; }
 #ratiocinatoryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(157,142,255,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #bdb2ff; }
-#houseBtn:hover::after, #galleryBtn:hover::after, #factoryBtn:hover::after, #brokerageBtn:hover::after, #ratiocinatoryBtn:hover::after {
+#badgesBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,215,0,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe44d; }
+#houseBtn:hover::after, #galleryBtn:hover::after, #factoryBtn:hover::after, #brokerageBtn:hover::after, #ratiocinatoryBtn:hover::after, #badgesBtn:hover::after {
   left: 120%;
 }
 /* Active (mouse-down): press in + squish */
-#houseBtn:active, #galleryBtn:active, #factoryBtn:active, #brokerageBtn:active, #ratiocinatoryBtn:active {
+#houseBtn:active, #galleryBtn:active, #factoryBtn:active, #brokerageBtn:active, #ratiocinatoryBtn:active, #badgesBtn:active {
   transform: scale(0.94);
   transition-duration: 0.06s;
 }
@@ -859,6 +860,9 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </div>
   <div id="ratiocinatoryBtn" style="display:none;flex:1;padding:10px;background:linear-gradient(135deg,#1a1030,#2a1a50);border:2px solid #9d8eff;border-radius:8px;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 0 14px rgba(157,142,255,0.18);" title="Open The Ratiocinatory (Section IX/b) - the bureaucratic annex where the loom is made to think. Unlocked via the Ratiocinatory requisition in the factory.">
     <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#9d8eff;letter-spacing:1px;">&sect;IX RATIOCINATORY</span>
+  </div>
+  <div id="badgesBtn" style="flex:1;min-width:100px;padding:10px;background:linear-gradient(135deg,#1a1610,#2a2010);border:2px solid #ffd700;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 0 14px rgba(255,215,0,0.12);transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s ease;position:relative;overflow:hidden;" title="View your badges — achievements earned through focus, sleep, and mastery. Your badges also appear on your online profile for friends to see.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffd700;">&#x1F3C6; BADGES</span>
   </div>
 </div>
 

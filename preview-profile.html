@@ -65,6 +65,15 @@
   .nav-link.gold{color:var(--gold);border-color:var(--gold)}
   .nav-link.accent{color:var(--accent)}
   .site-nav{text-align:center;padding:14px 20px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+
+  .badges-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px}
+  .badges-section h2{font-family:'Press Start 2P',monospace;font-size:10px;color:#ffd700;letter-spacing:2px;margin-bottom:14px;text-shadow:0 0 8px rgba(255,215,0,0.2)}
+  .badges-grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+  .badge-chip{background:var(--surface2);border:1px solid #ffd700;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 0 8px rgba(255,215,0,0.12)}
+  .badge-chip-icon{font-size:20px}
+  .badge-chip-name{font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;letter-spacing:0.5px}
+  .badge-chip-desc{font-size:9px;color:var(--text-dim)}
+  .badges-empty{font-size:11px;color:var(--text-dim);font-style:italic;text-align:center;padding:10px}
 </style>
 </head>
 <body>
@@ -117,6 +126,12 @@
       <div class="stat-row"><span class="stat-label">Looms saved</span><span class="stat-value accent">5</span></div>
       <div class="stat-row"><span class="stat-label">Looms sold</span><span class="stat-value gold">1</span></div>
       <div class="stat-row"><span class="stat-label">Lives lost</span><span class="stat-value" style="color:#ff6666">3</span></div>
+    </div>
+  </div>
+  <div class="badges-section" id="badgesSection" style="display:none;">
+    <h2>&#x1F3C6; BADGES</h2>
+    <div class="badges-grid" id="badgesGrid">
+      <div class="badges-empty">No badges earned yet.</div>
     </div>
   </div>
   <div class="daily-tasks">

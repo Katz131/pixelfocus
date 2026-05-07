@@ -407,6 +407,9 @@
     // v3.22.27: Weekly focus bar chart
     renderWeeklyFocus();
 
+    // v3.23.96: Badges
+    renderProfileBadges(state);
+
     // Sync to Firestore + show link
     updateProfileLinkBar(state);
     syncProfile(state);
@@ -1056,4 +1059,60 @@
       chrome.storage.onChanged.addListener(onStorageChanged);
     } catch (_) {}
   });
+  // ===== v3.23.96: Badges display on profile page =====
+  var PROFILE_BADGES = [
+    { id: 'early_bird_1',    icon: '\u{1F424}', name: 'Early Bird' },
+    { id: 'sleep_warrior',   icon: '\u{1F6E1}', name: 'Sleep Warrior' },
+    { id: 'dream_weaver',    icon: '\u{1F300}', name: 'Dream Weaver' },
+    { id: 'night_master',    icon: '\u{1F319}', name: 'Night Master' },
+    { id: 'sleep_sage',      icon: '\u{1F9D8}', name: 'Sleep Sage' },
+    { id: 'lunar_legend',    icon: '\u{1F315}', name: 'Lunar Legend' },
+    { id: 'rest_royalty',    icon: '\u{1F451}', name: 'Rest Royalty' },
+    { id: 'eternal_dreamer', icon: '\u{1F4AB}', name: 'Eternal Dreamer' },
+    { id: 'first_focus',     icon: '\u{1F9F5}', name: 'First Thread' },
+    { id: 'ten_sessions',    icon: '\u{1F3C3}', name: 'Shuttle Runner' },
+    { id: 'fifty_sessions',  icon: '\u2699',    name: 'Loom Veteran' },
+    { id: 'century_focus',   icon: '\u{1F4AF}', name: 'Centurion' },
+    { id: 'focus_500',       icon: '\u{1F525}', name: 'Iron Will' },
+    { id: 'streak_7',        icon: '\u{1F4C5}', name: 'Weekly Weaver' },
+    { id: 'streak_30',       icon: '\u{1F4C6}', name: 'Monthly Master' },
+    { id: 'combo_10',        icon: '\u26A1',    name: 'Combo King' },
+    { id: 'first_friend',    icon: '\u{1F91D}', name: 'Companion' },
+    { id: 'social_circle',   icon: '\u{1FAC2}', name: 'Social Circle' },
+    { id: 'profile_pic',     icon: '\u{1F3A8}', name: 'Self-Portrait' },
+    { id: 'display_name',    icon: '\u{1F3F7}', name: 'Named' },
+    { id: 'level_10',        icon: '\u{1F4DC}', name: 'Apprentice' },
+    { id: 'level_25',        icon: '\u{1F5E1}', name: 'Journeyman' },
+    { id: 'level_50',        icon: '\u{1F3DB}', name: 'Master' },
+    { id: 'level_100',       icon: '\u{1F31F}', name: 'Grandmaster' },
+    { id: 'rich_1000',       icon: '\u{1F4B0}', name: 'First Fortune' },
+    { id: 'rich_10000',      icon: '\u{1F48E}', name: 'Textile Mogul' }
+  ];
+
+  function renderProfileBadges(state) {
+    var panel = document.getElementById('profileBadgesPanel');
+    var list = document.getElementById('profileBadgesList');
+    var countEl = document.getElementById('profileBadgeCount');
+    if (!panel || !list) return;
+
+    var earned = state.badges || [];
+    if (countEl) countEl.textContent = earned.length + ' earned';
+
+    list.innerHTML = '';
+    if (earned.length === 0) {
+      list.innerHTML = '<div style="font-size:11px;color:#5a5a7e;font-style:italic;">No badges yet. Complete focus sessions, set a bedtime, and grow your profile to earn badges.</div>';
+      return;
+    }
+
+    for (var i = 0; i < PROFILE_BADGES.length; i++) {
+      var b = PROFILE_BADGES[i];
+      if (earned.indexOf(b.id) === -1) continue;
+      var chip = document.createElement('div');
+      chip.style.cssText = 'background:#1a1a3a;border:1px solid #ffd700;border-radius:6px;padding:6px 10px;display:flex;align-items:center;gap:6px;box-shadow:0 0 6px rgba(255,215,0,0.12);';
+      chip.innerHTML = '<span style="font-size:16px;">' + b.icon + '</span><span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;letter-spacing:0.5px;">' + b.name + '</span>';
+      chip.setAttribute('title', b.name + ' — earned!');
+      list.appendChild(chip);
+    }
+  }
+
 })();

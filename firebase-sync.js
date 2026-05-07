@@ -214,6 +214,10 @@
           ? state.dailySessionLog : { date: _t, sessions: [] };
       })(),
       focusHistory: state.focusHistory || {},
+      badges: state.badges || [],
+      bedtimeStreak: state.bedtimeStreak || 0,
+      bedtimeBestStreak: state.bedtimeBestStreak || 0,
+      bedtimeTotalSuccesses: state.bedtimeTotalSuccesses || 0,
       updatedAt: new Date().toISOString(),
       profileCreated: state.profileCreated
         ? new Date(state.profileCreated).toISOString()

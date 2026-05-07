@@ -758,6 +758,20 @@ try {
     sleepHour: 23,                  // bedtime hour (24h)
     sleepMinute: 0,                 // bedtime minute
     sleepPrepMin: 30,               // lead-in / wind-down minutes before bed
+
+    // v3.23.96: Bedtime routine system
+    bedtimeReminderEnabled: false,   // master toggle for bedtime pop-out reminders
+    bedtimeStreak: 0,                // consecutive nights of confirmed on-time bedtime
+    bedtimeBestStreak: 0,            // all-time best bedtime streak
+    bedtimeLastConfirmDate: '',      // YYYY-MM-DD of last confirmed bedtime
+    bedtimeLastReminderDate: '',     // YYYY-MM-DD of last reminder shown (prevent dupes)
+    bedtimeMorningPending: false,    // true = morning check-in needed
+    bedtimeMorningDate: '',          // YYYY-MM-DD for morning check-in prompt
+    bedtimeTotalSuccesses: 0,        // lifetime successful bedtimes
+
+    // v3.23.96: Badges system
+    badges: [],                      // array of earned badge IDs
+    badgesLastSynced: 0,             // timestamp of last badge sync to Firestore
     sleepDurMin: 480,               // sleep duration in minutes (default 8h)
     coldTurkeyNagSites: [],         // domains that trigger a CT reminder every 10 min
     coldTurkeyLastSiteNagAt: 0,     // timestamp of last site-nag (prevent spamming)
@@ -1781,7 +1795,7 @@ try {
 
   // ============== HOVER SOUNDS ==============
   let lastHoverTime = 0;
-  const HOVER_SELECTORS = '.btn, .tab, .tab-add, .task-item, .milestone-item, .block-counter, .upgrade-btn, .task-checkbox, .task-delete, .task-select-btn, .xp-section, .collapsible-header, .stat, #galleryBtn, #factoryBtn, #houseBtn, #brokerageBtn, #ratiocinatoryBtn, #blockCounter, #addTaskBtn, #addTabBtn, #profileAvatar';
+  const HOVER_SELECTORS = '.btn, .tab, .tab-add, .task-item, .milestone-item, .block-counter, .upgrade-btn, .task-checkbox, .task-delete, .task-select-btn, .xp-section, .collapsible-header, .stat, #galleryBtn, #factoryBtn, #houseBtn, #brokerageBtn, #ratiocinatoryBtn, #blockCounter, #addTaskBtn, #addTabBtn, #profileAvatar, #badgesBtn';
 
   document.addEventListener('mouseover', function(e) {
     const now = Date.now();
@@ -10586,6 +10600,15 @@ try {
         });
       }
 
+      // v3.23.96: Badges button (always visible — not a game page, no lockout)
+      var badgesBtn = $('badgesBtn');
+      if (badgesBtn) {
+        badgesBtn.addEventListener('click', function() {
+          SFX.tabSwitch();
+          openPFWindow('badges.html');
+        });
+      }
+
       // v3.23.82: Market pricing slider — saves price to state on drag.
       var mktSlider = $('marketPriceSlider');
       if (mktSlider) {
@@ -12847,6 +12870,16 @@ try {
           }
           html += '</div>';
 
+
+          // v3.23.96: Bedtime reminder toggle
+          html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(107,107,255,0.15);">';
+          html += '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;" title="When enabled, a pop-out window appears 30 minutes before bedtime with a wind-down checklist. The next morning, it asks if you went to bed on time. Going to bed on time 5 nights in a row earns a badge!">';
+          html += '<input type="checkbox" id="bedtimeReminderToggle" ' + (state.bedtimeReminderEnabled ? 'checked' : '') + ' style="width:16px;height:16px;accent-color:#6b6bff;cursor:pointer;" />';
+          html += '<span style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;">Bedtime reminders</span>';
+          html += '</label>';
+          html += '<div style="font-family:\'Courier New\',monospace;font-size:9px;color:#5a5a7e;margin-top:4px;margin-left:24px;">Pop-out reminder 30 min before bed + morning check-in. Earn badges for streaks!</div>';
+          html += '</div>';
+
           sleepBody.innerHTML = html;
 
           // Summary in footer
@@ -12877,6 +12910,15 @@ try {
           _sleepPick('slp-min', 'sleepMinute');
           _sleepPick('slp-dur', 'sleepDurMin');
           _sleepPick('slp-prep', 'sleepPrepMin');
+
+          // v3.23.96: Wire bedtime reminder toggle
+          var _bdtToggle = document.getElementById('bedtimeReminderToggle');
+          if (_bdtToggle) {
+            _bdtToggle.addEventListener('change', function() {
+              state.bedtimeReminderEnabled = _bdtToggle.checked;
+              save();
+            });
+          }
         }
 
         function _updateSleepBtnStyle() {

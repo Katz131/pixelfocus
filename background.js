@@ -984,6 +984,61 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
   // v3.21.98: Standalone focus timer idle nudge — no Cold Turkey, just a notification
   // Runs 24/7. Nag cadence: fires every 2h of inactivity, no wake-hour restriction.
+  
+  // v3.23.96: Bedtime reminder check — fires every 5 min when enabled
+  if (alarm.name === 'pixelfocus-bedtime-check') {
+    chrome.storage.local.get('pixelFocusState', function(result) {
+      var state = result.pixelFocusState || {};
+      if (!state.bedtimeReminderEnabled || !state.sleepTimeEnabled) return;
+
+      var now = new Date();
+      var nowMin = now.getHours() * 60 + now.getMinutes();
+      var bedMin = (state.sleepHour || 23) * 60 + (state.sleepMinute || 0);
+      var reminderMin = bedMin - (state.sleepPrepMin || 30);
+      if (reminderMin < 0) reminderMin += 1440; // wrap past midnight
+
+      // Today's date string
+      var m = now.getMonth() + 1, dd = now.getDate();
+      var today = now.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
+
+      // --- Morning check-in ---
+      if (state.bedtimeMorningPending && state.bedtimeMorningDate &&
+          state.bedtimeMorningDate !== today) {
+        // It's a new day and we have a pending check-in
+        if (state.bedtimeLastConfirmDate !== today) {
+          console.log('[Bedtime] Morning check-in triggered');
+          state.bedtimeMorningShown = true;
+          chrome.storage.local.set({ pixelFocusState: state });
+          chrome.windows.create({
+            url: chrome.runtime.getURL('morning-checkin.html'),
+            type: 'popup', width: 420, height: 520, focused: true,
+            top: 60, left: Math.round((screen.availWidth || 1200) / 2 - 210)
+          });
+          return; // don't also fire bedtime reminder
+        }
+      }
+
+      // --- Bedtime reminder ---
+      // Already reminded today? Skip.
+      if (state.bedtimeLastReminderDate === today) return;
+
+      // Are we in the reminder window? (within 5 min of the target time)
+      var diff = nowMin - reminderMin;
+      if (diff < 0) diff += 1440;
+      if (diff >= 0 && diff <= 5) {
+        console.log('[Bedtime] Reminder triggered at ' + now.toLocaleTimeString());
+        state.bedtimeLastReminderDate = today;
+        chrome.storage.local.set({ pixelFocusState: state });
+        chrome.windows.create({
+          url: chrome.runtime.getURL('bedtime-reminder.html'),
+          type: 'popup', width: 420, height: 600, focused: true,
+          top: 60, left: Math.round((screen.availWidth || 1200) / 2 - 210)
+        });
+      }
+    });
+    return;
+  }
+
   if (alarm.name === 'pixelfocus-focus-idle') {
     chrome.storage.local.get('pixelFocusState', function(result) {
       var state = result.pixelFocusState;
@@ -1692,6 +1747,43 @@ function opportunisticSurveillanceCheck() {
     }, 3000);
   });
 }
+
+
+
+// ===== v3.23.96: Bedtime reminder alarm =====
+// Fires a pop-out window 30 min before the user's set bedtime.
+// Also fires a morning check-in on first extension open the next day.
+
+function setupBedtimeAlarm() {
+  try { chrome.alarms.clear('pixelfocus-bedtime-reminder'); } catch(_) {}
+  try { chrome.alarms.clear('pixelfocus-bedtime-check'); } catch(_) {}
+
+  chrome.storage.local.get('pixelFocusState', function(result) {
+    var state = result.pixelFocusState || {};
+    if (!state.bedtimeReminderEnabled) return;
+    if (!state.sleepTimeEnabled) return;
+
+    // Set recurring alarm that checks every 5 minutes
+    chrome.alarms.create('pixelfocus-bedtime-check', { periodInMinutes: 5 });
+    console.log('[Bedtime] Alarm set — checking every 5 min for bedtime window');
+  });
+}
+
+// Run on startup
+setupBedtimeAlarm();
+// Re-check when state changes (user toggles bedtime on/off)
+chrome.storage.onChanged.addListener(function(changes, area) {
+  if (area === 'local' && changes.pixelFocusState) {
+    var oldVal = changes.pixelFocusState.oldValue || {};
+    var newVal = changes.pixelFocusState.newValue || {};
+    if (oldVal.bedtimeReminderEnabled !== newVal.bedtimeReminderEnabled ||
+        oldVal.sleepTimeEnabled !== newVal.sleepTimeEnabled ||
+        oldVal.sleepHour !== newVal.sleepHour ||
+        oldVal.sleepMinute !== newVal.sleepMinute) {
+      setupBedtimeAlarm();
+    }
+  }
+});
 
 // Wire into browser events that wake the service worker
 chrome.tabs.onActivated.addListener(function() { opportunisticSurveillanceCheck(); });
