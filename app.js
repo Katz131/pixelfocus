@@ -10364,6 +10364,25 @@ try {
       // black modal appearing before the page exists is jarring.
       setTimeout(maybeShowPriorityModal, 150);
 
+      // v3.23.98: Bedtime morning check-in — triggered on popup open.
+      // If the user said "YES, I'LL GO" last night, we need a morning
+      // follow-up asking if they actually went to bed on time. Only fires
+      // once per day, only if bedtimeReminderEnabled + bedtimeMorningPending.
+      setTimeout(function() {
+        try {
+          if (!state.bedtimeReminderEnabled) return;
+          if (!state.bedtimeMorningPending) return;
+          // Don't re-show if already confirmed today
+          var _td = new Date(), _tmm = _td.getMonth() + 1, _tdd = _td.getDate();
+          var _today = _td.getFullYear() + '-' + (_tmm < 10 ? '0' : '') + _tmm + '-' + (_tdd < 10 ? '0' : '') + _tdd;
+          if (state.bedtimeLastConfirmDate === _today) return;
+          // Don't re-show if dismissed recently (within 2 hours)
+          if (state.bedtimeCheckinDismissedAt && (Date.now() - state.bedtimeCheckinDismissedAt) < 7200000) return;
+          // Open the morning check-in pop-out
+          openPFWindow('morning-checkin.html');
+        } catch (_) {}
+      }, 1500);
+
       // Timer buttons
       if (startBtn) startBtn.addEventListener('click', startTimer);
       if (resetBtn) resetBtn.addEventListener('click', resetTimer);

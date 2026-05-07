@@ -953,12 +953,10 @@
       var dateStr = d.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
 
       var mins = 0;
-      if (dateStr === today) {
-        // Live: sum from current dailySessionLog
-        if (state.dailySessionLog && state.dailySessionLog.date === today) {
-          var sess = state.dailySessionLog.sessions || [];
-          for (var s = 0; s < sess.length; s++) mins += (sess[s].min || 0);
-        }
+      if (state.dailySessionLog && state.dailySessionLog.date === dateStr) {
+        // Live: sum from current dailySessionLog (matches this date slot)
+        var sess = state.dailySessionLog.sessions || [];
+        for (var s = 0; s < sess.length; s++) mins += (sess[s].min || 0);
       } else {
         // Archived
         mins = (state.focusHistory && state.focusHistory[dateStr]) || 0;

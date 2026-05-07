@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Todo of the Loom",
-  "version": "3.23.97",
-  "description": "Todo of the Loom — The demoralizing gamified To-do list. v3.2️⃣3️⃣.97",
+  "version": "3.23.99",
+  "description": "Todo of the Loom — The demoralizing gamified To-do list. v3.2️⃣3️⃣.98",
   "permissions": [
     "storage",
     "alarms",

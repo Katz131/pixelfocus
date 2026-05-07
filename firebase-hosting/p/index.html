@@ -235,8 +235,10 @@
       var endTime=ed.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
       blocks+='<div class="timeline-block" style="left:'+startPct.toFixed(1)+'%;width:'+widthPct.toFixed(1)+'%;"><div class="tt">'+startTime+' - '+endTime+' ('+s.min+' min)</div></div>';
     }
+    var isToday=log&&log.date&&log.date===today.getFullYear()+'-'+(today.getMonth()+1<10?'0':'')+(today.getMonth()+1)+'-'+(today.getDate()<10?'0':'')+today.getDate();
+    var tlTitle=isToday?'TODAY\'S FOCUS TIMELINE':'FOCUS TIMELINE ('+dateLabel+')';
     var html='<div class="timeline-panel">'
-      +'<h2>TODAY\'S FOCUS TIMELINE</h2>'
+      +'<h2>'+tlTitle+'</h2>'
       +'<div class="timeline-bar-wrap">'+blocks+'</div>'
       +'<div class="timeline-labels"><span>12AM</span><span>6AM</span><span>12PM</span><span>6PM</span><span>12AM</span></div>'
       +'<div class="timeline-summary">';
@@ -269,11 +271,9 @@
       var dt=new Date(monday.getTime()+i*86400000);
       var ds=dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());
       var mins=0;
-      if(ds===todayS){
-        if(d.dailySessionLog&&d.dailySessionLog.date===todayS){
-          var sess=d.dailySessionLog.sessions||[];
-          for(var s=0;s<sess.length;s++)mins+=(sess[s].min||0);
-        }
+      if(d.dailySessionLog&&d.dailySessionLog.date===ds){
+        var sess=d.dailySessionLog.sessions||[];
+        for(var s=0;s<sess.length;s++)mins+=(sess[s].min||0);
       } else {
         mins=(history[ds])||0;
       }

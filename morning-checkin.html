@@ -59,22 +59,40 @@
 <body>
 
 <div class="card">
-  <div class="header">
-    <div class="sun">☀️</div>
-    <div class="title">MORNING CHECK-IN</div>
-    <div class="question">
-      Did you go to bed at <strong id="bedtimeDisplay">23:00</strong> last night?
+  <!-- Step 1: Night or morning? -->
+  <div id="timeCheckSection">
+    <div class="header">
+      <div class="sun">🌅</div>
+      <div class="title">DAILY CHECK-IN</div>
+      <div class="question" style="margin-top:10px;">
+        Is this the <strong>morning after</strong> your bedtime, or are you still up?
+      </div>
+    </div>
+    <div class="actions" style="padding:16px 24px 20px;">
+      <button class="btn btn-yes" id="morningBtn">IT'S MORNING</button>
+      <button class="btn btn-no" id="stillUpBtn">STILL UP</button>
     </div>
   </div>
 
-  <div class="streak-bar" id="streakBar">
-    <div class="streak-text" id="streakText">STREAK: 0 NIGHTS</div>
-    <div class="streak-dots" id="streakDots"></div>
-  </div>
+  <!-- Step 2: The actual bedtime check (hidden initially) -->
+  <div id="bedtimeCheckSection" style="display:none;">
+    <div class="header">
+      <div class="sun">☀️</div>
+      <div class="title">MORNING CHECK-IN</div>
+      <div class="question">
+        Did you go to bed at <strong id="bedtimeDisplay">23:00</strong> last night?
+      </div>
+    </div>
 
-  <div class="actions" id="actionBtns">
-    <button class="btn btn-yes" id="yesBtn">YES, I DID!</button>
-    <button class="btn btn-no" id="noBtn">NO...</button>
+    <div class="streak-bar" id="streakBar">
+      <div class="streak-text" id="streakText">STREAK: 0 NIGHTS</div>
+      <div class="streak-dots" id="streakDots"></div>
+    </div>
+
+    <div class="actions" id="actionBtns">
+      <button class="btn btn-yes" id="yesBtn">YES, I DID!</button>
+      <button class="btn btn-no" id="noBtn">NO...</button>
+    </div>
   </div>
 
   <div class="result" id="resultSection">

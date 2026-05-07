@@ -1,11 +1,15 @@
-// morning-checkin-window.js — v3.23.96
+// morning-checkin-window.js — v3.23.98
 // Handles the morning bedtime check-in pop-out.
-// Loaded by morning-checkin.html.
+// Two-step flow:
+//   Step 1: "Is this the morning after, or are you still up?"
+//   Step 2 (if morning): "Did you go to bed on time?"
+// If user says "still up" AND it's past their bedtime, streak broken.
+// If user says "still up" AND before bedtime, just dismiss, no penalty.
 
 (function() {
   'use strict';
 
-  // ===== Sound engine =====
+  // Sound engine
   var SFX = (function() {
     var ctx = null;
     function getCtx() {
@@ -25,21 +29,21 @@
     return {
       success: function() { [523,659,784,1047,1318].forEach(function(f,i) { setTimeout(function() { tone(f,0.12,'sine',0.1); }, i*100); }); },
       badge: function() { [784,988,1175,1568,1175,1568].forEach(function(f,i) { setTimeout(function() { tone(f,0.15,'sine',0.12); }, i*120); }); },
-      fail: function() { tone(300, 0.2, 'triangle', 0.04); }
+      fail: function() { tone(300, 0.2, 'triangle', 0.04); },
+      dismiss: function() { tone(400, 0.1, 'triangle', 0.03); }
     };
   })();
 
-  // ===== Badge definitions =====
-  // Shared with badges.html — keep in sync
+  // Badge definitions (sleep only -- keep in sync with badges-window.js)
   var BADGES = [
-    { id: 'early_bird_1',   name: 'Early Bird',          icon: '🐤', desc: '5 nights on time',         req: 5  },
-    { id: 'sleep_warrior',  name: 'Sleep Warrior',       icon: '🛡️', desc: '10 nights on time',        req: 10 },
-    { id: 'dream_weaver',   name: 'Dream Weaver',        icon: '🌀', desc: '15 nights on time',        req: 15 },
-    { id: 'night_master',   name: 'Night Master',        icon: '🌙', desc: '25 nights on time',        req: 25 },
-    { id: 'sleep_sage',     name: 'Sleep Sage',          icon: '🧘', desc: '40 nights on time',        req: 40 },
-    { id: 'lunar_legend',   name: 'Lunar Legend',        icon: '🌕', desc: '60 nights on time',        req: 60 },
-    { id: 'rest_royalty',   name: 'Rest Royalty',        icon: '👑', desc: '90 nights on time',        req: 90 },
-    { id: 'eternal_dreamer',name: 'Eternal Dreamer',     icon: '💫', desc: '150 nights on time',       req: 150 }
+    { id: 'early_bird_1',   name: 'Early Bird',      icon: '🐤', desc: '5 nights on time',   req: 5 },
+    { id: 'sleep_warrior',  name: 'Sleep Warrior',   icon: '🛡️', desc: '10 nights on time',  req: 10 },
+    { id: 'dream_weaver',   name: 'Dream Weaver',    icon: '🌀', desc: '15 nights on time',  req: 15 },
+    { id: 'night_master',   name: 'Night Master',    icon: '🌙', desc: '25 nights on time',  req: 25 },
+    { id: 'sleep_sage',     name: 'Sleep Sage',      icon: '🧘', desc: '40 nights on time',  req: 40 },
+    { id: 'lunar_legend',   name: 'Lunar Legend',    icon: '🌕', desc: '60 nights on time',  req: 60 },
+    { id: 'rest_royalty',   name: 'Rest Royalty',    icon: '👑', desc: '90 nights on time',  req: 90 },
+    { id: 'eternal_dreamer',name: 'Eternal Dreamer', icon: '💫', desc: '150 nights on time', req: 150 }
   ];
 
   var state = {};
@@ -69,10 +73,8 @@
     var dotsEl = document.getElementById('streakDots');
     var textEl = document.getElementById('streakText');
     if (!dotsEl || !textEl) return;
-
     var inCycle = streak % 5;
     textEl.textContent = 'STREAK: ' + streak + ' NIGHT' + (streak === 1 ? '' : 'S');
-
     dotsEl.innerHTML = '';
     for (var i = 0; i < 5; i++) {
       var dot = document.createElement('div');
@@ -83,7 +85,6 @@
     }
   }
 
-  // Check if a new badge was earned and return it (or null)
   function checkForNewBadge(totalSuccesses) {
     if (!Array.isArray(state.badges)) state.badges = [];
     for (var i = BADGES.length - 1; i >= 0; i--) {
@@ -96,47 +97,25 @@
     return null;
   }
 
-  function wireButtons() {
-    var yesBtn = document.getElementById('yesBtn');
-    var noBtn = document.getElementById('noBtn');
-
-    yesBtn.addEventListener('click', function() {
-      // Increment streak + total
-      state.bedtimeStreak = (state.bedtimeStreak || 0) + 1;
-      state.bedtimeTotalSuccesses = (state.bedtimeTotalSuccesses || 0) + 1;
-      if (state.bedtimeStreak > (state.bedtimeBestStreak || 0)) {
-        state.bedtimeBestStreak = state.bedtimeStreak;
-      }
-      state.bedtimeLastConfirmDate = todayStr();
-      state.bedtimeMorningPending = false;
-
-      // Check for badge
-      var newBadge = checkForNewBadge(state.bedtimeTotalSuccesses);
-
-      save();
-
-      if (newBadge) {
-        SFX.badge();
-      } else {
-        SFX.success();
-      }
-
-      showResult(true, newBadge);
-    });
-
-    noBtn.addEventListener('click', function() {
-      SFX.fail();
-      state.bedtimeStreak = 0;
-      state.bedtimeMorningPending = false;
-      state.bedtimeLastConfirmDate = todayStr();
-      save();
-      showResult(false, null);
-    });
+  // Is the current time past the user's set bedtime?
+  function isPastBedtime() {
+    var now = new Date();
+    var nowMin = now.getHours() * 60 + now.getMinutes();
+    var bedH = typeof state.sleepHour === 'number' ? state.sleepHour : 23;
+    var bedM = typeof state.sleepMinute === 'number' ? state.sleepMinute : 0;
+    var bedMin = bedH * 60 + bedM;
+    // Evening bedtime (18:00+): past if nowMin >= bedMin OR early morning (before noon)
+    if (bedMin >= 1080) {
+      return nowMin >= bedMin || nowMin < 720;
+    }
+    return nowMin >= bedMin;
   }
 
   function showResult(success, newBadge) {
-    document.getElementById('streakBar').style.display = 'none';
-    document.getElementById('actionBtns').style.display = 'none';
+    var tc = document.getElementById('timeCheckSection');
+    var bc = document.getElementById('bedtimeCheckSection');
+    if (tc) tc.style.display = 'none';
+    if (bc) bc.style.display = 'none';
 
     var result = document.getElementById('resultSection');
     result.style.display = 'block';
@@ -169,22 +148,90 @@
       document.getElementById('resultSub').textContent = 'No worries — tonight is a fresh start. Try again.';
     }
 
-    // Auto-close after 5 seconds (longer if badge)
     setTimeout(function() {
       try { window.close(); } catch(_) {}
     }, newBadge ? 7000 : 4500);
   }
 
-  // ===== Init =====
+  // Wire all buttons
+  function wireAll() {
+    var morningBtn = document.getElementById('morningBtn');
+    var stillUpBtn = document.getElementById('stillUpBtn');
+    var yesBtn = document.getElementById('yesBtn');
+    var noBtn = document.getElementById('noBtn');
+
+    // Step 1: "It's morning" -- show the bedtime check
+    morningBtn.addEventListener('click', function() {
+      SFX.dismiss();
+      document.getElementById('timeCheckSection').style.display = 'none';
+      document.getElementById('bedtimeCheckSection').style.display = 'block';
+      renderStreak();
+    });
+
+    // Step 1: "Still up" -- check if past bedtime
+    stillUpBtn.addEventListener('click', function() {
+      if (isPastBedtime()) {
+        // Past bedtime and still awake = streak broken
+        SFX.fail();
+        state.bedtimeStreak = 0;
+        state.bedtimeMorningPending = false;
+        state.bedtimeLastConfirmDate = todayStr();
+        save();
+
+        var tc = document.getElementById('timeCheckSection');
+        if (tc) tc.style.display = 'none';
+        var result = document.getElementById('resultSection');
+        result.style.display = 'block';
+        document.getElementById('resultIcon').textContent = '🦉';
+        document.getElementById('resultText').style.color = '#ff6b6b';
+        document.getElementById('resultText').textContent = 'STILL UP PAST BEDTIME';
+        document.getElementById('resultSub').textContent = 'Your streak has been reset. Get some rest!';
+
+        setTimeout(function() {
+          try { window.close(); } catch(_) {}
+        }, 4000);
+      } else {
+        // Not past bedtime yet -- dismiss, don't repeat for 2 hours
+        SFX.dismiss();
+        state.bedtimeCheckinDismissedAt = Date.now();
+        save();
+        try { window.close(); } catch(_) {}
+      }
+    });
+
+    // Step 2: "Yes, I went to bed on time"
+    yesBtn.addEventListener('click', function() {
+      state.bedtimeStreak = (state.bedtimeStreak || 0) + 1;
+      state.bedtimeTotalSuccesses = (state.bedtimeTotalSuccesses || 0) + 1;
+      if (state.bedtimeStreak > (state.bedtimeBestStreak || 0)) {
+        state.bedtimeBestStreak = state.bedtimeStreak;
+      }
+      state.bedtimeLastConfirmDate = todayStr();
+      state.bedtimeMorningPending = false;
+      var newBadge = checkForNewBadge(state.bedtimeTotalSuccesses);
+      save();
+      if (newBadge) { SFX.badge(); } else { SFX.success(); }
+      showResult(true, newBadge);
+    });
+
+    // Step 2: "No, I didn't"
+    noBtn.addEventListener('click', function() {
+      SFX.fail();
+      state.bedtimeStreak = 0;
+      state.bedtimeMorningPending = false;
+      state.bedtimeLastConfirmDate = todayStr();
+      save();
+      showResult(false, null);
+    });
+  }
+
+  // Init
   chrome.storage.local.get('pixelFocusState', function(result) {
     state = result.pixelFocusState || {};
-
     var h = typeof state.sleepHour === 'number' ? state.sleepHour : 23;
     var m = typeof state.sleepMinute === 'number' ? state.sleepMinute : 0;
     var use24 = state.use24Hour !== false;
     document.getElementById('bedtimeDisplay').textContent = formatTime(h, m, use24);
-
-    renderStreak();
-    wireButtons();
+    wireAll();
   });
 })();

@@ -1001,24 +1001,8 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       var m = now.getMonth() + 1, dd = now.getDate();
       var today = now.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
 
-      // --- Morning check-in ---
-      if (state.bedtimeMorningPending && state.bedtimeMorningDate &&
-          state.bedtimeMorningDate !== today) {
-        // It's a new day and we have a pending check-in
-        if (state.bedtimeLastConfirmDate !== today) {
-          console.log('[Bedtime] Morning check-in triggered');
-          state.bedtimeMorningShown = true;
-          chrome.storage.local.set({ pixelFocusState: state });
-          chrome.windows.create({
-            url: chrome.runtime.getURL('morning-checkin.html'),
-            type: 'popup', width: 420, height: 520, focused: true,
-            top: 60, left: Math.round((screen.availWidth || 1200) / 2 - 210)
-          });
-          return; // don't also fire bedtime reminder
-        }
-      }
-
       // --- Bedtime reminder ---
+      // (Morning check-in is handled by app.js on popup open, not here.)
       // Already reminded today? Skip.
       if (state.bedtimeLastReminderDate === today) return;
 
