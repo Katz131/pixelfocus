@@ -427,9 +427,11 @@ try {
   // k / M / B suffixes.
   function formatXPNumber(n) {
     if (n < 1000) return String(n);
-    if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, '') + 'k';
-    if (n < 1000000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+    // Always floor so displayed value never exceeds actual balance
+    if (n < 10000) return (Math.floor(n / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (n < 1000000) return Math.floor(n / 1000) + 'k';
+    if (n < 1000000000) return (Math.floor(n / 100000) / 10).toFixed(1).replace(/\.0$/, '') + 'M';
+    return (Math.floor(n / 100000000) / 10).toFixed(1).replace(/\.0$/, '') + 'B';
   }
 
   function openTitleLadderModal() {
@@ -772,6 +774,15 @@ try {
     // v3.23.96: Badges system
     badges: [],                      // array of earned badge IDs
     badgesLastSynced: 0,             // timestamp of last badge sync to Firestore
+
+    // v3.23.104: House pet type & naming system
+    // Each pet slot stores a type (cat/dog/blob/bird/bunny/fish) and a name
+    // chosen by the player. petTypes[0] = first pet, petTypes[1] = second pet.
+    // Types are set via a picker modal when a pet first unlocks in the house.
+    lastMarketYield: 0,              // most recent market yield multiplier (shown in market card)
+    housePetTypes: [],               // ['cat', 'dog', ...] — chosen pet species
+    housePetNames: [],               // ['Mochi', 'Kiwi', ...] — player-chosen names
+    housePetPickerShown: [],         // [true, true] — tracks which pet slots have shown the picker
     sleepDurMin: 480,               // sleep duration in minutes (default 8h)
     coldTurkeyNagSites: [],         // domains that trigger a CT reminder every 10 min
     coldTurkeyLastSiteNagAt: 0,     // timestamp of last site-nag (prevent spamming)
@@ -2730,8 +2741,11 @@ try {
     var el = $('coinsDisplay');
     if (!el) return;
     var c = Math.floor(state.coins || 0);
-    if (c >= 1000000) el.textContent = (c / 1000000).toFixed(2) + 'M';
-    else if (c >= 1000) el.textContent = (c / 1000).toFixed(1) + 'k';
+    // Always round DOWN so the display never shows more than you have.
+    // e.g. 19,990 -> "19.9k" not "20k" — prevents misleading purchase lockouts.
+    if (c >= 1000000) el.textContent = (Math.floor(c / 10000) / 100).toFixed(2) + 'M';
+    else if (c >= 10000) el.textContent = Math.floor(c / 1000) + 'k';
+    else if (c >= 1000) el.textContent = (Math.floor(c / 100) / 10).toFixed(1) + 'k';
     else el.textContent = c.toString();
     var rate = getStreakCoinRatePerMinute();
     var emp = state.employeesLevel || 0;
@@ -3903,9 +3917,18 @@ try {
       marginEl.textContent = m + '%';
       marginEl.style.color = m > 20 ? '#ffd700' : m > 0 ? '#ff9966' : '#ff5555';
     }
-    // Yield stays hidden until session completes
+    // Show the most recent yield multiplier from last completed session,
+    // or '? ? ?' if the player hasn't completed a focus session yet.
     if (yieldEl) {
-      yieldEl.textContent = '? ? ?';
+      var lastYield = state.lastMarketYield || 0;
+      if (lastYield > 0) {
+        yieldEl.textContent = lastYield.toFixed(2) + 'x';
+        yieldEl.style.color = lastYield >= 1.5 ? '#00ff88' : lastYield >= 1.0 ? '#ffd700' : '#ff5555';
+        yieldEl.parentElement.title = 'Your most recent focus session earned a ' + lastYield.toFixed(2) + 'x market yield multiplier. This changes with market conditions each session.';
+      } else {
+        yieldEl.textContent = '? ? ?';
+        yieldEl.parentElement.title = 'Complete your first focus session to reveal your yield multiplier. Market conditions determine how much bonus you earn.';
+      }
     }
     // Era label — show the highest active phase name
     if (eraEl && state.marketActivePhases && state.marketActivePhases.length > 0) {
@@ -7060,6 +7083,7 @@ try {
       // session start and stays between 0.3x and 2.5x. Default 1.0x if the
       // market system hasn't been unlocked yet.
       var marketYield = state.marketYieldMultiplier || 1.0;
+      state.lastMarketYield = marketYield;  // persist for yield display
       comboCoins = Math.round(comboCoins * marketYield);
       if (comboCoins > 0) awardCoins(comboCoins, state.combo + 'x chain' + (marketYield !== 1.0 ? ' [' + marketYield + 'x mkt]' : ''));
     }

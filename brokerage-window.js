@@ -256,8 +256,8 @@
   // ===== Formatting helpers =====
   function fmt(n) {
     if (typeof n !== 'number' || isNaN(n)) return '0';
-    if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(2) + 'M';
-    if (Math.abs(n) >= 10000) return (n / 1000).toFixed(1) + 'K';
+    if (Math.abs(n) >= 1000000) return (Math.floor(Math.abs(n) / 10000) / 100 * Math.sign(n)).toFixed(2) + 'M';
+    if (Math.abs(n) >= 10000) return Math.floor(n / 1000) + 'K';
     if (Math.abs(n) >= 100) return Math.round(n).toLocaleString();
     return n.toFixed(2);
   }
