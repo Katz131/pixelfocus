@@ -303,31 +303,47 @@
       xpText.title = info.currentXP + ' XP earned toward level ' + (info.level + 1) + '. Needs ' + info.nextLevelXP + ' XP for the next rung.';
     }
 
-    // Streak
-    var streak = state.streak || 0;
-    var longest = Math.max(state.longestStreak || 0, streak);
-    var flameEl = document.getElementById('streakFlame');
-    if (flameEl) {
-      if (streak > 0) flameEl.classList.remove('cold');
-      else flameEl.classList.add('cold');
-      flameEl.title = streak > 0
-        ? 'Streak is live at ' + streak + ' day(s). Keep earning at least one textile each day to keep it burning.'
-        : 'Streak is cold. Complete a focus session today to re-ignite it.';
+    // Real Streak (strict — requires focus every day)
+    var realStreak = state.realStreak || 0;
+    var longestReal = Math.max(state.longestRealStreak || 0, realStreak);
+    var realFlame = document.getElementById('realStreakFlame');
+    if (realFlame) {
+      if (realStreak > 0) realFlame.classList.remove('cold');
+      else realFlame.classList.add('cold');
+      realFlame.title = realStreak > 0
+        ? 'Real streak is live at ' + realStreak + ' day(s). You must focus every single day to keep it alive!'
+        : 'Real streak is cold. Complete a focus session today to re-ignite it.';
     }
-    var sNum = document.getElementById('streakNumber');
-    if (sNum) sNum.textContent = String(streak);
-    var sFlav = document.getElementById('streakFlavor');
-    if (sFlav) sFlav.textContent = streakFlavor(streak);
-    var longestPill = document.getElementById('longestStreakPill');
-    if (longestPill) {
-      longestPill.textContent = 'Best: ' + longest + ' day' + (longest === 1 ? '' : 's');
-      longestPill.title = 'Longest consecutive-day streak you have ever reached. Persists across resets.';
+    var realNum = document.getElementById('realStreakNumber');
+    if (realNum) realNum.textContent = String(realStreak);
+    var realFlav = document.getElementById('realStreakFlavor');
+    if (realFlav) realFlav.textContent = streakFlavor(realStreak);
+    var realLongest = document.getElementById('realLongestPill');
+    if (realLongest) {
+      realLongest.textContent = 'Best: ' + longestReal + ' day' + (longestReal === 1 ? '' : 's');
+      realLongest.title = 'Your longest-ever real streak. Only counts days where you actually focused.';
     }
     var bonusPill = document.getElementById('streakBonusPill');
     if (bonusPill) {
-      var mult = getStreakBonus(streak);
+      var mult = getStreakBonus(realStreak);
       bonusPill.textContent = 'XP bonus: x' + mult.toFixed(2);
-      bonusPill.title = 'Your current streak grants a x' + mult.toFixed(2) + ' XP multiplier on every session. +5% per day, capped at +50% at 10 days.';
+      bonusPill.title = 'Your current real streak grants a x' + mult.toFixed(2) + ' XP multiplier on every session. +5% per day, capped at +50% at 10 days.';
+    }
+
+    // Owl Streak (lenient — survives if you open but don't focus)
+    var owlStreak = state.streak || 0;
+    var longestOwl = Math.max(state.longestStreak || 0, owlStreak);
+    var owlNum = document.getElementById('owlStreakNumber');
+    if (owlNum) owlNum.textContent = String(owlStreak);
+    var owlIcon = document.getElementById('owlStreakIcon');
+    if (owlIcon) {
+      if (owlStreak <= 0) owlIcon.style.cssText = 'font-size:48px;line-height:1;filter:grayscale(0.85);opacity:0.55;';
+      else owlIcon.style.cssText = 'font-size:48px;line-height:1;';
+    }
+    var owlLongest = document.getElementById('owlLongestPill');
+    if (owlLongest) {
+      owlLongest.textContent = 'Best: ' + longestOwl + ' day' + (longestOwl === 1 ? '' : 's');
+      owlLongest.title = 'Your longest-ever owl streak. This streak is lenient — it survives days you opened the app without focusing.';
     }
 
     // Today's focus time banner (v3.21.33)
@@ -611,11 +627,13 @@
       title: val('titleChip'),
       xpText: val('xpText'),
       xpPct: 0,
-      streak: val('streakNumber'),
-      streakFlavor: val('streakFlavor'),
-      longestStreak: val('longestStreakPill'),
+      realStreak: val('realStreakNumber'),
+      realStreakFlavor: val('realStreakFlavor'),
+      realLongest: val('realLongestPill'),
       streakBonus: val('streakBonusPill'),
-      streakCold: (parseInt(val('streakNumber'), 10) || 0) <= 0,
+      realStreakCold: (parseInt(val('realStreakNumber'), 10) || 0) <= 0,
+      owlStreak: val('owlStreakNumber'),
+      owlLongest: val('owlLongestPill'),
       stLifetimeBlocks: val('stLifetimeBlocks'),
       stFocusMins: val('stFocusMins'),
       stTasksDone: val('stTasksDone'),
@@ -717,16 +735,30 @@
       + '    <div class="xp-text">' + escHtml(snap.xpText) + '</div>\n'
       + '  </div>\n'
       + '</div>\n'
-      // Streak card
+      // Real Streak card
       + '<div class="streak-card">\n'
-      + '  <div class="streak-flame' + (snap.streakCold ? ' cold' : '') + '">\u{1F525}</div>\n'
+      + '  <div class="streak-flame' + (snap.realStreakCold ? ' cold' : '') + '">\u{1F525}</div>\n'
       + '  <div class="streak-main">\n'
-      + '    <div class="streak-number">' + escHtml(snap.streak) + '</div>\n'
-      + '    <div class="streak-label">DAY STREAK</div>\n'
-      + '    <div class="streak-flavor">' + escHtml(snap.streakFlavor) + '</div>\n'
+      + '    <div class="streak-number">' + escHtml(snap.realStreak) + '</div>\n'
+      + '    <div class="streak-label">REAL STREAK</div>\n'
+      + '    <div class="streak-flavor">' + escHtml(snap.realStreakFlavor) + '</div>\n'
       + '    <div class="streak-meta">\n'
-      + '      <div class="pill">' + escHtml(snap.longestStreak) + '</div>\n'
+      + '      <div class="pill">' + escHtml(snap.realLongest) + '</div>\n'
       + '      <div class="pill">' + escHtml(snap.streakBonus) + '</div>\n'
+      + '    </div>\n'
+      + '  </div>\n'
+      + '</div>\n'
+      // Owl Streak card
+      + '<div class="streak-card" style="border-color:#9b59b6;box-shadow:0 0 12px rgba(155,89,182,0.12);opacity:0.85;">\n'
+      + '  <div style="font-size:48px;line-height:1;">\u{1F989}</div>\n'
+      + '  <div class="streak-main">\n'
+      + '    <div style="display:flex;align-items:baseline;gap:10px;">\n'
+      + '      <div class="streak-number" style="font-size:22px;color:#bb86fc;">' + escHtml(snap.owlStreak) + '</div>\n'
+      + '      <div class="streak-label" style="color:#9b59b6;font-size:8px;">OWL STREAK</div>\n'
+      + '    </div>\n'
+      + '    <div style="font-size:11px;color:#5a5a7e;font-style:italic;margin-top:2px;">Lenient &mdash; survives days you open the app but don\'t focus.</div>\n'
+      + '    <div class="streak-meta" style="margin-top:4px;">\n'
+      + '      <div class="pill" style="border-color:#9b59b6;color:#bb86fc;">' + escHtml(snap.owlLongest) + '</div>\n'
       + '    </div>\n'
       + '  </div>\n'
       + '</div>\n'
@@ -797,11 +829,85 @@
     return true;
   }
 
+  // v3.23.113: Lock reason — shows ALL criteria to unlock
+  function _getLockReason(state) {
+    var reasons = [];
+    // Check timer running
+    if (state.timerState === 'running' || state.timerState === 'countdown') {
+      reasons.push('\u2022 Finish your current focus session');
+    }
+    // Check priority tasks
+    var hasPriorities = false;
+    if (state.tasks && Array.isArray(state.tasks)) {
+      for (var i = 0; i < state.tasks.length; i++) {
+        if (state.tasks[i] && state.tasks[i].priority && !state.tasks[i].done) { hasPriorities = true; break; }
+      }
+    }
+    if (hasPriorities) reasons.push('\u2022 Complete your priority tasks');
+    // Check grace period (always needed)
+    var now = Date.now();
+    var graceActive = state.gameLockGraceUntil && now < state.gameLockGraceUntil;
+    if (!graceActive) {
+      reasons.push('\u2022 Complete a focus session to earn unlock time');
+      reasons.push('Grace: 5 min base + 1 min per 10 min focused (max 20 min)');
+    }
+    if (reasons.length === 0) return 'Locked — complete a focus session to unlock.';
+    return 'To unlock:\n' + reasons.join('\n');
+  }
+
+  // v3.23.112: Animated lock overlay on blocked buttons
+  function _showLockFeedback(btn, reason) {
+    // Don't stack multiple overlays
+    if (btn._lockOverlay) return;
+    var rect = btn.getBoundingClientRect();
+    // Lock icon centered on the button itself
+    var lock = document.createElement('div');
+    lock.textContent = '🔒';
+    lock.style.cssText = 'position:fixed;z-index:10000;font-size:36px;pointer-events:none;animation:lockShake 0.5s ease;opacity:0;transition:opacity 0.2s;left:' + (rect.left + rect.width / 2 - 18) + 'px;top:' + (rect.top + rect.height / 2 - 18) + 'px;';
+    document.body.appendChild(lock);
+    // Reason text below the button row
+    var msg = document.createElement('div');
+    msg.innerHTML = reason.replace(/\n/g, '<br>');
+    msg.style.cssText = 'position:fixed;z-index:10000;pointer-events:none;opacity:0;transition:opacity 0.2s 0.15s;font-family:"Press Start 2P",monospace;font-size:8px;color:#ff6b6b;text-align:center;background:rgba(8,8,15,0.95);border:1px solid #ff6b6b;border-radius:6px;padding:8px 14px;max-width:260px;line-height:1.6;white-space:normal;box-shadow:0 0 12px rgba(255,107,107,0.3);left:50%;top:' + (rect.bottom + 12) + 'px;transform:translateX(-50%);';
+    document.body.appendChild(msg);
+    btn._lockOverlay = { lock: lock, msg: msg };
+    // Button shake
+    btn.style.animation = 'lockShake 0.5s ease';
+    btn.style.opacity = '0.4';
+    btn.style.filter = 'grayscale(80%)';
+    // Fade in
+    setTimeout(function() { lock.style.opacity = '1'; msg.style.opacity = '1'; }, 20);
+    // Fade out and cleanup
+    setTimeout(function() {
+      lock.style.opacity = '0';
+      msg.style.opacity = '0';
+      btn.style.opacity = '';
+      btn.style.filter = '';
+      btn.style.animation = '';
+      setTimeout(function() {
+        if (lock.parentNode) lock.parentNode.removeChild(lock);
+        if (msg.parentNode) msg.parentNode.removeChild(msg);
+        btn._lockOverlay = null;
+      }, 300);
+    }, 2200);
+  }
+
+  // Inject keyframes for the shake animation
+  (function() {
+    var style = document.createElement('style');
+    style.textContent = '@keyframes lockShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-6px) rotate(-4deg)}30%{transform:translateX(5px) rotate(3deg)}45%{transform:translateX(-4px) rotate(-2deg)}60%{transform:translateX(3px) rotate(1deg)}75%{transform:translateX(-2px)}90%{transform:translateX(1px)}}';
+    document.head.appendChild(style);
+  })();
+
   function wireNav() {
+    // v3.23.113: Detect invalid extension context (stale tab after update, or web view)
+    var _extValid = false;
+    try { _extValid = !!(chrome && chrome.runtime && chrome.runtime.id); } catch(_) {}
     function send(path) {
       try {
+        if (!chrome.runtime.id) { window.close(); return; }
         chrome.runtime.sendMessage({ type: 'pf-open', path: path });
-      } catch (_) {}
+      } catch (_) { window.close(); }
     }
     var map = [
       ['toFactoryBtn', 'factory.html'],
@@ -813,6 +919,8 @@
     map.forEach(function(pair) {
       var btn = document.getElementById(pair[0]);
       if (!btn) return;
+      // Hide nav buttons if extension context is dead (stale tab / web view)
+      if (!_extValid) { btn.style.display = 'none'; return; }
       if (_gameLockedPages.indexOf(pair[1]) !== -1) {
         // Gamified page — check lockout before navigating
         btn.addEventListener('click', function() {
@@ -820,10 +928,8 @@
             chrome.storage.local.get('pixelFocusState', function(res) {
               var s = res && res.pixelFocusState || {};
               if (_isProfileNavLocked(s)) {
-                btn.style.opacity = '0.35';
-                btn.style.filter = 'grayscale(80%)';
-                btn.title = 'Complete your priority tasks or finish your session first.';
-                setTimeout(function() { btn.style.opacity = ''; btn.style.filter = ''; }, 2000);
+                var reason = _getLockReason(s);
+                _showLockFeedback(btn, reason);
               } else {
                 send(pair[1]);
               }

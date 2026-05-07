@@ -443,18 +443,33 @@
     </div>
   </div>
 
-  <!-- DAILY STREAK CARD -->
-  <div class="streak-card" title="Your daily work streak. Earn at least one textile each day to keep it alive. Duolingo-style: miss a full day and it resets.">
-    <div class="streak-flame" id="streakFlame" title="Flame icon &mdash; burns bright when your streak is active, fades when it dies.">&#128293;</div>
+  <!-- REAL STREAK CARD (strict — requires actual focus every day) -->
+  <div class="streak-card" title="Your real streak. You must actually complete a focus session every day to keep this alive. No skipping!">
+    <div class="streak-flame" id="realStreakFlame" title="Flame icon — burns bright when your real streak is active.">&#128293;</div>
     <div class="streak-main">
-      <div class="streak-number" id="streakNumber" title="Your current consecutive-day streak.">0</div>
-      <div class="streak-label" title="The unit of your streak counter &mdash; consecutive days of at least one completed focus session.">DAY STREAK</div>
-      <div class="streak-flavor" id="streakFlavor" title="A short sentence that changes with your streak length.">
+      <div class="streak-number" id="realStreakNumber" title="Your current real streak — consecutive days with actual focus sessions.">0</div>
+      <div class="streak-label" title="Real streak: only counts days where you actually completed a focus session.">REAL STREAK</div>
+      <div class="streak-flavor" id="realStreakFlavor" title="Flavor text based on your real streak length.">
         No streak yet. Complete one focus session today to light the fire.
       </div>
       <div class="streak-meta">
-        <div class="pill" id="longestStreakPill" title="The longest consecutive-day streak you've ever run. Persists even if the current streak resets.">Best: 0 days</div>
+        <div class="pill" id="realLongestPill" title="Your longest-ever real streak. Persists across resets.">Best: 0 days</div>
         <div class="pill" id="streakBonusPill" title="XP multiplier currently granted by your streak. +5% per day, capped at +50% at 10 days.">XP bonus: x1.00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OWL STREAK CARD (lenient — survives days you open but don't focus) -->
+  <div class="streak-card" id="owlStreakCard" style="border-color:#9b59b6;box-shadow:0 0 12px rgba(155,89,182,0.12);opacity:0.85;" title="Owl Streak (lenient). This streak only breaks if you don't open the extension at all for a full day. It's more forgiving than your Real Streak.">
+    <div style="font-size:48px;line-height:1;" id="owlStreakIcon" title="The owl watches over your lenient streak.">&#129417;</div>
+    <div class="streak-main">
+      <div style="display:flex;align-items:baseline;gap:10px;">
+        <div class="streak-number" id="owlStreakNumber" style="font-size:22px;color:#bb86fc;" title="Your owl streak — consecutive days you opened the extension.">0</div>
+        <div class="streak-label" style="color:#9b59b6;font-size:8px;">OWL STREAK</div>
+      </div>
+      <div style="font-size:11px;color:#5a5a7e;font-style:italic;margin-top:2px;" id="owlStreakExplainer">Lenient — survives days you open the app but don't focus.</div>
+      <div class="streak-meta" style="margin-top:4px;">
+        <div class="pill" id="owlLongestPill" style="border-color:#9b59b6;color:#bb86fc;">Best: 0 days</div>
       </div>
     </div>
   </div>

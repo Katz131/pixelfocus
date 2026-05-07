@@ -1315,6 +1315,47 @@ try {
         if (!state.unlockedColors) state.unlockedColors = ['#00ff88'];
         if (!state.totalLifetimeBlocks) state.totalLifetimeBlocks = 0;
         // v3.23.110: Compute real lifetimeSessions from focusHistory.
+        if (!state._sessionBackfill110) {
+          state._sessionBackfill110 = true;
+          var _fd = state.focusDuration || 25;
+          var _totalSess = 0;
+          if (state.focusHistory && typeof state.focusHistory === 'object') {
+            var _fhKeys = Object.keys(state.focusHistory);
+            for (var _fi = 0; _fi < _fhKeys.length; _fi++) {
+              var _dayMin = state.focusHistory[_fhKeys[_fi]] || 0;
+              _totalSess += Math.max(1, Math.round(_dayMin / _fd));
+            }
+          }
+          _totalSess += (state.sessionBlocks || 0);
+          state.lifetimeSessions = _totalSess;
+          if (Array.isArray(state.badges)) {
+            var _sr = {first_focus:1,five_sessions:5,ten_sessions:10,twentyfive_sess:25,fifty_sessions:50,century_focus:100,focus_75:75,focus_150:150,focus_250:250,focus_500:500,focus_750:750,focus_1000:1000,focus_2500:2500,focus_5000:5000,focus_10000:10000,focus_15000:15000,focus_25000:25000,focus_50000:50000,focus_100000:100000};
+            state.badges = state.badges.filter(function(bid) {
+              return !_sr[bid] || _totalSess >= _sr[bid];
+            });
+          }
+        }
+        if (!state.lifetimeSessions) state.lifetimeSessions = 0;
+        // v3.23.111: Compute realStreak from focusHistory (walk backwards from yesterday).
+        if (!state._realStreakBackfill111) {
+          state._realStreakBackfill111 = true;
+          var _rsToday = new Date();
+          var _rsCount = 0;
+          for (var _rsi = 1; _rsi < 3650; _rsi++) {
+            var _rsD = new Date(_rsToday.getTime() - _rsi * 86400000);
+            var _rsMM = _rsD.getMonth() + 1;
+            var _rsDD = _rsD.getDate();
+            var _rsKey = _rsD.getFullYear() + '-' + (_rsMM < 10 ? '0' : '') + _rsMM + '-' + (_rsDD < 10 ? '0' : '') + _rsDD;
+            var _rsMin = (state.focusHistory && state.focusHistory[_rsKey]) || 0;
+            if (_rsMin > 0) { _rsCount++; } else { break; }
+          }
+          if (state.todayBlocks > 0) _rsCount++;
+          state.realStreak = _rsCount;
+          if (_rsCount > (state.longestRealStreak || 0)) state.longestRealStreak = _rsCount;
+        }
+        if (!state.realStreak) state.realStreak = 0;
+        if (!state.longestRealStreak) state.longestRealStreak = state.realStreak || 0;
+        // v3.23.110: Compute real lifetimeSessions from focusHistory.
         // focusHistory = { 'YYYY-MM-DD': minutes }. Each day's minutes / focusDuration = sessions that day.
         if (!state._sessionBackfill110) {
           state._sessionBackfill110 = true;
@@ -1605,11 +1646,19 @@ try {
       const last = new Date(state.lastActiveDate);
       const now = new Date(today);
       const diffDays = Math.floor((now - last) / 86400000);
+      // Owl streak (lenient): survives if you open but don't focus
       if (diffDays === 1 && state.todayBlocks > 0) {
         state.streak++;
         if (state.streak > (state.longestStreak || 0)) state.longestStreak = state.streak;
       } else if (diffDays > 1) {
         state.streak = 0;
+      }
+      // Real streak (strict): breaks unless you actually focused yesterday
+      if (diffDays === 1 && state.todayBlocks > 0) {
+        state.realStreak = (state.realStreak || 0) + 1;
+        if (state.realStreak > (state.longestRealStreak || 0)) state.longestRealStreak = state.realStreak;
+      } else {
+        state.realStreak = 0;
       }
 
       // Auto-save canvas — the Master Loom's 24-hour filing. Whatever
@@ -3958,7 +4007,14 @@ try {
         yieldEl.style.color = lastYield >= 1.5 ? '#00ff88' : lastYield >= 1.0 ? '#ffd700' : '#ff5555';
         yieldEl.title = 'Most recent yield multiplier from your last focus session';
       } else {
+        var lastYield = state.lastMarketYield || 0;
+      if (lastYield > 0) {
+        yieldEl.textContent = lastYield.toFixed(2) + 'x';
+        yieldEl.style.color = lastYield >= 1.5 ? '#00ff88' : lastYield >= 1.0 ? '#ffd700' : '#ff5555';
+        yieldEl.title = 'Most recent yield multiplier from your last focus session';
+      } else {
         yieldEl.textContent = '? ? ?';
+      }
       }
         yieldEl.parentElement.title = 'Complete your first focus session to reveal your yield multiplier. Market conditions determine how much bonus you earn.';
       }
@@ -7079,7 +7135,14 @@ try {
       state.streak = 1;
       if (state.longestStreak < 1) state.longestStreak = 1;
     }
+    // Real streak also starts at 1 on first session
+    if ((state.realStreak || 0) === 0 && state.todayBlocks > 0) {
+      state.realStreak = 1;
+      if ((state.longestRealStreak || 0) < 1) state.longestRealStreak = 1;
+    }
     state.sessionBlocks++; // still counts 1 session regardless of haul
+    state.lifetimeSessions = (state.lifetimeSessions || 0) + 1;
+    if (typeof marketYield !== 'undefined') state.lastMarketYield = marketYield;
     state.lifetimeSessions = (state.lifetimeSessions || 0) + 1;
     if (typeof marketYield !== 'undefined') state.lastMarketYield = marketYield;
     // Drain the resource pools by the amount actually produced. This
@@ -7278,11 +7341,14 @@ try {
           notify('\u2694 IDLE CHALLENGE COMPLETE! 1.5x rewards earned!', '#ffd700');
         }, 800);
       }
-      // v3.21.10: 5-minute grace unlock after completing a 10+ min session.
-      // The player earned their break — let them visit the game pages.
+      // v3.23.112: Grace period scales with session length.
+      // Base 5 min + 1 min per 10 min focused, capped at 20 min.
+      // 10-min session = 6 min grace. 25-min = 7.5 min. 90-min = 14 min.
       var sessionSec = state.sessionDurationSec || 600;
       if (sessionSec >= 600) {
-        _gameLockGraceUntil = Date.now() + (5 * 60 * 1000);
+        var _sessionMin = Math.round(sessionSec / 60);
+        var _graceMin = Math.min(20, 5 + Math.floor(_sessionMin / 10));
+        _gameLockGraceUntil = Date.now() + (_graceMin * 60 * 1000);
         state.gameLockGraceUntil = _gameLockGraceUntil; // persist for other pages
       }
       state.timerRemaining = state.sessionDurationSec || 600;
@@ -10463,7 +10529,7 @@ try {
           var earned = [];  // rebuild from current stats
           var level = _getLevelFromXP(state.xp || 0);
           var sessions = state.lifetimeSessions || state.totalLifetimeSessions || 0;
-          var streak = Math.max(state.streak || 0, state.longestStreak || 0);
+          var streak = Math.max(state.realStreak || 0, state.longestRealStreak || 0);
           var combo = state.maxCombo || 0;
           var friends = 0;
           if (Array.isArray(state.friends)) {
@@ -12464,7 +12530,7 @@ try {
                 }
                 // Mirror all stats
                 var mirrorKeys = [
-                  'xp', 'streak', 'longestStreak', 'totalLifetimeBlocks',
+                  'xp', 'streak', 'longestStreak', 'realStreak', 'longestRealStreak', 'totalLifetimeBlocks',
                   'lifetimeFocusMinutes', 'tasksCompletedLifetime', 'coins',
                   'lifetimeCoins', 'combo', 'maxCombo', 'maxComboToday',
                   'blocks', 'todayBlocks', 'todayXP', 'sessionBlocks', 'displayName',
@@ -12610,7 +12676,7 @@ try {
           // Mirror mode: overwrite stats with remote data
           if (state.mirrorMode) {
             var mirrorKeys = [
-              'xp', 'streak', 'longestStreak', 'totalLifetimeBlocks',
+              'xp', 'streak', 'longestStreak', 'realStreak', 'longestRealStreak', 'totalLifetimeBlocks',
               'lifetimeFocusMinutes', 'tasksCompletedLifetime', 'coins',
               'lifetimeCoins', 'combo', 'maxCombo', 'maxComboToday',
               'blocks', 'todayBlocks', 'todayXP', 'sessionBlocks', 'displayName',
