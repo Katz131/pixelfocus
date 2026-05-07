@@ -51,6 +51,11 @@
     { id: 'millennium_sleeper', name: 'Millennium Sleeper', icon: '🏛️', desc: '1,000 nights on time. A thousand bedtimes honored. Absolutely legendary.', req: 1000 },
     { id: 'no_phone_zone', name: 'No Phone Zone', icon: '📵', desc: '10 bedtime commitments made. You\'re taking screen-free sleep seriously.', req: 10 },
     { id: 'melatonin_machine', name: 'Melatonin Machine', icon: '💊', desc: '50 nights of on-time sleep. Your brain\'s sleep chemistry is dialed in.', req: 50 },
+    { id: 'sleep_75', name: 'Seventy-Five', icon: '🌍', desc: '75 total nights on time. Three-quarters of the way to a hundred.', req: 75 },
+    { id: 'sleep_100', name: 'Century Sleeper', icon: '💯', desc: '100 nights on time! Triple digits. You\'ve mastered your bedtime.', req: 100 },
+    { id: 'sleep_125', name: 'Sleep Scholar', icon: '🎓', desc: '125 nights of on-time sleep. You could write a thesis on discipline.', req: 125 },
+    { id: 'sleep_250', name: 'Sleep Monarch', icon: '🤴', desc: '250 nights on time. A quarter-thousand bedtimes honored.', req: 250 },
+    { id: 'sleep_400', name: 'Sleep Emperor', icon: '🏯', desc: '400 nights of keeping your bedtime promise. Over a year of discipline.', req: 400 },
   ];
 
   var state = {};
