@@ -133,6 +133,48 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 .btn-primary:hover { background:rgba(0,255,136,0.1); }
 .btn-danger { border-color:var(--danger); color:var(--danger); }
 .btn-small { padding:4px 10px; font-size:8px; }
+/* ========== Duolingo-style juicy game buttons ========== */
+/* Shared transition + transform origin for all game-nav buttons */
+#houseBtn, #galleryBtn, #factoryBtn, #brokerageBtn, #ratiocinatoryBtn {
+  transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+/* Shimmer sweep on hover */
+#houseBtn::after, #galleryBtn::after, #factoryBtn::after, #brokerageBtn::after, #ratiocinatoryBtn::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  transition: left 0.4s ease;
+  pointer-events: none;
+}
+/* Hover: glow + scale up + shimmer sweep */
+#houseBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(212,168,87,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe08a; }
+#galleryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,107,157,0.45), 0 4px 14px rgba(0,0,0,0.4); border-color: #ff8fbf; }
+#factoryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,215,0,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe44d; }
+#brokerageBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(78,205,196,0.55), 0 4px 14px rgba(0,0,0,0.4); border-color: #7eeee6; }
+#ratiocinatoryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(157,142,255,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #bdb2ff; }
+#houseBtn:hover::after, #galleryBtn:hover::after, #factoryBtn:hover::after, #brokerageBtn:hover::after, #ratiocinatoryBtn:hover::after {
+  left: 120%;
+}
+/* Active (mouse-down): press in + squish */
+#houseBtn:active, #galleryBtn:active, #factoryBtn:active, #brokerageBtn:active, #ratiocinatoryBtn:active {
+  transform: scale(0.94);
+  transition-duration: 0.06s;
+}
+/* Release bounce is handled by the 0.15s cubic-bezier on the base transition */
+
+/* Locked state override — dim everything, suppress all hover/active effects */
+#houseBtn[data-tip], #galleryBtn[data-tip], #factoryBtn[data-tip], #brokerageBtn[data-tip], #ratiocinatoryBtn[data-tip] {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Profile avatar + stats also get subtle hover */
+#profileAvatar { transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease; }
+#profileAvatar:hover { transform: scale(1.08); box-shadow: 0 0 12px rgba(0,255,136,0.3); }
+#profileAvatar:active { transform: scale(0.95); transition-duration: 0.06s; }
 #burnDustBtn:not(:disabled):hover { background:rgba(212,168,87,0.15); box-shadow:0 0 10px rgba(212,168,87,0.4); text-shadow:0 0 6px rgba(212,168,87,0.6); transition:all 0.15s ease; }
 #burnDustBtn:not(:disabled):active { background:rgba(212,168,87,0.25); box-shadow:0 0 14px rgba(212,168,87,0.6); }
 #burnDustBtn:disabled { cursor:not-allowed; }
@@ -284,7 +326,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:20px;">Rewards earned</div>
     <div style="display:flex;gap:28px;justify-content:center;align-items:flex-start;">
       <div>
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Coins</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Money</div>
         <div id="celebCoins" style="font-size:36px;font-weight:700;color:var(--accent);line-height:1;">0</div>
       </div>
       <div>
@@ -306,7 +348,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div id="wbGoneDuration" style="font-size:14px;color:var(--text-dim);margin-bottom:20px;"></div>
     <div style="display:flex;gap:28px;justify-content:center;align-items:flex-start;">
       <div>
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Passive coins</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Passive money</div>
         <div id="wbCoins" style="font-size:36px;font-weight:700;color:var(--accent);line-height:1;">0</div>
       </div>
       <div>

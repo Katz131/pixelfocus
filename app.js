@@ -1781,7 +1781,7 @@ try {
 
   // ============== HOVER SOUNDS ==============
   let lastHoverTime = 0;
-  const HOVER_SELECTORS = '.btn, .tab, .tab-add, .task-item, .milestone-item, .block-counter, .upgrade-btn, .task-checkbox, .task-delete, .task-select-btn, .xp-section, .collapsible-header, .stat, #galleryBtn, #blockCounter, #addTaskBtn, #addTabBtn';
+  const HOVER_SELECTORS = '.btn, .tab, .tab-add, .task-item, .milestone-item, .block-counter, .upgrade-btn, .task-checkbox, .task-delete, .task-select-btn, .xp-section, .collapsible-header, .stat, #galleryBtn, #factoryBtn, #houseBtn, #brokerageBtn, #ratiocinatoryBtn, #blockCounter, #addTaskBtn, #addTabBtn, #profileAvatar';
 
   document.addEventListener('mouseover', function(e) {
     const now = Date.now();
@@ -3971,13 +3971,15 @@ try {
     var hasPriorities = getActivePriorityTasks().length > 0;
     if (hasPriorities) return true;
     var timerActive = state.timerState === 'running' || state.timerState === 'countdown';
-    return timerActive;
+    if (timerActive) return true;
+    // v3.23.94: Idle lockout — locked unless grace period is active
+    return true;
   }
 
   function getGameLockReason() {
     if (getActivePriorityTasks().length > 0) return 'Complete your priority tasks first.';
     if (state.timerState === 'running' || state.timerState === 'countdown') return 'Focus session in progress — finish or reset first.';
-    return '';
+    return 'Complete a focus session to unlock.';
   }
 
   // Visual lockout: dims game-nav buttons and adds a lock indicator when
