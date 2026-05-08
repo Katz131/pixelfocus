@@ -336,6 +336,8 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       </div>
     </div>
     <div id="celebLevel" style="font-size:13px;color:var(--text-dim);margin-top:16px;opacity:0;transition:opacity 0.5s;"></div>
+    <!-- v3.23.117: Market multiplier & cost info -->
+    <div id="celebMarketInfo" style="margin-top:14px;opacity:0;transition:opacity 0.5s;font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);line-height:1.7;"></div>
   </div>
   <div style="font-size:10px;color:var(--text-dim);margin-top:28px;opacity:0.5;position:relative;z-index:1;" id="celebTapHint">tap to continue</div>
 </div>
@@ -585,6 +587,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
         <span class="combo-label">COMBO</span>
         <span class="combo-mult" id="comboMultiplier" title="Current XP multiplier from your combo streak. Higher combos = bigger payouts.">1.0x</span>
       </div>
+      <span id="comboTimer" style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--accent2);opacity:0.7;margin-left:2px;white-space:nowrap;" title="Time remaining to start another session before your combo resets. Chain sessions within 20 minutes to keep building your combo."></span>
     </div>
   </div>
   <div class="xp-bar" title="XP progress toward your next level. Fill the bar to rank up and earn a new title."><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
@@ -647,29 +650,20 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <span style="font-family:'Courier New',monospace;font-size:10px;color:#7ab8a0;">UNIT PRICE</span>
       <span id="marketPriceLabel" style="font-family:'Press Start 2P',monospace;font-size:11px;color:#ffd700;">$12</span>
     </div>
-    <input type="range" id="marketPriceSlider" min="1" max="30" value="12" step="1" style="width:100%;height:6px;-webkit-appearance:none;appearance:none;background:linear-gradient(90deg,#004433,#00cc88,#ffd700);border-radius:3px;outline:none;cursor:pointer;accent-color:#00cc88;" title="Drag to set your textile selling price. Lower prices attract more demand but shrink your margin. Higher prices boost margin but customers buy less." />
+    <input type="range" id="marketPriceSlider" min="1" max="30" value="12" step="1" style="width:100%;height:6px;-webkit-appearance:none;appearance:none;background:linear-gradient(90deg,#004433,#00cc88,#ffd700);border-radius:3px;outline:none;cursor:pointer;accent-color:#00cc88;" title="Set your textile selling price. The optimal price changes as market conditions shift — what worked last session may not work now. Read the signals, make your call, and learn from the results." />
     <div style="display:flex;justify-content:space-between;margin-top:2px;">
       <span style="font-family:'Courier New',monospace;font-size:8px;color:#4a6a60;">$1 cheap</span>
       <span style="font-family:'Courier New',monospace;font-size:8px;color:#4a6a60;">$30 premium</span>
     </div>
   </div>
 
-  <!-- Stats row: demand, costs, margin -->
+  <!-- Stats: demand (Paperclips-style) -->
   <div style="display:flex;gap:6px;margin-bottom:6px;">
-    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Current market demand for your textiles. Driven by price, marketing level, lobbying, market share, and other upgrades. Higher is better.">
-      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">DEMAND</div>
+    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Public demand for your textiles at the current price. Driven by price, marketing, lobbying, market share, and upgrades. Higher demand means more sales — but demand alone doesn't tell you everything about your yield.">
+      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">PUBLIC DEMAND</div>
       <div id="marketDemandVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#00ff88;">50%</div>
     </div>
-    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Production cost per textile unit. Driven by resource reserves (frames, gears, dye) and market oscillations. Depleted reserves spike costs.">
-      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">COST</div>
-      <div id="marketCostVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ff9966;">$10.0</div>
-    </div>
-    <div style="flex:1;background:#081a15;border:1px solid #1a3a30;border-radius:4px;padding:6px 8px;text-align:center;" title="Profit margin: how much of your price is actual profit after production costs. Negative margin means you are selling at a loss.">
-      <div style="font-family:'Courier New',monospace;font-size:8px;color:#4a8a70;margin-bottom:2px;">MARGIN</div>
-      <div id="marketMarginVal" style="font-family:'Press Start 2P',monospace;font-size:10px;color:#ffd700;">17%</div>
-    </div>
   </div>
-
   <!-- Yield indicator (hidden/mystery until session completes) -->
   <div style="background:#061510;border:1px solid #1a3a30;border-radius:4px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;" title="Your focus session yield multiplier is determined by market conditions when the session starts. You will not know the exact number until the session completes — that is part of the game.">
     <span style="font-family:'Courier New',monospace;font-size:9px;color:#4a8a70;">YIELD MULTIPLIER</span>
@@ -683,6 +677,90 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <!-- v3.20.26: HIGH PRIORITY section. Tasks added here open a blocking modal
      every time the popup opens, until they are marked done or removed.
      Persists across days. If empty, no modal. -->
+
+<!-- v3.23.118: Daily Quest — choose one of two -->
+<!-- v3.23.124: Quest card with Duolingo-style tile grid -->
+<style>
+.quest-tile{position:relative;min-width:70px;flex:1;aspect-ratio:1;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:default;user-select:none;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s;border:2px solid transparent;border-bottom:5px solid transparent;overflow:hidden;}
+.quest-tile:hover{transform:translateY(-3px) scale(1.05);z-index:1;}
+.quest-tile:active{transform:translateY(1px) scale(0.96);}
+.qt-icon{font-size:22px;line-height:1;}
+.qt-label{font-family:'Courier New',monospace;font-size:9px;font-weight:700;text-align:center;line-height:1.2;padding:0 3px;}
+.qt-badge{position:absolute;top:-3px;right:-3px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);}
+.qt-unlit{background:#0a0a14;border-color:#1a1a2a;border-bottom-color:#1a1a2a;}
+.qt-unlit .qt-icon{filter:grayscale(1) brightness(0.5);}
+.qt-unlit .qt-label{color:#3a3a4a;}
+.qt-unlit:hover{background:#0f0f1a;}
+.qt-lit .qt-label{color:#e0e0f0;}
+.qt-next{border-style:dashed;border-bottom-style:solid;}
+.qt-next .qt-label{color:#6a6a8a;}
+.qt-next .qt-icon{animation:qtBreathe 2.5s ease-in-out infinite;}
+.qt-conn{display:flex;align-items:center;color:#2a2a3a;padding:0 1px;flex-shrink:0;}
+@keyframes qtBreathe{0%,100%{opacity:0.6;}50%{opacity:1;}}
+@keyframes qtPop{0%{transform:scale(1);}30%{transform:scale(1.15);}60%{transform:scale(0.94);}100%{transform:scale(1);}}
+.qt-lit{animation:qtPop 0.35s ease-out;}
+</style>
+<div id="questCard" style="display:none;margin:0 10px 8px;background:linear-gradient(180deg,#14101e,#1a1028);border:1px solid #6b4ecdc0;border-radius:8px;padding:12px;box-shadow:0 0 12px rgba(78,205,196,0.08) inset;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:12px;">&#x2694;</span>
+      <span style="font-family:'Press Start 2P',monospace;font-size:8px;color:#4ecdc4;letter-spacing:2px;">DAILY QUEST</span>
+      <span id="questActiveTier" style="font-family:'Press Start 2P',monospace;font-size:7px;letter-spacing:1px;"></span>
+    </div>
+    <span id="questTimer" style="font-family:'Courier New',monospace;font-size:8px;color:#4a6a60;"></span>
+  </div>
+  <div id="questActiveDesc" style="font-family:'Courier New',monospace;font-size:11px;color:#c0e0d0;margin-bottom:8px;line-height:1.4;"></div>
+  <div id="questDeadlineTimer" style="display:none;font-family:'Press Start 2P',monospace;font-size:8px;margin-bottom:8px;text-align:center;"></div>
+  <!-- Tile grid -->
+  <div id="questTileGrid" style="display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;margin-bottom:10px;"></div>
+  <!-- Progress bar -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <div style="flex:1;height:5px;background:#0a0a14;border-radius:3px;overflow:hidden;">
+      <div id="questProgressBar" style="width:0%;height:100%;border-radius:3px;transition:width 0.5s ease;"></div>
+    </div>
+    <span id="questProgressText" style="font-family:'Courier New',monospace;font-size:9px;color:#6a6a8a;min-width:50px;text-align:right;"></span>
+  </div>
+  <!-- Rewards -->
+  <div id="questActiveRewards" style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap;"></div>
+  <div style="border-top:1px solid #2a2a3a;margin-top:8px;padding-top:5px;text-align:center;">
+    <span id="questStreakLabel" style="font-family:'Courier New',monospace;font-size:7px;color:#3a5a4a;" title="How many days in a row you have completed a daily quest. Keep the streak alive by completing one each day."></span>
+    <span id="questSwapBtn" style="display:none;font-family:'Courier New',monospace;font-size:8px;color:#6a6a8a;cursor:pointer;margin-left:8px;opacity:0.7;transition:opacity 0.2s;"></span>
+  </div>
+</div>
+
+
+<!-- v3.23.122: Daily Quest CHOICE overlay — full-screen celebration style -->
+<div id="questOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:9999;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity 0.4s;">
+  <div id="qoParticles" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;"></div>
+  <!-- Screen 1: Quest choice -->
+  <div id="qoScreen1" style="text-align:center;position:relative;z-index:1;width:100%;padding:0 20px;box-sizing:border-box;">
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:8px;">Daily Quest</div>
+    <div id="questOverlayStreak" style="font-size:14px;color:var(--text-dim);margin-bottom:6px;"></div>
+    <div style="font-size:18px;font-weight:700;color:#ffd700;margin-bottom:6px;letter-spacing:1px;text-shadow:0 0 12px rgba(255,215,0,0.3);">PICK ONE</div>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:28px;opacity:0.7;">the other vanishes at midnight</div>
+
+    <div style="display:flex;gap:20px;justify-content:center;align-items:stretch;margin-bottom:24px;">
+      <!-- Steady -->
+      <div id="questOverlaySteady" style="flex:1;max-width:260px;background:linear-gradient(180deg,#0d1a14,#081210);border:2px solid #1a4a3a;border-radius:10px;padding:28px 20px;cursor:pointer;transition:border-color 0.2s,transform 0.15s,box-shadow 0.3s;" title="The safer quest — a reliable reward for solid effort.">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:16px;">Steady</div>
+        <div id="questOverlaySteadyDesc" style="font-size:20px;font-weight:700;color:var(--accent);line-height:1.3;margin-bottom:20px;min-height:52px;"></div>
+        <div id="questOverlaySteadyRewards" style="display:flex;flex-direction:column;gap:8px;align-items:center;border-top:1px solid #1a3a2a;padding-top:16px;"></div>
+      </div>
+      <!-- Or -->
+      <div style="display:flex;align-items:center;font-size:12px;color:var(--text-dim);opacity:0.4;">or</div>
+      <!-- Ambitious -->
+      <div id="questOverlayAmbitious" style="flex:1;max-width:260px;background:linear-gradient(180deg,#1a0d14,#120810);border:2px solid #4a1a3a;border-radius:10px;padding:28px 20px;cursor:pointer;transition:border-color 0.2s,transform 0.15s,box-shadow 0.3s;" title="The harder quest — bigger rewards, but you have to earn them.">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:3px;margin-bottom:16px;">Ambitious</div>
+        <div id="questOverlayAmbitiousDesc" style="font-size:20px;font-weight:700;color:#ff6b9d;line-height:1.3;margin-bottom:20px;min-height:52px;"></div>
+        <div id="questOverlayAmbitiousRewards" style="display:flex;flex-direction:column;gap:8px;align-items:center;border-top:1px solid #3a1a2a;padding-top:16px;"></div>
+      </div>
+    </div>
+
+    <div id="questOverlayTimer" style="font-size:10px;color:var(--text-dim);opacity:0.5;"></div>
+  </div>
+</div>
+
+
 <div id="prioritySection" style="margin:0 10px 8px;background:linear-gradient(180deg,#3a0f0f,#1a0606);border:1px solid #8b1a1a;border-radius:6px;padding:8px;box-shadow:0 0 10px rgba(255,80,80,0.15) inset;" title="High-priority tasks. Anything added here triggers a blocking pop-up every time you open the todo list, and keeps doing so across days until you mark it done or remove it.">
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
     <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ff5a5a;letter-spacing:1px;text-shadow:0 0 6px rgba(255,80,80,0.6);">&#9888; HIGH PRIORITY</span>
@@ -1459,6 +1537,8 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     <div style="padding:10px 18px 16px;font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);font-style:italic;border-top:1px solid rgba(0,255,136,0.15);">Tip: keep the downloaded JSON file somewhere safe. It is a complete snapshot you can re-import later if the browser ever clears the extension storage.</div>
   </div>
 </div>
+
+
 
 <script src="tooltip.js"></script>
 <script src="tips.js"></script>

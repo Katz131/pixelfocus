@@ -462,15 +462,15 @@
         ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
         ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
         ['transparent','#6b6bff','#ffffff','#6b6bff','#6b6bff','#f5f0eb','#6b6bff','transparent'],
-        ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#5bc0eb','#6b6bff','transparent'],
+        ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
         ['transparent','transparent','#6b6bff','#ff6b9d','#ff6b9d','#6b6bff','transparent','transparent'],
         ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
         ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
       ],
       sad: [
         ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
-        ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
-        ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+        ['transparent','transparent','#3a3abf','#3a3abf','#3a3abf','#3a3abf','transparent','transparent'],
+        ['transparent','#3a3abf','#3a3abf','#3a3abf','#3a3abf','#3a3abf','#3a3abf','transparent'],
         ['transparent','#6b6bff','#f5f0eb','#6b6bff','#6b6bff','#f5f0eb','#6b6bff','transparent'],
         ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#5bc0eb','#6b6bff','transparent'],
         ['transparent','transparent','#6b6bff','#7799aa','#7799aa','#6b6bff','transparent','transparent'],
@@ -576,10 +576,10 @@
   // a small inline picker appears. Framed as: "Your child is sitting with
   // the new arrival. What should they call it?"
   // =========================================================================
+  // v3.23.117: blob removed from picker — existing blob pets still work with custom sprites — existing blob pets still work
   var PET_TYPE_OPTIONS = [
     { key: 'cat',   icon: '\ud83d\udc31', label: 'Cat' },
     { key: 'dog',   icon: '\ud83d\udc36', label: 'Dog' },
-    { key: 'blob',  icon: '\ud83e\uddca', label: 'Blob' },
     { key: 'bird',  icon: '\ud83d\udc26', label: 'Bird' },
     { key: 'bunny', icon: '\ud83d\udc30', label: 'Bunny' },
     { key: 'fish',  icon: '\ud83d\udc1f', label: 'Fish' }

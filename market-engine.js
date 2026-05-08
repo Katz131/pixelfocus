@@ -170,13 +170,42 @@ var MarketEngine = (function() {
     // Margin: how much profit per unit at current price vs costs
     var margin = (costs.total > 0) ? (price - costs.total) / price : 0;
 
-    // Yield multiplier: demand × margin factor
-    // Good demand + good margin = high yield
-    // Bad demand OR negative margin = low yield
+    // v3.23.117: Shifting sweet spot.
+    // The "ideal price" drifts over time via slow sine waves so the
+    // player can't just park the slider in one place forever.
+    // When your price is near the ideal, you get a resonance bonus.
+    // When you're far from it, you pay a penalty — but the ideal
+    // moves, so yesterday's perfect price is tomorrow's bad call.
+    //
+    // The ideal price oscillates between ~$4 and ~$26 over different
+    // overlapping cycles (short ~2min, medium ~7min, long ~20min).
+    // Upgrades (marketing, lobbying, market share) widen the "good zone"
+    // so higher-level players have more forgiveness.
+    var tick = state.marketTick || 0;
+    var idealPrice = 15
+      + Math.sin(tick * 0.009) * 8       // slow drift (~11 min cycle)
+      + Math.sin(tick * 0.025) * 3       // medium wobble (~4 min)
+      + Math.cos(tick * 0.004) * 5;      // very slow trend (~26 min)
+    idealPrice = clamp(Math.round(idealPrice * 10) / 10, 3, 28);
+
+    // How far off is the player? Normalized 0-1 where 0 = perfect
+    var priceDist = Math.abs(price - idealPrice) / 27;
+
+    // "Good zone" width: base ±4, widens with upgrades
+    var mktg  = state.marketingLevel || 0;
+    var lobby = state.lobbyingLevel || 0;
+    var mshare = state.marketShareLevel || 0;
+    var zoneWidth = 4 + (mktg * 0.8) + (lobby * 0.5) + (mshare * 0.4);
+    var zoneNorm = clamp(Math.abs(price - idealPrice) / zoneWidth, 0, 1);
+
+    // Resonance: 1.0 when on target, drops to 0.3 when way off
+    var resonance = 1.0 - (zoneNorm * 0.7);
+
+    // Margin still matters but is secondary to resonance
     var marginFactor = margin > 0 ? (1 + margin * 0.5) : (1 + margin);
     marginFactor = clamp(marginFactor, 0.3, 2.0);
 
-    var yieldMult = demand * marginFactor;
+    var yieldMult = demand * marginFactor * resonance;
     yieldMult = clamp(yieldMult, 0.3, 2.5);
 
     // Round to 2 decimal places

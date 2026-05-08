@@ -56,7 +56,7 @@ try {
 
   const BASE_XP_PER_BLOCK = 10;
   const COMBO_MULTIPLIERS = [1.0, 1.0, 1.2, 1.5, 1.8, 2.0]; // index = combo count, 5+ = 2.0
-  const COMBO_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes — if you don't start another session within 15 min, combo resets
+  const COMBO_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes — if you don't start another session within 20 min, combo resets — if you don't start another session within 15 min, combo resets
 
   function getComboMultiplier(combo) {
     return COMBO_MULTIPLIERS[Math.min(combo, COMBO_MULTIPLIERS.length - 1)];
@@ -778,13 +778,24 @@ try {
     badgesLastSynced: 0,             // timestamp of last badge sync to Firestore
 
     // v3.23.104: House pet type & naming system
-    // Each pet slot stores a type (cat/dog/blob/bird/bunny/fish) and a name
+    // Each pet slot stores a type (cat/dog/bird/bunny/fish) and a name
     // chosen by the player. petTypes[0] = first pet, petTypes[1] = second pet.
     // Types are set via a picker modal when a pet first unlocks in the house.
     lastMarketYield: 0,              // most recent market yield multiplier (shown in market card)
     housePetTypes: [],               // ['cat', 'dog', ...] — chosen pet species
     housePetNames: [],               // ['Mochi', 'Kiwi', ...] — player-chosen names
     housePetPickerShown: [],         // [true, true] — tracks which pet slots have shown the picker
+    // v3.23.118: Daily quest system
+    _morningRedirectDate: '',           // 'YYYY-MM-DD' — prevents morning banner from firing twice
+    questDate: '',              // 'YYYY-MM-DD' — date quests were generated
+    questSteady: null,          // { id, desc, target, current, rewards }
+    questAmbitious: null,       // { id, desc, target, current, rewards }
+    questChosen: null,          // 'steady' | 'ambitious' | null
+    questCompleted: false,      // true if today's quest is done
+    questStreak: 0,             // consecutive days completing a quest
+    questLongestStreak: 0,      // best quest streak ever
+    questDoubleTextile: false,  // if true, next session awards 2x textiles
+    _questTilesLit: 0,          // number of tiles lit for current quest (for detecting new ones)
     sleepDurMin: 480,               // sleep duration in minutes (default 8h)
     coldTurkeyNagSites: [],         // domains that trigger a CT reminder every 10 min
     coldTurkeyLastSiteNagAt: 0,     // timestamp of last site-nag (prevent spamming)
@@ -1626,6 +1637,9 @@ try {
       // yesterday and the rollover only reset counters, not re-added tasks).
       populateRecurringTasks();
       syncMilestoneColors();
+      // v3.23.119: Initialize daily quests on extension open
+      try { generateDailyQuests(); } catch (_) {}
+      try { _wireQuestButtons(); } catch (_) {}
       // v3.20.0 Stage 2: ensure personnel roster is in sync with
       // employeesLevel. Personnel.reconcileRoster only grows the roster
       // when it is short, so this is a no-op unless the player has
@@ -1826,6 +1840,11 @@ try {
           }
         }
       } catch (_) {}
+      // v3.23.119: Generate daily quests for the new day
+      try { generateDailyQuests(); } catch (_qe) { console.warn('[Quest] generation error:', _qe); }
+      // Reset quest-failed flag and coinsEarnedToday for the new day
+      state._questFailedToday = false;
+      state.coinsEarnedToday = 0;
       save();
     }
   }
@@ -2548,6 +2567,7 @@ try {
     var total = amount * mult;
     state.coins = (state.coins || 0) + total;
     state.lifetimeCoins = (state.lifetimeCoins || 0) + total;
+    state.coinsEarnedToday = (state.coinsEarnedToday || 0) + total;
     if (reason) {
       notify('+$' + Math.floor(total) + ' (' + reason + ')', '#ffd700');
     }
@@ -3937,6 +3957,7 @@ try {
     renderFocusTimeline();
     renderWeeklyFocus();
     renderDoNowBanner();
+    try { renderQuestUI(); } catch (_rqe) { console.warn('[Quest] render error:', _rqe); }
     refreshTrackerBriefBadge();
     attachHoverSounds();
   }
@@ -4083,7 +4104,7 @@ try {
       + '<br><br>'
       + '<span style="color:#ff9966;">COST</span> — Production costs. Affected by resource reserves. Depleted resources spike costs.'
       + '<br><br>'
-      + '<span style="color:#7ab8a0;">YIELD</span> — Your focus session payout is multiplied by current market conditions. <span style="color:#ffd700;">But you will not see the multiplier until the session completes.</span> Experiment with different prices and upgrades to maximize your yield.'
+      + '<span style="color:#7ab8a0;">YIELD</span> — Your focus session payout is multiplied by current market conditions. <span style="color:#ffd700;">But you will not see the multiplier until the session completes.</span> Set your price, watch demand react, and see what yield you earn after each session. The market shifts — stay sharp.'
       + '</div>'
       + '<div style="text-align:center;">'
       + '<button id="marketIntroDismiss" style="background:#00cc88;color:#0f0f1a;border:none;border-radius:6px;padding:10px 24px;font-family:\'Press Start 2P\',monospace;font-size:9px;cursor:pointer;letter-spacing:1px;">UNDERSTOOD</button>'
@@ -4228,6 +4249,7 @@ try {
 
     // Combo display
     const comboEl = $('comboDisplay');
+    var comboTimerEl = $('comboTimer');
     if (state.combo >= 2) {
       comboEl.style.display = 'flex';
       $('comboCount').textContent = state.combo;
@@ -4235,6 +4257,38 @@ try {
       // Animate combo fire
       comboEl.classList.toggle('hot', state.combo >= 4);
       comboEl.classList.toggle('fire', state.combo >= 5);
+      // v3.23.117: Combo countdown — show time remaining before combo expires
+      if (comboTimerEl && state.lastBlockTime > 0 && state.timerState !== 'running') {
+        var _comboRemain = COMBO_TIMEOUT_MS - (Date.now() - state.lastBlockTime);
+        if (_comboRemain > 0) {
+          var _cm = Math.floor(_comboRemain / 60000);
+          var _cs = Math.floor((_comboRemain % 60000) / 1000);
+          comboTimerEl.textContent = _cm + ':' + (_cs < 10 ? '0' : '') + _cs;
+          comboTimerEl.style.color = _comboRemain < 120000 ? '#ff5555' : _comboRemain < 300000 ? '#ffd700' : 'var(--accent2)';
+        } else {
+          comboTimerEl.textContent = '';
+        }
+      } else if (comboTimerEl) {
+        // Timer is running — combo is safe, show a reassuring indicator
+        comboTimerEl.textContent = state.timerState === 'running' ? '\u2713' : '';
+      }
+    } else if (state.combo === 1 && state.lastBlockTime > 0 && state.timerState !== 'running') {
+      // v3.23.117: Show combo display even at combo 1 if there's a chain window open
+      var _c1Remain = COMBO_TIMEOUT_MS - (Date.now() - state.lastBlockTime);
+      if (_c1Remain > 0) {
+        comboEl.style.display = 'flex';
+        $('comboCount').textContent = '1';
+        $('comboMultiplier').textContent = '1.0x';
+        comboEl.classList.remove('hot', 'fire');
+        if (comboTimerEl) {
+          var _c1m = Math.floor(_c1Remain / 60000);
+          var _c1s = Math.floor((_c1Remain % 60000) / 1000);
+          comboTimerEl.textContent = _c1m + ':' + (_c1s < 10 ? '0' : '') + _c1s;
+          comboTimerEl.style.color = _c1Remain < 120000 ? '#ff5555' : _c1Remain < 300000 ? '#ffd700' : 'var(--accent2)';
+        }
+      } else {
+        comboEl.style.display = 'none';
+      }
     } else {
       comboEl.style.display = 'none';
     }
@@ -6224,12 +6278,35 @@ try {
     if (_slider) { _slider.addEventListener('input', function() { state.surveillanceNagInterval = parseInt(_slider.value) * 60000; _updateSliderDisplay(); }); }
     _selectTier(state.surveillanceTier || 'surveillance', true);
     var _tierPicker = document.getElementById('surveillanceTierPicker');
+    // v3.23.117: Live combo countdown ticker
+    function _updateComboTimer() {
+      var _ctEl = $('comboTimer');
+      var _cdEl = $('comboDisplay');
+      if (!_ctEl || !_cdEl) return;
+      if ((state.combo || 0) < 1 || !state.lastBlockTime) return;
+      if (state.timerState === 'running') {
+        _ctEl.textContent = '\u2713';
+        _ctEl.style.color = 'var(--accent2)';
+        return;
+      }
+      var _rem = COMBO_TIMEOUT_MS - (Date.now() - state.lastBlockTime);
+      if (_rem <= 0) {
+        _ctEl.textContent = '';
+        if (state.combo < 2) _cdEl.style.display = 'none';
+        return;
+      }
+      var _m = Math.floor(_rem / 60000);
+      var _s = Math.floor((_rem % 60000) / 1000);
+      _ctEl.textContent = _m + ':' + (_s < 10 ? '0' : '') + _s;
+      _ctEl.style.color = _rem < 120000 ? '#ff5555' : _rem < 300000 ? '#ffd700' : 'var(--accent2)';
+    }
+
     function _updateTierPickerVisibility() {
       if (_tierPicker) _tierPicker.style.display = state.surveillanceActive ? 'none' : 'flex';
       if (_sliderRow && state.surveillanceActive) _sliderRow.style.display = 'none';
     }
     // Update timer display every second (shows seconds)
-    setInterval(function() { updateSurveillanceUI(); _updateTierPickerVisibility(); }, 1000);
+    setInterval(function() { updateSurveillanceUI(); _updateTierPickerVisibility(); _updateComboTimer(); }, 1000);
 
     // Old setInterval nag check removed — now runs inside updateSurveillanceUI (v3.22.57)
 
@@ -7117,6 +7194,13 @@ try {
     // produces less than one textile regardless of multipliers.
     var sessionTextiles = 1;
 
+    // v3.23.119: Daily quest double textile bonus
+    if (state.questDoubleTextile) {
+      sessionTextiles *= 2;
+      state.questDoubleTextile = false;
+      notify('\u2728 Double Textiles! (quest reward)', '#ffd700');
+    }
+
     // Quality Control bonus textile (now amplified by Research Division)
     var qcLevel = state.qualityControlLevel || 0;
     if (qcLevel > 0) {
@@ -7354,7 +7438,7 @@ try {
       state.challengeAcceptedAt = 0;
       state.challengeSessionPaused = false;
       // v3.23.21: Snapshot state BEFORE rewards for celebration deltas
-      var _celebSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1 };
+      var _celebSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1, mktYield: state.marketYieldMultiplier || 1.0, mktPrice: state.marketPrice || 12, mktCosts: state.marketCosts ? JSON.parse(JSON.stringify(state.marketCosts)) : null, mktMargin: state.marketMarginPct || 0, mktDemand: state.marketDemandPct || 50 };
       awardSessionReward(reward);
       if (challengeBonus) {
         setTimeout(function() {
@@ -7398,6 +7482,8 @@ try {
       render();
       notify('No textiles earned. Keep trying!', 'var(--warning)');
       SFX.error();
+      // v3.23.119: Mark quest fail for 'no failed sessions' quest type
+      state._questFailedToday = true;
     });
   }
 
@@ -7456,6 +7542,8 @@ try {
     // may have advanced. If any new entries unlock, a MsgLog line lands and
     // the BRIEF badge will refresh on the next render().
     try { checkTrackerStageUnlocks(); } catch (_) {}
+    // v3.23.119: Check daily quest progress after session completion
+    try { checkQuestCompletion(); } catch (_) {}
     // v3.21.18: Auto-sync profile to Firestore after every completed session
     try {
       if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
@@ -10075,6 +10163,10 @@ try {
     screen1.style.display = opts.skipStreak ? 'none' : 'block';
     screen2.style.display = opts.skipStreak ? 'block' : 'none';
     screen3.style.display = 'none';
+    // v3.23.117: Reset market info and real streak from previous celebration
+    var _oldMktInfo = $('celebMarketInfo'); if (_oldMktInfo) { _oldMktInfo.style.opacity = '0'; _oldMktInfo.innerHTML = ''; }
+    var _oldCelebLevel = $('celebLevel'); if (_oldCelebLevel) { _oldCelebLevel.style.opacity = '0'; _oldCelebLevel.textContent = ''; }
+    var _oldRs = document.getElementById('celebRealStreak'); if (_oldRs) _oldRs.remove();
 
     // Reset streak screen
     var streakRing = $('streakRing');
@@ -10353,6 +10445,40 @@ try {
               celebLevelEl.style.color = '#ffd700';
               _celebChord([523, 659, 784, 1047], 0.8, 0.1, 0.1);
             }
+            // v3.23.121: Post-session P&L scorecard — show the consequences of pricing decisions
+            var _mktInfoEl = $('celebMarketInfo');
+            if (_mktInfoEl && snapshot.mktYield) {
+              var _yld = snapshot.mktYield || 1.0;
+              var _price = snapshot.mktPrice || 12;
+              var _costTotal = (snapshot.mktCosts && snapshot.mktCosts.total) ? parseFloat(snapshot.mktCosts.total) : 10;
+              var _margin = snapshot.mktMargin || 0;
+              var _demand = snapshot.mktDemand || 50;
+              var _revenue = _price * (_demand / 50);  // revenue scales with demand
+              var _profit = _revenue - _costTotal;
+              var _yldColor = _yld >= 1.5 ? '#00ff88' : _yld >= 1.0 ? '#ffd700' : '#ff5555';
+              var _profitColor = _profit >= 3 ? '#00ff88' : _profit >= 0 ? '#ffd700' : '#ff6b6b';
+              var _marginColor = _margin >= 30 ? '#00ff88' : _margin >= 10 ? '#ffd700' : _margin >= 0 ? '#ff9966' : '#ff5555';
+              var _demandColor = _demand >= 60 ? '#00ff88' : _demand >= 35 ? '#ffd700' : '#ff6b6b';
+
+              var _lines = '<div style="display:grid;grid-template-columns:auto auto;gap:2px 12px;text-align:left;margin:0 auto;width:fit-content;">';
+              _lines += '<span style="color:#888;">price</span><span style="color:#4ecdc4;">$' + _price.toFixed(0) + '</span>';
+              _lines += '<span style="color:#888;">costs</span><span style="color:#ff9966;">$' + _costTotal.toFixed(1) + '</span>';
+              _lines += '<span style="color:#888;">margin</span><span style="color:' + _marginColor + ';">' + _margin + '%</span>';
+              _lines += '<span style="color:#888;">demand</span><span style="color:' + _demandColor + ';">' + _demand + '%</span>';
+              _lines += '</div>';
+              _lines += '<div style="margin-top:6px;border-top:1px solid #2a2a3a;padding-top:5px;">';
+              _lines += '<span style="color:' + _yldColor + ';font-size:12px;font-family:\'Press Start 2P\',monospace;">' + _yld.toFixed(2) + 'x</span>';
+              _lines += '<span style="color:#666;"> yield</span>';
+              if (_profit >= 0) {
+                _lines += '<br><span style="color:' + _profitColor + ';">+$' + _profit.toFixed(1) + ' per unit profit</span>';
+              } else {
+                _lines += '<br><span style="color:' + _profitColor + ';">-$' + Math.abs(_profit).toFixed(1) + ' per unit loss</span>';
+              }
+              _lines += '</div>';
+
+              _mktInfoEl.innerHTML = _lines;
+              setTimeout(function() { _mktInfoEl.style.opacity = '1'; }, 400);
+            }
           }
         }
         requestAnimationFrame(rTick);
@@ -10366,6 +10492,826 @@ try {
       }
     };
   }
+
+  // ============== DAILY QUEST SYSTEM (v3.23.118) ==============
+  // Two quests generated each day: STEADY (easier) and AMBITIOUS (harder).
+  // Player picks one. The other vanishes. Rewards scale with the economy.
+  // Quest streak tracks consecutive days of completion.
+
+  var QUEST_POOL = [
+    // ===== STEADY TIER (12) =====
+    {
+      id: 'focus_90', desc: 'Focus for 90 minutes total today',
+      tipDesc: 'Total focus minutes across all completed sessions today.',
+      type: 'focusMin', tier: 'steady',
+      genTarget: function() { return 90; },
+      tiles: [
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '60 min', icon: '⏱', at: 60 },
+        { label: '90 min', icon: '🏆', at: 90 }
+      ]
+    },
+    {
+      id: 'sessions_3', desc: 'Complete 3 focus sessions',
+      tipDesc: 'A focus session is a timer you complete honestly. Chain them within 20 minutes to build combos.',
+      type: 'sessions', tier: 'steady',
+      genTarget: function() { return 3; },
+      tiles: [
+        { label: 'Session 1', icon: '🎯', at: 1 },
+        { label: 'Session 2', icon: '🎯', at: 2 },
+        { label: 'Session 3', icon: '⭐', at: 3 }
+      ]
+    },
+    {
+      id: 'focus_120', desc: 'Focus for 2 hours total today',
+      tipDesc: 'Total focus minutes across all completed sessions today. That\'s serious deep work.',
+      type: 'focusMin', tier: 'steady',
+      genTarget: function() { return 120; },
+      tiles: [
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '60 min', icon: '⏱', at: 60 },
+        { label: '90 min', icon: '⏱', at: 90 },
+        { label: '120 min', icon: '🏆', at: 120 }
+      ]
+    },
+    {
+      id: 'deadline_2h', desc: 'Focus 30 min within 2 hours',
+      tipDesc: 'Accumulate 30 minutes of focus time before the 2-hour deadline expires.',
+      type: 'beforeDeadlineFocus', tier: 'steady',
+      genTarget: function() { return 30; },
+      genDeadlineMs: function() { return 2 * 3600000; },
+      tiles: [
+        { label: '10 min', icon: '⏱', at: 10 },
+        { label: '20 min', icon: '⏱', at: 20 },
+        { label: '30 min', icon: '⏰', at: 30 }
+      ]
+    },
+    {
+      id: 'sessions_4', desc: 'Complete 4 focus sessions',
+      tipDesc: 'Four completed sessions. Consistency is king.',
+      type: 'sessions', tier: 'steady',
+      genTarget: function() { return 4; },
+      tiles: [
+        { label: 'Session 1', icon: '🎯', at: 1 },
+        { label: 'Session 2', icon: '🎯', at: 2 },
+        { label: 'Session 3', icon: '🎯', at: 3 },
+        { label: 'Session 4', icon: '⭐', at: 4 }
+      ]
+    },
+    {
+      id: 'focus_60', desc: 'Focus for 1 hour total today',
+      tipDesc: 'Total focus minutes across all completed sessions today.',
+      type: 'focusMin', tier: 'steady',
+      genTarget: function() { return 60; },
+      tiles: [
+        { label: '15 min', icon: '⏱', at: 15 },
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '45 min', icon: '⏱', at: 45 },
+        { label: '60 min', icon: '🏆', at: 60 }
+      ]
+    },
+    {
+      id: 'combo_4', desc: 'Hit a 4x combo streak',
+      tipDesc: 'Chain focus sessions within 20 minutes of each other to build combos.',
+      type: 'combo', tier: 'steady',
+      genTarget: function() { return 4; },
+      tiles: [
+        { label: '1x', icon: '🔥', at: 1 },
+        { label: '2x', icon: '🔥', at: 2 },
+        { label: '3x', icon: '🔥', at: 3 },
+        { label: '4x', icon: '⚡', at: 4 }
+      ]
+    },
+    {
+      id: 'single_60', desc: 'Complete a single 60-min session',
+      tipDesc: 'Finish one focus session that is at least 60 minutes long. Use the session length picker.',
+      type: 'singleSessionMin', tier: 'steady',
+      genTarget: function() { return 60; },
+      tiles: [
+        { label: '15 min in', icon: '⏱', at: 15 },
+        { label: '30 min in', icon: '⏱', at: 30 },
+        { label: '45 min in', icon: '⏱', at: 45 },
+        { label: '60 min done', icon: '🏆', at: 60 }
+      ]
+    },
+    {
+      id: 'qual_3x30', desc: 'Complete 3 sessions of 30+ min',
+      tipDesc: 'Finish three separate sessions that are each at least 30 minutes long.',
+      type: 'qualifiedSessions', tier: 'steady',
+      genTarget: function() { return 3; },
+      qualifyMin: 30,
+      tiles: [
+        { label: '1st long', icon: '💪', at: 1 },
+        { label: '2nd long', icon: '💪', at: 2 },
+        { label: '3rd long', icon: '⭐', at: 3 }
+      ]
+    },
+    {
+      id: 'deadline_2h30', desc: 'Focus 45 min within 2.5 hours',
+      tipDesc: 'Accumulate 45 minutes of focus time before the 2.5-hour deadline expires.',
+      type: 'beforeDeadlineFocus', tier: 'steady',
+      genTarget: function() { return 45; },
+      genDeadlineMs: function() { return 2.5 * 3600000; },
+      tiles: [
+        { label: '15 min', icon: '⏱', at: 15 },
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '45 min', icon: '⏰', at: 45 }
+      ]
+    },
+    {
+      id: 'deadline_focus_45', desc: 'Focus 45 min before deadline',
+      tipDesc: 'Accumulate 45 minutes of focus time before the deadline expires.',
+      type: 'beforeDeadlineFocus', tier: 'steady',
+      genTarget: function() { return 45; },
+      genDeadlineMs: function() { return 3 * 3600000; },
+      tiles: [
+        { label: '15 min', icon: '⏱', at: 15 },
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '45 min', icon: '⏰', at: 45 }
+      ]
+    },
+    {
+      id: 'focus_90b', desc: 'Focus for 1.5 hours total today',
+      tipDesc: 'Total focus minutes across all completed sessions today.',
+      type: 'focusMin', tier: 'steady',
+      genTarget: function() { return 90; },
+      tiles: [
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '60 min', icon: '⏱', at: 60 },
+        { label: '90 min', icon: '🏆', at: 90 }
+      ]
+    },
+
+    // ===== AMBITIOUS TIER (12) =====
+    {
+      id: 'focus_210', desc: 'Focus for 3.5 hours total today',
+      tipDesc: 'Total focus minutes across all sessions. A marathon day.',
+      type: 'focusMin', tier: 'ambitious',
+      genTarget: function() { return 210; },
+      tiles: [
+        { label: '1h', icon: '⏱', at: 60 },
+        { label: '2h', icon: '⏱', at: 120 },
+        { label: '3h', icon: '⏱', at: 180 },
+        { label: '3.5h', icon: '🏆', at: 210 }
+      ]
+    },
+    {
+      id: 'sessions_8', desc: 'Complete 8 focus sessions',
+      tipDesc: 'Eight completed focus sessions. That\'s serious commitment.',
+      type: 'sessions', tier: 'ambitious',
+      genTarget: function() { return 8; },
+      tiles: [
+        { label: '2 done', icon: '🎯', at: 2 },
+        { label: '4 done', icon: '🎯', at: 4 },
+        { label: '6 done', icon: '🎯', at: 6 },
+        { label: '8 done', icon: '⭐', at: 8 }
+      ]
+    },
+    {
+      id: 'combo_6', desc: 'Hit a 6x combo streak',
+      tipDesc: 'Chain focus sessions within 20 minutes. 6x means over an hour of unbroken chains.',
+      type: 'combo', tier: 'ambitious',
+      genTarget: function() { return 6; },
+      tiles: [
+        { label: '2x', icon: '🔥', at: 2 },
+        { label: '3x', icon: '🔥', at: 3 },
+        { label: '4x', icon: '🔥', at: 4 },
+        { label: '5x', icon: '⚡', at: 5 },
+        { label: '6x', icon: '💥', at: 6 }
+      ]
+    },
+    {
+      id: 'focus_240', desc: 'Focus for 4 hours total today',
+      tipDesc: 'Total focus minutes across all sessions. A true grind day.',
+      type: 'focusMin', tier: 'ambitious',
+      genTarget: function() { return 240; },
+      tiles: [
+        { label: '1h', icon: '⏱', at: 60 },
+        { label: '2h', icon: '⏱', at: 120 },
+        { label: '3h', icon: '⏱', at: 180 },
+        { label: '4h', icon: '🏆', at: 240 }
+      ]
+    },
+    {
+      id: 'sessions_6', desc: 'Complete 6 focus sessions',
+      tipDesc: 'Six completed focus sessions. Solid day of work.',
+      type: 'sessions', tier: 'ambitious',
+      genTarget: function() { return 6; },
+      tiles: [
+        { label: '2 done', icon: '🎯', at: 2 },
+        { label: '4 done', icon: '🎯', at: 4 },
+        { label: '6 done', icon: '⭐', at: 6 }
+      ]
+    },
+    {
+      id: 'focus_240b', desc: 'Focus for 4 hours total today',
+      tipDesc: 'Total focus minutes across all sessions. A true grind day.',
+      type: 'focusMin', tier: 'ambitious',
+      genTarget: function() { return 240; },
+      tiles: [
+        { label: '1h', icon: '⏱', at: 60 },
+        { label: '2h', icon: '⏱', at: 120 },
+        { label: '3h', icon: '⏱', at: 180 },
+        { label: '4h', icon: '🏆', at: 240 }
+      ]
+    },
+    {
+      id: 'combo_8', desc: 'Hit an 8x combo streak',
+      tipDesc: 'Chain focus sessions within 20 minutes. 8x is elite-level consistency.',
+      type: 'combo', tier: 'ambitious',
+      genTarget: function() { return 8; },
+      tiles: [
+        { label: '2x', icon: '🔥', at: 2 },
+        { label: '4x', icon: '🔥', at: 4 },
+        { label: '6x', icon: '⚡', at: 6 },
+        { label: '8x', icon: '💥', at: 8 }
+      ]
+    },
+    {
+      id: 'deadline_1h30', desc: 'Focus 60 min within 1.5 hours',
+      tipDesc: 'Accumulate 60 minutes of focus in a 90-minute window. You need to be locked in almost the entire time.',
+      type: 'beforeDeadlineFocus', tier: 'ambitious',
+      genTarget: function() { return 60; },
+      genDeadlineMs: function() { return 1.5 * 3600000; },
+      tiles: [
+        { label: '20 min', icon: '⏱', at: 20 },
+        { label: '40 min', icon: '⏱', at: 40 },
+        { label: '60 min', icon: '⏰', at: 60 }
+      ]
+    },
+    {
+      id: 'focus_180', desc: 'Focus for 3 hours total today',
+      tipDesc: 'Total focus minutes across all sessions. A serious grind day.',
+      type: 'focusMin', tier: 'ambitious',
+      genTarget: function() { return 180; },
+      tiles: [
+        { label: '1h', icon: '⏱', at: 60 },
+        { label: '2h', icon: '⏱', at: 120 },
+        { label: '3h', icon: '🏆', at: 180 }
+      ]
+    },
+    {
+      id: 'nofail_4', desc: 'Complete 4 sessions without failing',
+      tipDesc: 'Finish 4 focus sessions in a row without clicking No on any confirmation.',
+      type: 'noFailStreak', tier: 'ambitious',
+      genTarget: function() { return 4; },
+      tiles: [
+        { label: '1 clean', icon: '✅', at: 1 },
+        { label: '2 clean', icon: '✅', at: 2 },
+        { label: '3 clean', icon: '✅', at: 3 },
+        { label: '4 clean', icon: '⭐', at: 4 }
+      ]
+    },
+    {
+      id: 'deadline_focus_90', desc: 'Focus 90 min before deadline',
+      tipDesc: 'Accumulate 90 minutes of focus time before the deadline expires. Race the clock.',
+      type: 'beforeDeadlineFocus', tier: 'ambitious',
+      genTarget: function() { return 90; },
+      genDeadlineMs: function() { return 3 * 3600000; },
+      tiles: [
+        { label: '30 min', icon: '⏱', at: 30 },
+        { label: '60 min', icon: '⏱', at: 60 },
+        { label: '90 min', icon: '⏰', at: 90 }
+      ]
+    },
+    {
+      id: 'sessions_8b', desc: 'Complete 8 focus sessions',
+      tipDesc: 'Eight completed focus sessions. That\'s 80+ minutes of deep work.',
+      type: 'sessions', tier: 'ambitious',
+      genTarget: function() { return 8; },
+      tiles: [
+        { label: '2 done', icon: '🎯', at: 2 },
+        { label: '4 done', icon: '🎯', at: 4 },
+        { label: '6 done', icon: '🎯', at: 6 },
+        { label: '8 done', icon: '⭐', at: 8 }
+      ]
+    }
+  ];
+
+  // Time-sensitive quests: deadline quests should not appear if it's too late in the day
+  var QUEST_TIME_FILTERS = {
+    'deadline_2h': function() { return new Date().getHours() < 22; },
+    'deadline_2h30': function() { return new Date().getHours() < 21; },
+    'deadline_1h30': function() { return new Date().getHours() < 22; },
+    'deadline_focus_45': function() { return new Date().getHours() < 21; },
+    'deadline_focus_90': function() { return new Date().getHours() < 21; }
+  };
+
+  function _questTodayStr() {
+    var d = new Date(), mm = d.getMonth()+1, dd = d.getDate();
+    return d.getFullYear()+'-'+(mm<10?'0':'')+mm+'-'+(dd<10?'0':'')+dd;
+  }
+
+  function _questSeedRandom(seed) {
+    var h = 0;
+    for (var i = 0; i < seed.length; i++) { h = ((h << 5) - h) + seed.charCodeAt(i); h |= 0; }
+    return function() { h = (h * 1103515245 + 12345) & 0x7fffffff; return (h % 1000) / 1000; };
+  }
+  function _getQuestCurrent(quest) {
+    if (!quest) return 0;
+    var today = _questTodayStr();
+    var log = state.dailySessionLog;
+    var sessions = (log && log.date === today && log.sessions) ? log.sessions : [];
+    var todaySessions = sessions.length;
+    var todayMin = 0;
+    for (var i = 0; i < sessions.length; i++) todayMin += (sessions[i].min || 0);
+
+    switch (quest.type) {
+      case 'sessions': return todaySessions;
+      case 'combo': return state.combo || 0;
+      case 'focusMin': return todayMin;
+      case 'singleSessionMin':
+        var maxMin = 0;
+        for (var i = 0; i < sessions.length; i++) {
+          if ((sessions[i].min || 0) > maxMin) maxMin = sessions[i].min;
+        }
+        return maxMin;
+      case 'qualifiedSessions':
+        var minReq = quest.qualifyMin || 30;
+        var count = 0;
+        for (var i = 0; i < sessions.length; i++) {
+          if ((sessions[i].min || 0) >= minReq) count++;
+        }
+        return count;
+      case 'beforeDeadline':
+        if (!quest.deadline) return 0;
+        var now = Date.now();
+        if (now > quest.deadline) return 0;
+        if (todaySessions > 0) return quest.target;
+        return 0;
+      case 'beforeDeadlineFocus':
+        if (!quest.deadline) return 0;
+        var now = Date.now();
+        if (now > quest.deadline) return 0;
+        return todayMin;
+      case 'noFailStreak':
+        if (state._questFailedToday) return 0;
+        return todaySessions;
+      default: return 0;
+    }
+  }
+
+  function generateDailyQuests() {
+    var today = _questTodayStr();
+    // v3.23.124: Force regen if old quest format missing tiles
+    if (state.questDate === today && state.questSteady && !state.questSteady.tiles) {
+      state.questDate = ''; // force regen
+      state.questChosen = null;
+      state.questCompleted = false;
+    }
+    // v3.23.126: Force regen — deadline quests now require real focus time
+    if (state.questDate === today && state.questSteady && !state._questPoolV126) {
+      state.questDate = '';
+      state.questChosen = null;
+      state.questCompleted = false;
+      state._questPoolV126 = true;
+    }
+    // v3.23.127: Force re-pick — quest swap now uses overlay
+    if (state.questDate === today && state.questChosen && !state._questSwapV127) {
+      state.questChosen = null;
+      state.questCompleted = false;
+      state._questTilesLit = 0;
+      state._questSwapV127 = true;
+    }
+    if (state.questDate === today && state.questSteady && state.questAmbitious) return;
+
+    // Quest streak logic
+    if (state.questDate) {
+      var lastDate = new Date(state.questDate);
+      var now = new Date(today);
+      var diffDays = Math.floor((now - lastDate) / 86400000);
+      if (diffDays > 1 || (diffDays === 1 && !state.questCompleted)) {
+        state.questStreak = 0;
+      } else if (diffDays === 1 && state.questCompleted) {
+        state.questStreak = (state.questStreak || 0) + 1;
+        if (state.questStreak > (state.questLongestStreak || 0)) {
+          state.questLongestStreak = state.questStreak;
+        }
+      }
+    }
+
+    var seed = today + (state.profileId || 'default');
+    var rng = _questSeedRandom(seed);
+
+    var steadyPool = [];
+    var ambitiousPool = [];
+    for (var i = 0; i < QUEST_POOL.length; i++) {
+      var q = QUEST_POOL[i];
+      if (QUEST_TIME_FILTERS[q.id] && !QUEST_TIME_FILTERS[q.id]()) continue;
+      if (q.tier === 'steady' || q.tier === 'both') steadyPool.push(q);
+      if (q.tier === 'ambitious' || q.tier === 'both') ambitiousPool.push(q);
+    }
+
+    var si = Math.floor(rng() * steadyPool.length);
+    var ai = Math.floor(rng() * ambitiousPool.length);
+    var sq = steadyPool[si];
+    var aq = ambitiousPool[ai];
+
+    var level = state.level || 1;
+    var baseCoins = Math.max(500, Math.round(level * 80));
+    var nowMs = Date.now();
+
+    state.questDate = today;
+    state.questSteady = {
+      id: sq.id, desc: sq.desc, tipDesc: sq.tipDesc, type: sq.type,
+      target: sq.genTarget(state), current: 0,
+      tiles: sq.tiles || [],
+      qualifyMin: sq.qualifyMin || 0,
+      deadline: sq.genDeadlineMs ? (nowMs + sq.genDeadlineMs()) : 0,
+      rewards: { coins: baseCoins, xp: Math.round(baseCoins * 0.15) }
+    };
+    state.questAmbitious = {
+      id: aq.id, desc: aq.desc, tipDesc: aq.tipDesc, type: aq.type,
+      target: aq.genTarget(state), current: 0,
+      tiles: aq.tiles || [],
+      qualifyMin: aq.qualifyMin || 0,
+      deadline: aq.genDeadlineMs ? (nowMs + aq.genDeadlineMs()) : 0,
+      rewards: {
+        coins: Math.round(baseCoins * 2.5),
+        xp: Math.round(baseCoins * 0.4),
+        doubleTextile: true
+      }
+    };
+    state.questChosen = null;
+    state.questCompleted = false;
+    state._questTilesLit = 0;
+    save();
+  }
+
+
+  function _countLitTiles(quest) {
+    if (!quest || !quest.tiles || !quest.tiles.length) return 0;
+    var current = _getQuestCurrent(quest);
+    var lit = 0;
+    for (var i = 0; i < quest.tiles.length; i++) {
+      if (current >= quest.tiles[i].at) lit++;
+    }
+    return lit;
+  }
+
+  function checkQuestCompletion() {
+    if (!state.questChosen || state.questCompleted) return;
+    var quest = state.questChosen === 'steady' ? state.questSteady : state.questAmbitious;
+    if (!quest) return;
+
+    var current = _getQuestCurrent(quest);
+    quest.current = current;
+
+    // Detect newly-lit tiles
+    var prevLit = state._questTilesLit || 0;
+    var nowLit = _countLitTiles(quest);
+
+    if (nowLit > prevLit) {
+      state._questTilesLit = nowLit;
+      var newlyLit = nowLit - prevLit;
+      // Sound + notify for each newly lit tile (but not the final one — that gets the big celebration)
+      if (nowLit < (quest.tiles ? quest.tiles.length : 0)) {
+        var tileName = quest.tiles[nowLit - 1] ? quest.tiles[nowLit - 1].label : '';
+        notify('✨ Tile lit: ' + tileName + ' (' + nowLit + '/' + (quest.tiles ? quest.tiles.length : '?') + ')', '#4ecdc4');
+        try { SFX.click(); } catch(_) {}
+      }
+    }
+
+    var done = current >= quest.target;
+
+    if (done && !state.questCompleted) {
+      state.questCompleted = true;
+      state._questTilesLit = quest.tiles ? quest.tiles.length : 0;
+      if (quest.rewards.coins) awardCoins(quest.rewards.coins, 'Daily quest: ' + quest.desc);
+      if (quest.rewards.xp) {
+        state.xp = (state.xp || 0) + quest.rewards.xp;
+      }
+      if (quest.rewards.doubleTextile) {
+        state.questDoubleTextile = true;
+      }
+      save();
+      notify('⚔ QUEST COMPLETE: ' + quest.desc + ' (+$' + (quest.rewards.coins || 0) + ', +' + (quest.rewards.xp || 0) + ' XP' + (quest.rewards.doubleTextile ? ', 2x TEXTILES next session' : '') + ')', '#ffd700');
+      try { SFX.levelUp(); } catch(_) {}
+      renderQuestUI();
+    } else {
+      save();
+      renderQuestUI();
+    }
+  }
+
+  function renderQuestUI() {
+    var card = $('questCard');
+    if (!card) return;
+    if (!state.questDate || !state.questSteady) { card.style.display = 'none'; return; }
+
+    var timerEl = $('questTimer');
+    var streakEl = $('questStreakLabel');
+
+    // Time until midnight
+    if (timerEl) {
+      var now = new Date();
+      var midnight = new Date(now); midnight.setHours(24,0,0,0);
+      var remain = midnight - now;
+      var rh = Math.floor(remain / 3600000);
+      var rm = Math.floor((remain % 3600000) / 60000);
+      timerEl.textContent = 'resets in ' + rh + 'h ' + rm + 'm';
+    }
+
+    // Quest streak
+    if (streakEl) {
+      var qs = state.questStreak || 0;
+      var qls = state.questLongestStreak || 0;
+      streakEl.textContent = 'quest streak: ' + qs + ' day' + (qs !== 1 ? 's' : '') + (qls > qs ? ' • best: ' + qls : '');
+    }
+
+    if (!state.questChosen) {
+      card.style.display = 'none';
+      return;
+    }
+
+    // Show active quest with tiles
+    card.style.display = 'block';
+    var quest = state.questChosen === 'steady' ? state.questSteady : state.questAmbitious;
+    if (!quest) return;
+
+    var current = _getQuestCurrent(quest);
+    quest.current = current;
+    var isSteady = state.questChosen === 'steady';
+    var accentColor = isSteady ? '#4ecdc4' : '#ff6b9d';
+    var accentBg = isSteady ? '#4ecdc4' : '#ff6b9d';
+
+    // Build tile grid HTML
+    var tileGrid = $('questTileGrid');
+    var questDesc = $('questActiveDesc');
+    var questTier = $('questActiveTier');
+    var progText = $('questProgressText');
+    var progBar = $('questProgressBar');
+    var deadlineEl = $('questDeadlineTimer');
+    var rewEl = $('questActiveRewards');
+
+    if (questTier) {
+      questTier.textContent = isSteady ? 'STEADY' : 'AMBITIOUS';
+      questTier.style.color = accentColor;
+    }
+    if (questDesc) { questDesc.textContent = quest.desc; questDesc.title = quest.tipDesc || ''; }
+
+    // Deadline countdown
+    if (deadlineEl) {
+      if (quest.deadline && quest.deadline > 0) {
+        var remaining = quest.deadline - Date.now();
+        if (remaining > 0) {
+          var dh = Math.floor(remaining / 3600000);
+          var dm = Math.floor((remaining % 3600000) / 60000);
+          var ds = Math.floor((remaining % 60000) / 1000);
+          deadlineEl.textContent = (dh > 0 ? dh + 'h ' : '') + dm + 'm ' + ds + 's remaining';
+          deadlineEl.style.display = 'block';
+          deadlineEl.style.color = remaining < 600000 ? '#ff4444' : '#ff9966';
+        } else {
+          deadlineEl.textContent = 'deadline passed';
+          deadlineEl.style.display = 'block';
+          deadlineEl.style.color = '#ff4444';
+        }
+      } else {
+        deadlineEl.style.display = 'none';
+      }
+    }
+
+    // Render tiles
+    if (tileGrid) {
+      tileGrid.innerHTML = '';
+      var tiles = quest.tiles || [];
+      for (var ti = 0; ti < tiles.length; ti++) {
+        var t = tiles[ti];
+        var isLit = current >= t.at;
+        var isNext = !isLit && (ti === 0 || current >= tiles[ti - 1].at);
+        var isComplete = state.questCompleted;
+
+        var tileEl = document.createElement('div');
+        tileEl.className = 'quest-tile';
+        tileEl.title = t.label + (t.at ? ' (at ' + t.at + ')' : '');
+
+        if (isLit) {
+          tileEl.style.cssText = 'background:' + accentColor + '1A;border-bottom-color:' + accentColor + ';';
+          tileEl.classList.add('qt-lit');
+        } else if (isNext) {
+          tileEl.style.cssText = 'background:' + accentColor + '08;border-color:' + accentColor + '35;border-bottom-color:' + accentColor + '60;';
+          tileEl.classList.add('qt-next');
+        } else {
+          tileEl.classList.add('qt-unlit');
+        }
+
+        var iconSpan = document.createElement('span');
+        iconSpan.className = 'qt-icon';
+        iconSpan.textContent = t.icon || '⬛';
+        tileEl.appendChild(iconSpan);
+
+        var labelSpan = document.createElement('span');
+        labelSpan.className = 'qt-label';
+        labelSpan.textContent = t.label;
+        tileEl.appendChild(labelSpan);
+
+        if (isLit) {
+          var badge = document.createElement('div');
+          badge.className = 'qt-badge';
+          badge.style.background = accentColor;
+          badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5.5L4 7.5L8 3" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          tileEl.appendChild(badge);
+        }
+
+        // Connector arrow (between tiles, not after last)
+        tileGrid.appendChild(tileEl);
+        if (ti < tiles.length - 1) {
+          var conn = document.createElement('div');
+          conn.className = 'qt-conn';
+          conn.style.color = isLit ? accentColor : '';
+          conn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          tileGrid.appendChild(conn);
+        }
+      }
+    }
+
+    // Progress bar
+    if (progBar) {
+      var pct = Math.min(100, (current / quest.target) * 100);
+      progBar.style.width = pct + '%';
+      progBar.style.background = accentColor;
+      if (state.questCompleted) {
+        progBar.style.backgroundImage = 'linear-gradient(90deg,' + accentColor + ',#fff,' + accentColor + ')';
+        progBar.style.backgroundSize = '200% 100%';
+      } else {
+        progBar.style.backgroundImage = 'none';
+      }
+    }
+    if (progText) {
+      if (state.questCompleted) {
+        progText.textContent = 'complete!';
+        progText.style.color = accentColor;
+      } else {
+        progText.textContent = Math.min(current, quest.target) + ' / ' + quest.target;
+        progText.style.color = '';
+      }
+    }
+
+    // Rewards
+    if (rewEl) {
+      rewEl.innerHTML = '';
+      var r = quest.rewards;
+      if (r.coins) { var b = document.createElement('span'); b.style.cssText = 'font-size:8px;color:#4ecdc4;background:#4ecdc412;padding:2px 8px;border-radius:3px;'; b.textContent = '+$' + r.coins.toLocaleString(); rewEl.appendChild(b); }
+      if (r.xp) { var b = document.createElement('span'); b.style.cssText = 'font-size:8px;color:#a855f7;background:#a855f712;padding:2px 8px;border-radius:3px;'; b.textContent = '+' + r.xp + ' XP'; rewEl.appendChild(b); }
+      if (r.doubleTextile) { var b = document.createElement('span'); b.style.cssText = 'font-size:7px;color:#ffd700;background:#ffd70010;padding:2px 8px;border-radius:3px;'; b.textContent = '2x textiles'; rewEl.appendChild(b); }
+    }
+
+    // v3.23.127: Change quest — reopens the full-screen selection overlay
+    var swapBtn = $('questSwapBtn');
+    if (swapBtn && !state.questCompleted) {
+      swapBtn.style.display = 'inline-block';
+      swapBtn.textContent = '\u21bb change quest';
+      swapBtn.onclick = function() {
+        state.questChosen = null;
+        state._questTilesLit = 0;
+        save();
+        showQuestOverlay();
+      };
+    } else if (swapBtn) {
+      swapBtn.style.display = 'none';
+    }
+  }
+
+  // Wire quest choice buttons
+  // v3.23.121: Show quest choice overlay (pop-out like welcome back)
+  function showQuestOverlay() {
+    var overlay = $('questOverlay');
+    if (!overlay || !state.questSteady || !state.questAmbitious || state.questChosen) return;
+    var particles = $('qoParticles');
+
+    // Populate overlay content
+    var sd = $('questOverlaySteadyDesc');
+    var sr = $('questOverlaySteadyRewards');
+    var ad = $('questOverlayAmbitiousDesc');
+    var ar = $('questOverlayAmbitiousRewards');
+    var streakEl = $('questOverlayStreak');
+    var timerEl = $('questOverlayTimer');
+
+    if (sd) { sd.textContent = state.questSteady.desc; sd.title = state.questSteady.tipDesc || ''; }
+    if (ad) { ad.textContent = state.questAmbitious.desc; ad.title = state.questAmbitious.tipDesc || ''; }
+
+    function _overlayRewards(container, rewards) {
+      if (!container) return;
+      container.innerHTML = '';
+      if (rewards.coins) {
+        var b = document.createElement('span');
+        b.style.cssText = 'font-size:22px;font-weight:700;color:var(--accent);line-height:1;';
+        b.textContent = '+$' + rewards.coins.toLocaleString();
+        b.title = 'Coins earned on quest completion.';
+        container.appendChild(b);
+      }
+      if (rewards.xp) {
+        var b = document.createElement('span');
+        b.style.cssText = 'font-size:22px;font-weight:700;color:#a855f7;line-height:1;';
+        b.textContent = '+' + rewards.xp + ' XP';
+        b.title = 'Experience points earned on quest completion.';
+        container.appendChild(b);
+      }
+      if (rewards.doubleTextile) {
+        var b = document.createElement('span');
+        b.style.cssText = 'font-size:14px;color:#ffd700;background:#ffd70012;padding:6px 16px;border-radius:6px;border:1px solid #ffd70025;margin-top:4px;';
+        b.textContent = '2x textiles next session';
+        b.title = 'Your next completed focus session will produce double textiles.';
+        container.appendChild(b);
+      }
+    }
+    _overlayRewards(sr, state.questSteady.rewards);
+    _overlayRewards(ar, state.questAmbitious.rewards);
+
+    if (streakEl) {
+      var qs = state.questStreak || 0;
+      var qls = state.questLongestStreak || 0;
+      streakEl.textContent = 'quest streak: ' + qs + ' day' + (qs !== 1 ? 's' : '') + (qls > qs ? ' \u2022 best: ' + qls : '');
+    }
+    if (timerEl) {
+      var now = new Date();
+      var midnight = new Date(now); midnight.setHours(24,0,0,0);
+      var remain = midnight - now;
+      var rh = Math.floor(remain / 3600000);
+      var rm = Math.floor((remain % 3600000) / 60000);
+      timerEl.textContent = 'resets in ' + rh + 'h ' + rm + 'm';
+    }
+
+    // Show overlay with sound + particles (like welcome back)
+    if (particles) particles.innerHTML = '';
+    overlay.style.display = 'flex';
+    setTimeout(function() { overlay.style.opacity = '1'; }, 20);
+    if (!_celebAudioCtx) { try { _celebAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(_ae) {} }
+    setTimeout(function() { _celebRewardSound(); _spawnCelebParticles(particles, 18); }, 400);
+
+    // Hover effects
+    var sBtn = $('questOverlaySteady');
+    var aBtn = $('questOverlayAmbitious');
+    if (sBtn) {
+      sBtn.onmouseenter = function() { sBtn.style.borderColor = '#4ecdc4'; sBtn.style.transform = 'scale(1.03)'; sBtn.style.boxShadow = '0 0 30px rgba(78,205,196,0.25)'; };
+      sBtn.onmouseleave = function() { sBtn.style.borderColor = '#1a4a3a'; sBtn.style.transform = 'scale(1)'; sBtn.style.boxShadow = 'none'; };
+    }
+    if (aBtn) {
+      aBtn.onmouseenter = function() { aBtn.style.borderColor = '#ff6b9d'; aBtn.style.transform = 'scale(1.03)'; aBtn.style.boxShadow = '0 0 30px rgba(255,107,157,0.25)'; };
+      aBtn.onmouseleave = function() { aBtn.style.borderColor = '#4a1a3a'; aBtn.style.transform = 'scale(1)'; aBtn.style.boxShadow = 'none'; };
+    }
+
+    function _closeOverlay() {
+      overlay.style.opacity = '0';
+      setTimeout(function() { overlay.style.display = 'none'; if (particles) particles.innerHTML = ''; }, 400);
+    }
+
+    if (sBtn) sBtn.onclick = function() {
+      state.questChosen = 'steady';
+      save();
+      _celebLandSound(14);
+      _spawnCelebParticles(particles, 25);
+      setTimeout(function() { _closeOverlay(); }, 600);
+      notify('\u2694 Quest accepted: ' + state.questSteady.desc, '#4ecdc4');
+      try { SFX.click(); } catch(_) {}
+      renderQuestUI();
+      checkQuestCompletion();
+    };
+    if (aBtn) aBtn.onclick = function() {
+      state.questChosen = 'ambitious';
+      save();
+      _celebLandSound(14);
+      _spawnCelebParticles(particles, 25);
+      setTimeout(function() { _closeOverlay(); }, 600);
+      notify('\u2694 Quest accepted: ' + state.questAmbitious.desc, '#ff6b9d');
+      try { SFX.click(); } catch(_) {}
+      renderQuestUI();
+      checkQuestCompletion();
+    };
+  }
+
+  function _wireQuestButtons() {
+    // Inline buttons no longer used for choice — overlay handles it
+    // But wire them as fallback just in case
+    var steadyBtn = $('questSteady');
+    var ambitiousBtn = $('questAmbitious');
+    if (steadyBtn) {
+      steadyBtn.onmouseenter = function() { this.style.borderColor = '#4ecdc4'; this.style.transform = 'scale(1.02)'; };
+      steadyBtn.onmouseleave = function() { this.style.borderColor = '#1a4a3a'; this.style.transform = 'scale(1)'; };
+      steadyBtn.onclick = function() {
+        if (state.questChosen) return;
+        state.questChosen = 'steady';
+        save();
+        renderQuestUI();
+        checkQuestCompletion();
+        notify('\u2694 Quest accepted: ' + state.questSteady.desc, '#4ecdc4');
+      };
+    }
+    if (ambitiousBtn) {
+      ambitiousBtn.onmouseenter = function() { this.style.borderColor = '#ff6b9d'; this.style.transform = 'scale(1.02)'; };
+      ambitiousBtn.onmouseleave = function() { this.style.borderColor = '#4a1a3a'; this.style.transform = 'scale(1)'; };
+      ambitiousBtn.onclick = function() {
+        if (state.questChosen) return;
+        state.questChosen = 'ambitious';
+        save();
+        renderQuestUI();
+        checkQuestCompletion();
+        notify('\u2694 Quest accepted: ' + state.questAmbitious.desc, '#ff6b9d');
+      };
+    }
+  }
+
+
   // ============== WELCOME BACK (v3.23.33) ==============
   function showWelcomeBack(goneMs, passiveCoins, passiveTextiles) {
     var overlay = $('welcomeBackOverlay'); if (!overlay) return;
@@ -10448,6 +11394,125 @@ try {
     if (autoloomLevel > 0) { var periodMin = [0, 7200, 2880, 1440, 720, 240][Math.min(autoloomLevel, 5)]; if (periodMin > 0) passiveTextiles = Math.floor((goneMs / 60000) / periodMin); }
     state.lastWelcomeBackCheck = now; save();
     showWelcomeBack(goneMs, passiveCoins, passiveTextiles);
+  }
+
+
+  // ============== MORNING REDIRECT (v3.23.119) ==============
+  // On the first open of a new day, scroll the user down to their
+  // priority / todo section and show a banner asking if they want
+  // to start a focus session right away. This gets them into action
+  // instead of staring at the main screen.
+  function maybeMorningRedirect() {
+    try {
+      var today = todayStr();
+      // Only fire once per calendar day
+      if (state._morningRedirectDate === today) return;
+      // Only fire if it's actually a new day (not just a reload)
+      if (state.lastActiveDate === today && state._morningRedirectDate) return;
+      state._morningRedirectDate = today;
+      save();
+
+      // Build the morning banner
+      var banner = document.createElement('div');
+      banner.id = 'morningBanner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:450;background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border-bottom:2px solid #00ff88;padding:12px 14px;display:flex;flex-direction:column;gap:8px;animation:morningSlideIn 0.4s ease-out;';
+
+      var hour = new Date().getHours();
+      var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+      var todaySessions = 0;
+      if (state.dailySessionLog && state.dailySessionLog.date === today && state.dailySessionLog.sessions) {
+        todaySessions = state.dailySessionLog.sessions.length;
+      }
+      var priCount = 0;
+      try { priCount = getActivePriorityTasks().length; } catch(_) {}
+      var taskCount = 0;
+      try {
+        var proj = state.tasks[state.activeProject] || [];
+        for (var ti = 0; ti < proj.length; ti++) { if (!proj[ti].done) taskCount++; }
+      } catch(_) {}
+
+      var statusLine = '';
+      if (priCount > 0) statusLine = priCount + ' priority task' + (priCount > 1 ? 's' : '') + ' waiting';
+      else if (taskCount > 0) statusLine = taskCount + ' task' + (taskCount > 1 ? 's' : '') + ' on your list';
+      else statusLine = 'No tasks yet — add some below';
+
+      if (todaySessions > 0) statusLine += ' \u00b7 ' + todaySessions + ' session' + (todaySessions > 1 ? 's' : '') + ' today';
+
+      // Quest info
+      var questLine = '';
+      try {
+        if (state.questChosen && !state.questCompleted) {
+          var q = state.questChosen === 'steady' ? state.questSteady : state.questAmbitious;
+          if (q) questLine = '\u2694 Active quest: ' + q.desc;
+        } else if (!state.questChosen && state.questSteady) {
+          questLine = '\u2694 Daily quest available — choose one below';
+        }
+      } catch(_) {}
+
+      banner.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">'
+        + '<div>'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#00ff88;">' + greeting + '</div>'
+        + '<div style="font-family:\'Courier New\',monospace;font-size:10px;color:#a0a0a0;margin-top:4px;">' + statusLine + '</div>'
+        + (questLine ? '<div style="font-family:\'Courier New\',monospace;font-size:9px;color:#ffd700;margin-top:3px;">' + questLine + '</div>' : '')
+        + '</div>'
+        + '<button id="morningDismissBtn" style="background:none;border:none;color:#666;font-size:16px;cursor:pointer;padding:4px;" title="Dismiss">\u2715</button>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px;">'
+        + '<button id="morningStartBtn" style="flex:1;background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px;border-radius:4px;cursor:pointer;" title="Jump to your tasks and start a focus session right away.">START FOCUSING</button>'
+        + '<button id="morningViewBtn" style="flex:1;background:rgba(78,205,196,0.1);border:1px solid #4ecdc4;color:#4ecdc4;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px;border-radius:4px;cursor:pointer;" title="Scroll down to review your priority tasks and today\'s checklist.">VIEW TASKS</button>'
+        + '</div>';
+
+      document.body.appendChild(banner);
+
+      // Add slide-in animation
+      var styleEl = document.createElement('style');
+      styleEl.textContent = '@keyframes morningSlideIn { from { transform:translateY(-100%);opacity:0; } to { transform:translateY(0);opacity:1; } }';
+      document.head.appendChild(styleEl);
+
+      // Wire buttons
+      var dismissBtn = document.getElementById('morningDismissBtn');
+      var startBtn2 = document.getElementById('morningStartBtn');
+      var viewBtn = document.getElementById('morningViewBtn');
+
+      function closeBanner() {
+        banner.style.transition = 'transform 0.3s, opacity 0.3s';
+        banner.style.transform = 'translateY(-100%)';
+        banner.style.opacity = '0';
+        setTimeout(function() { try { banner.remove(); } catch(_) {} }, 350);
+      }
+
+      if (dismissBtn) dismissBtn.onclick = closeBanner;
+
+      if (startBtn2) startBtn2.onclick = function() {
+        closeBanner();
+        // Scroll to priority section, then start the timer
+        setTimeout(function() {
+          var priSection = document.getElementById('prioritySection');
+          if (priSection) priSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Auto-click start if idle
+          setTimeout(function() {
+            if (state.timerState === 'idle') {
+              var sBtn = document.getElementById('startBtn');
+              if (sBtn) sBtn.click();
+            }
+          }, 600);
+        }, 100);
+      };
+
+      if (viewBtn) viewBtn.onclick = function() {
+        closeBanner();
+        setTimeout(function() {
+          var priSection = document.getElementById('prioritySection');
+          if (priSection) priSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      };
+
+      // Auto-dismiss after 30 seconds
+      setTimeout(function() {
+        if (document.getElementById('morningBanner')) closeBanner();
+      }, 30000);
+
+    } catch (e) { console.warn('[MorningRedirect] Error:', e); }
   }
 
   // ============== INIT ==============
@@ -13386,7 +14451,7 @@ try {
           try {
             var sm = $('settingsModal');
             if (sm) sm.style.display = 'none';
-            var fakeSnapshot = { coins: Math.max(0, (state.coins || 0) - 15), xp: Math.max(0, (state.xp || 0) - 25), level: state.level || 1 };
+            var fakeSnapshot = { coins: Math.max(0, (state.coins || 0) - 15), xp: Math.max(0, (state.xp || 0) - 25), level: state.level || 1, mktYield: state.marketYieldMultiplier || 1.0, mktPrice: state.marketPrice || 12, mktCosts: state.marketCosts ? JSON.parse(JSON.stringify(state.marketCosts)) : null, mktMargin: state.marketMarginPct || 0, mktDemand: state.marketDemandPct || 50 };
             showPostSessionCelebration(fakeSnapshot, {skipStreak: true});
           } catch (e) {
             console.error('[TestRewards] Error:', e);
@@ -13677,6 +14742,7 @@ try {
         if (volumeUnmuteMinInput) volumeUnmuteMinInput.value = state.volumeUnmuteMinute != null ? state.volumeUnmuteMinute : 0;
         renderNagSites();
         updateAutoStartStatus();
+        _renderPetRenameUI();
         // Show extension ID for Cold Turkey setup
         var ctExtIdEl = $('coldTurkeyExtId');
         if (ctExtIdEl) {
@@ -13685,6 +14751,94 @@ try {
           } catch (_) {}
         }
       }
+      // v3.23.115: Pet rename UI in settings
+      var PET_ICONS = {cat:'🐱',dog:'🐶',blob:'🫠',bird:'🐦',bunny:'🐰',fish:'🐟'};
+      function _renderPetRenameUI() {
+        var list = $('petRenameList');
+        var status = $('petRenameStatus');
+        if (!list) return;
+        list.innerHTML = '';
+        if (status) status.textContent = '';
+        var names = state.housePetNames || [];
+        var types = state.housePetTypes || [];
+        var renames = state.housePetRenames || [];
+        if (names.length === 0) {
+          list.innerHTML = '<div style="font-size:10px;color:var(--text-dim);font-style:italic;">No pets yet. Unlock pets in the House!</div>';
+          return;
+        }
+        for (var pi = 0; pi < names.length; pi++) {
+          (function(idx) {
+            var used = renames[idx] || 0;
+            var remaining = 2 - used;
+            var icon = PET_ICONS[types[idx]] || '🐾';
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+            var label = document.createElement('span');
+            label.textContent = icon;
+            label.style.cssText = 'font-size:18px;flex-shrink:0;';
+            row.appendChild(label);
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.value = names[idx] || '';
+            input.maxLength = 16;
+            input.style.cssText = 'flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);font-family:"Press Start 2P",monospace;font-size:8px;outline:none;';
+            input.title = remaining > 0
+              ? 'Type a new name and click RENAME. ' + remaining + ' rename' + (remaining === 1 ? '' : 's') + ' left.'
+              : 'No renames remaining. This name is permanent.';
+            if (remaining <= 0) {
+              input.disabled = true;
+              input.style.opacity = '0.5';
+            }
+            row.appendChild(input);
+            var btn = document.createElement('button');
+            btn.textContent = 'RENAME';
+            btn.style.cssText = 'background:transparent;border:1px solid #bb86fc;color:#bb86fc;font-family:"Press Start 2P",monospace;font-size:7px;padding:5px 10px;border-radius:4px;cursor:pointer;flex-shrink:0;transition:all 0.15s ease;';
+            btn.addEventListener('mouseenter', function() { if (!this.disabled) { this.style.background = '#bb86fc'; this.style.color = '#0a0a14'; this.style.transform = 'scale(1.08)'; this.style.boxShadow = '0 0 12px rgba(187,134,252,0.5)'; } });
+            btn.addEventListener('mouseleave', function() { if (!this.disabled) { this.style.background = 'transparent'; this.style.color = '#bb86fc'; this.style.transform = 'scale(1)'; this.style.boxShadow = 'none'; } });
+            btn.addEventListener('mousedown', function() { if (!this.disabled) { this.style.transform = 'scale(0.95)'; } });
+            btn.addEventListener('mouseup', function() { if (!this.disabled) { this.style.transform = 'scale(1.08)'; } });
+            btn.title = remaining > 0 ? remaining + ' rename' + (remaining === 1 ? '' : 's') + ' remaining' : 'No renames left';
+            if (remaining <= 0) {
+              btn.disabled = true;
+              btn.style.opacity = '0.3';
+              btn.style.cursor = 'not-allowed';
+              btn.style.borderColor = '#444';
+              btn.style.color = '#666';
+              btn.textContent = 'LOCKED';
+            }
+            btn.addEventListener('click', function() {
+              var newName = input.value.trim();
+              if (!newName) { if (status) status.textContent = 'Name cannot be empty.'; return; }
+              if (newName === (state.housePetNames[idx] || '')) { if (status) status.textContent = 'That\'s already the name!'; return; }
+              if (!state.housePetRenames) state.housePetRenames = [];
+              var usedNow = state.housePetRenames[idx] || 0;
+              if (usedNow >= 2) { if (status) status.textContent = 'No renames left for this pet.'; return; }
+              state.housePetNames[idx] = newName;
+              state.housePetRenames[idx] = usedNow + 1;
+              save();
+              // Flash the input green to confirm adoption
+              input.style.borderColor = '#00ff88';
+              input.style.boxShadow = '0 0 10px rgba(0,255,136,0.4)';
+              setTimeout(function() { input.style.borderColor = 'var(--border)'; input.style.boxShadow = 'none'; }, 1200);
+              if (status) {
+                var left = 2 - (usedNow + 1);
+                status.textContent = '\u2705 ' + icon + ' is now ' + newName + (left > 0 ? ' (' + left + ' rename' + (left === 1 ? '' : 's') + ' left)' : ' — name is now permanent!');
+                status.style.color = left > 0 ? '#00ff88' : '#ff6b6b';
+              }
+              // Re-render after a brief pause so the flash is visible
+              setTimeout(function() { _renderPetRenameUI(); }, 800);
+            });
+            row.appendChild(btn);
+            var countEl = document.createElement('span');
+            countEl.style.cssText = 'font-size:8px;color:' + (remaining > 0 ? 'var(--text-dim)' : '#ff6b6b') + ';font-family:"Press Start 2P",monospace;flex-shrink:0;';
+            countEl.textContent = remaining > 0 ? remaining + ' left' : 'locked';
+            countEl.title = remaining > 0 ? remaining + ' rename' + (remaining === 1 ? '' : 's') + ' remaining for this pet.' : 'This pet\'s name is now permanent. No more renames available.';
+            row.appendChild(countEl);
+            list.appendChild(row);
+          })(pi);
+        }
+      }
+
       function closeSettingsModal() {
         if (!settingsModal) return;
         settingsModal.style.display = 'none';
@@ -13889,6 +15043,10 @@ try {
   setTimeout(function() { try { maybeDailyRemindersPopup(); } catch (_) {} }, 1800);
   setTimeout(function() { try { checkIncrementalization(); } catch (_) {} }, 2000);
   setTimeout(function() { try { maybeShowWelcomeBack(); } catch (_) {} }, 2200);
+  // v3.23.119: Morning redirect — scroll to tasks + offer to start session
+  setTimeout(function() { try { maybeMorningRedirect(); } catch (_) {} }, 2800);
+  // v3.23.121: Show daily quest choice overlay if quest not yet chosen
+  setTimeout(function() { try { if (!state.questChosen && state.questSteady) showQuestOverlay(); } catch (_) {} }, 3200);
 
   if (!state.mirrorMode) {
     setTimeout(function() {
