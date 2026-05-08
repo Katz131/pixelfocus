@@ -6886,6 +6886,8 @@ try {
         if (state.timerRemaining > 0) {
           state.timerRemaining--;
           if (state.timerRemaining % 60 === 0 && state.timerRemaining > 0) SFX.tick();
+          // v3.23.127: Refresh quest progress every minute during focus
+          if (state.timerRemaining % 60 === 0) { try { renderQuestUI(); checkQuestCompletion(); } catch(_) {} }
           save();
           renderTimer();
           renderBlockProgress();
@@ -10816,6 +10818,17 @@ try {
     var todayMin = 0;
     for (var i = 0; i < sessions.length; i++) todayMin += (sessions[i].min || 0);
 
+    // v3.23.127: Include in-progress session elapsed minutes for live quest tracking
+    var inProgressMin = 0;
+    if ((state.timerState === 'running' || state.timerState === 'paused') && state.sessionDurationSec > 0) {
+      var elapsedSec = state.sessionDurationSec - (state.timerRemaining || 0);
+      if (elapsedSec > 0) {
+        inProgressMin = Math.floor(elapsedSec / 60);
+      }
+    }
+    todayMin += inProgressMin;
+    if (inProgressMin > 0) todaySessions += 1;
+
     switch (quest.type) {
       case 'sessions': return todaySessions;
       case 'combo': return state.combo || 0;
@@ -10825,6 +10838,7 @@ try {
         for (var i = 0; i < sessions.length; i++) {
           if ((sessions[i].min || 0) > maxMin) maxMin = sessions[i].min;
         }
+        if (inProgressMin > maxMin) maxMin = inProgressMin;
         return maxMin;
       case 'qualifiedSessions':
         var minReq = quest.qualifyMin || 30;
@@ -10832,6 +10846,7 @@ try {
         for (var i = 0; i < sessions.length; i++) {
           if ((sessions[i].min || 0) >= minReq) count++;
         }
+        if (inProgressMin >= minReq) count++;
         return count;
       case 'beforeDeadline':
         if (!quest.deadline) return 0;
