@@ -622,6 +622,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </div>
   <div id="mirrorBanner" style="background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(78,205,196,0.08));border:1px solid #a855f7;border-radius:6px;padding:8px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#a855f7;letter-spacing:1px;line-height:1.8;">&#128225; MIRROR MODE &mdash; READ ONLY<br><span style="font-family:'Courier New',monospace;font-size:9px;color:#5a5a7e;">Viewing stats from main browser. Use Brave to make changes.</span></div>
   <div id="challengeBanner" style="display:none;background:linear-gradient(135deg,rgba(255,140,58,0.12),rgba(255,215,0,0.08));border:1px solid #ff8c3a;border-radius:6px;padding:6px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Idle Challenge active! Complete this session without pausing for 1.5x rewards.">&#9876; IDLE CHALLENGE ACTIVE &mdash; 1.5x REWARDS &#9876;</div>
+  <div id="questBonusBadge" style="display:none;background:linear-gradient(135deg,rgba(255,215,0,0.15),rgba(255,107,157,0.10));border:1px solid #ffd700;border-radius:6px;padding:5px 14px;margin:4px auto 4px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Your daily quest reward doubles the textiles from your next completed focus session!">&#9876; 2x TEXTILES &#8212; QUEST REWARD ACTIVE &#9876;</div>
   <div class="timer-display" id="timerDisplay" title="Counts down to 00:00. Tab away or close the window if you need a break &mdash; the timer keeps running.">10:00</div>
   <div class="block-progress-row" id="blockProgress" title="Visual progress: each segment fills as a 10-minute textile completes within the current session."></div>
   <div class="timer-controls">
@@ -757,6 +758,19 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
     </div>
 
     <div id="questOverlayTimer" style="font-size:10px;color:var(--text-dim);opacity:0.5;"></div>
+  </div>
+</div>
+
+<!-- v3.23.134: Quest completion celebration overlay -->
+<div id="questCelebOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(5,5,15,0.97);z-index:10000;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity 0.5s;">
+  <div id="questCelebParticles" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;"></div>
+  <div style="position:relative;z-index:1;text-align:center;max-width:380px;padding:20px;">
+    <div id="questCelebIcon" style="font-size:48px;margin-bottom:8px;"></div>
+    <div style="font-family:'Press Start 2P',monospace;font-size:14px;color:#ffd700;letter-spacing:2px;margin-bottom:6px;">&#9876; QUEST COMPLETE!</div>
+    <div id="questCelebDesc" style="font-family:'Courier New',monospace;font-size:13px;color:var(--text);margin-bottom:24px;line-height:1.5;"></div>
+    <div id="questCelebRewards" style="display:flex;flex-direction:column;gap:12px;align-items:center;margin-bottom:24px;"></div>
+    <div id="questCelebStreak" style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--text-dim);margin-bottom:20px;"></div>
+    <button id="questCelebDismiss" style="font-family:'Press Start 2P',monospace;font-size:10px;background:linear-gradient(180deg,#ffd700,#cc9900);color:#000;border:none;border-radius:6px;padding:12px 32px;cursor:pointer;letter-spacing:1px;transition:transform 0.15s;">COLLECT REWARDS</button>
   </div>
 </div>
 

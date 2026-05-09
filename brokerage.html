@@ -418,11 +418,11 @@ body {
 <div id="newsTicker" class="news-ticker" title="Market news ticker — random headlines cycle through to set the mood. Purely cosmetic.">Welcome to the Brokerage. Markets are open.</div>
 
 <div class="tab-bar">
-  <button class="tab-btn active" data-panel="stocks" title="Buy and sell individual company stocks. Prices fluctuate based on market simulation.">STOCKS</button>
-  <button class="tab-btn" data-panel="funds" title="Diversified index funds that spread your investment across multiple stocks. Lower risk, steadier returns.">MUTUAL FUNDS</button>
-  <button class="tab-btn" data-panel="bonds" title="Government bonds that guarantee a fixed return after a set number of focus sessions. Safe and predictable.">TREASURY BONDS</button>
-  <button class="tab-btn" data-panel="crypto" title="Highly volatile cryptocurrency tokens. Can moon or crash — not for the faint of heart.">CRYPTO</button>
-  <button class="tab-btn" data-panel="gambling" title="Pure luck games — coin flips, slot machines, and high-roller tables. The house always has an edge.">GAMBLING</button>
+  <button class="tab-btn active" data-panel="stocks" title="Buy and sell Loom-themed stocks with realistic price movement.">STOCKS</button>
+  <button class="tab-btn" data-panel="funds" title="Invest in diversified mutual funds — lower risk, steady growth.">FUNDS</button>
+  <button class="tab-btn" data-panel="bonds" title="Treasury bonds — guaranteed returns, very safe, very slow.">BONDS</button>
+  <button class="tab-btn" data-panel="crypto" title="Cryptocurrency — extreme volatility, can moon or crash.">CRYPTO</button>
+  <button class="tab-btn" data-panel="limitOrders" title="Set limit orders to auto-buy when prices drop to your target.">LIMITS</button>
   <button class="tab-btn" data-panel="portfolio" title="View all your current holdings, their values, and your overall profit/loss breakdown.">PORTFOLIO</button>
   <button class="tab-btn" data-panel="upgrades" style="color:#c084fc;border-color:#c084fc;" title="Spend Acumen points on permanent upgrades that improve your trading abilities and unlock new features.">UPGRADES</button>
 </div>
@@ -447,9 +447,9 @@ body {
   <div id="cryptoList"></div>
 </div>
 
-<div class="panel" id="gamblingPanel">
-  <div class="section-title">THE HOUSE</div>
-  <div id="gamblingArea"></div>
+<div class="panel" id="limitOrdersPanel">
+  <div class="section-title">LIMIT ORDERS</div>
+  <div id="limitOrdersList"></div>
 </div>
 
 <div class="panel" id="portfolioPanel">

@@ -59,11 +59,7 @@
     { id: 'ETH', name: 'EtherToken', desc: 'Smart contract platform token. Slightly less volatile than BTC. Slightly.', basePrice: 3.20, volatility: 0.08, drift: 0.003 }
   ];
 
-  var GAMBLING_GAMES = [
-    { id: 'coinflip', name: 'Coin Flip', desc: 'Double or nothing. 50/50 odds. The purest gamble there is.', odds: 0.5, payout: 2 },
-    { id: 'slots', name: 'Slot Machine', desc: 'Spin to win. Mostly spin to lose. The house edge is not subtle.', odds: 0.15, payout: 5 },
-    { id: 'highroller', name: 'High Roller Table', desc: 'Big risk, big reward. 10% chance at 8x your money. For the reckless.', odds: 0.10, payout: 8 }
-  ];
+  // v3.23.139: Gambling removed
 
   var NEWS = [
     'Apex Industries reports record quarterly earnings. Stock holds steady.',
@@ -231,16 +227,59 @@
       });
     }
 
+    // v3.23.138: Update longestHoldTicks for Diamond Hands achievement
+    var _tickNow = now;
+    Object.keys(b.portfolio).forEach(function(pid) {
+      var pos = b.portfolio[pid];
+      if (pos && pos.shares > 0 && pos.boughtAtTick) {
+        var holdTicks = Math.floor((_tickNow - pos.boughtAtTick) / (60 * 60 * 1000));
+        if (holdTicks > (b.longestHoldTicks || 0)) b.longestHoldTicks = holdTicks;
+      }
+    });
+    // v3.23.138: Process limit orders if upgrade owned
+    if (b.ownedUpgrades && b.ownedUpgrades.limitOrders && Array.isArray(b.limitOrders)) {
+      var _filled = [];
+      b.limitOrders.forEach(function(order, oi) {
+        var curPrice = b.prices[order.assetId];
+        if (curPrice && curPrice <= order.targetPrice && b.cash >= order.qty * curPrice) {
+          var cost = order.qty * curPrice;
+          b.cash -= cost;
+          b.cash = Math.round(b.cash * 100) / 100;
+          if (!b.portfolio[order.assetId]) b.portfolio[order.assetId] = { shares: 0, avgCost: 0 };
+          var h = b.portfolio[order.assetId];
+          var oldT = h.shares * h.avgCost;
+          h.shares += order.qty;
+          h.avgCost = Math.round((oldT + cost) / h.shares * 100) / 100;
+          if (!h.boughtAtTick) h.boughtAtTick = _tickNow;
+          b.tradesCount++;
+          _filled.push(oi);
+          showNews('Limit order filled: ' + order.qty + ' ' + order.assetId + ' at $' + (Math.round(curPrice * 100) / 100));
+        }
+      });
+      for (var _fi = _filled.length - 1; _fi >= 0; _fi--) b.limitOrders.splice(_filled[_fi], 1);
+    }
+    // v3.23.138: Charge margin interest if margin loan active
+    if (b.ownedUpgrades && b.ownedUpgrades.margin && b.marginLoan > 0) {
+      var _interest = b.marginLoan * 0.002 * ticksMissed; // 0.2% per tick
+      b.cash -= _interest;
+      b.marginInterestPaid = (b.marginInterestPaid || 0) + _interest;
+      if (b.cash < 0) {
+        // Margin call — liquidate the loan
+        b.cash += b.marginLoan;
+        showNews('MARGIN CALL! Loan liquidated. You owe more than you have.');
+        b.marginLoan = 0;
+      }
+    }
     b.lastMarketTick = now;
   }
 
   function calcFundPrice(fund, b) {
-    if (fund.id === 'TIF') {
+    if (fund.id === 'VIDX') {
       // Equal-weighted index of all stocks
       var total = 0;
       STOCKS.forEach(function(s) { total += (b.prices[s.id] || s.basePrice); });
       return Math.round((total / STOCKS.length) * 100) / 100;
-    } else if (fund.id === 'GRF') {
+    } else if (fund.id === 'GFND') {
       // Growth-weighted: 40% NVEX, 30% QBIT, 15% AAPL, 15% rest
       var nvex = b.prices['NVEX'] || 480;
       var qbit = b.prices['QBIT'] || 8;
@@ -619,41 +658,9 @@
     });
   }
 
-  function renderGambling() {
-    var b = getB();
-    var el = document.getElementById('gamblingArea');
-    el.innerHTML = '';
+  // v3.23.139: renderGambling removed
 
-    var stats = document.createElement('div');
-    stats.style.cssText = 'text-align:center;margin-bottom:24px;font-size:11px;color:var(--text-dim);';
-    var netGamble = (b.totalGamblingWon || 0) - (b.totalGambled || 0);
-    stats.innerHTML = 'Total wagered: $' + fmt(b.totalGambled || 0) + ' &nbsp;|&nbsp; Total won: $' + fmt(b.totalGamblingWon || 0) + ' &nbsp;|&nbsp; Net: <span style="color:' + (netGamble >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + (netGamble >= 0 ? '+' : '') + fmt(netGamble) + '</span>';
-    el.appendChild(stats);
-
-    GAMBLING_GAMES.forEach(function(game) {
-      var area = document.createElement('div');
-      area.className = 'gamble-area';
-      area.style.cssText += 'border:1px solid var(--border);border-radius:8px;margin-bottom:16px;background:var(--surface);';
-      area.title = esc(game.desc) + ' Win chance: ' + (game.odds * 100) + '%. Payout: ' + game.payout + 'x.';
-      area.innerHTML =
-        '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:var(--gold);margin-bottom:8px;">' + esc(game.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">' + esc(game.desc) + '</div>' +
-        '<div style="font-size:10px;color:var(--accent3);margin-bottom:12px;" title="Your odds of winning and how much you get if you do">Win chance: ' + (game.odds * 100) + '% &nbsp;|&nbsp; Payout: ' + game.payout + 'x</div>' +
-        '<div style="display:flex;justify-content:center;align-items:center;gap:8px;">' +
-          '<span style="font-size:10px;color:var(--text-dim);">Wager: $</span>' +
-          '<input class="trade-input" type="number" min="1" value="10" id="wager_' + game.id + '" title="Amount of brokerage cash to bet">' +
-          '<button class="gamble-btn" style="font-size:10px;padding:10px 24px;" data-id="' + game.id + '" title="Place your bet — ' + (game.odds * 100) + '% chance to win ' + game.payout + 'x your wager">PLAY</button>' +
-        '</div>' +
-        '<div class="gamble-result" id="result_' + game.id + '"></div>';
-      el.appendChild(area);
-    });
-
-    el.querySelectorAll('.gamble-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() { playGamble(btn.dataset.id); });
-    });
-  }
-
-  function renderPortfolio() {
+    function renderPortfolio() {
     var b = getB();
     var el = document.getElementById('portfolioView');
     el.innerHTML = '';
@@ -752,6 +759,8 @@
     h.shares += qty;
     h.avgCost = (oldTotal + totalCost) / h.shares;
     h.avgCost = Math.round(h.avgCost * 100) / 100;
+    // v3.23.138: Track when position was first acquired for Diamond Hands
+    if (!h.boughtAtTick) h.boughtAtTick = b.lastMarketTick || Date.now();
     b.tradesCount++;
 
     // Acumen: detect dip buy (price dropped >10% from recent high)
@@ -851,51 +860,9 @@
     save(function() { renderAll(); });
   }
 
-  function playGamble(gameId) {
-    var b = getB();
-    var game = GAMBLING_GAMES.filter(function(g) { return g.id === gameId; })[0];
-    if (!game) return;
-    var wagerEl = document.getElementById('wager_' + gameId);
-    var wager = parseInt(wagerEl ? wagerEl.value : 10) || 10;
-    if (wager < 1) return;
+  // v3.23.139: playGamble removed
 
-    if (b.cash < wager) {
-      SFX.lose();
-      showNews('Not enough brokerage cash to gamble.');
-      return;
-    }
-
-    b.cash -= wager;
-    b.totalGambled = (b.totalGambled || 0) + wager;
-    b.tradesCount++;
-
-    var resultEl = document.getElementById('result_' + gameId);
-    var won = Math.random() < game.odds;
-
-    if (won) {
-      var winnings = wager * game.payout;
-      b.cash += winnings;
-      b.totalGamblingWon = (b.totalGamblingWon || 0) + winnings;
-      SFX.win();
-      if (resultEl) {
-        resultEl.style.color = 'var(--green)';
-        resultEl.textContent = 'WIN! +$' + fmt(winnings);
-      }
-      showNews('Jackpot! Won $' + fmt(winnings) + ' on ' + game.name + '!');
-    } else {
-      SFX.lose();
-      if (resultEl) {
-        resultEl.style.color = 'var(--red)';
-        resultEl.textContent = 'LOST $' + fmt(wager);
-      }
-      showNews('Lost $' + fmt(wager) + ' on ' + game.name + '. The house always wins.');
-    }
-
-    b.cash = Math.round(b.cash * 100) / 100;
-    save(function() { renderWalletBar(); renderGambling(); });
-  }
-
-  // ===== Deposit / Withdraw =====
+    // ===== Deposit / Withdraw =====
   // Re-read state from storage to get freshest coins value before any
   // transfer.  Prevents race conditions when the popup modifies coins
   // while the brokerage tab is open.
@@ -1201,14 +1168,82 @@
   };
 
   // ===== Render all =====
+  // v3.23.138: Limit Orders UI
+  function renderLimitOrders() {
+    var b = getB();
+    var el = document.getElementById('limitOrdersList');
+    if (!el) return;
+    if (!b.ownedUpgrades || !b.ownedUpgrades.limitOrders) {
+      el.innerHTML = '<div style="color:var(--text-dim);font-size:11px;text-align:center;padding:20px;">Purchase the Limit Orders upgrade to unlock this feature.</div>';
+      return;
+    }
+    var html = '';
+    // Active limit orders
+    if (b.limitOrders && b.limitOrders.length > 0) {
+      html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:var(--text-dim);margin-bottom:8px;">ACTIVE LIMIT ORDERS</div>';
+      b.limitOrders.forEach(function(order, idx) {
+        var curPrice = b.prices[order.assetId] || 0;
+        var pctAway = curPrice > 0 ? Math.round(((curPrice - order.targetPrice) / curPrice) * 100) : 0;
+        html += '<div style="padding:8px;margin-bottom:6px;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;">';
+        html += '<span style="color:var(--green);">BUY ' + order.qty + ' ' + esc(order.assetId) + '</span>';
+        html += ' at <span style="color:var(--gold);">$' + fmt(order.targetPrice) + '</span>';
+        html += ' <span style="color:var(--text-dim);font-size:10px;">(now $' + fmt(curPrice) + ', ' + pctAway + '% away)</span>';
+        html += ' <button class="trade-btn sell cancel-limit-btn" data-idx="' + idx + '" style="float:right;font-size:9px;padding:2px 8px;">CANCEL</button>';
+        html += '</div>';
+      });
+    }
+    // New limit order form
+    var allAssets = [{label:'Stocks',items:['AAPL','NVEX','MRDN','CSTL','GRNV','QBIT']},{label:'Crypto',items:['BTC','ETH']}];
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:var(--text-dim);margin:12px 0 8px;">NEW LIMIT ORDER</div>';
+    html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">';
+    html += '<select id="limitAsset" class="trade-input" style="width:auto;padding:4px;">';
+    allAssets.forEach(function(group) {
+      html += '<optgroup label="' + group.label + '">';
+      group.items.forEach(function(id) { html += '<option value="' + id + '">' + id + ' ($' + fmt(b.prices[id] || 0) + ')</option>'; });
+      html += '</optgroup>';
+    });
+    html += '</select>';
+    html += '<input id="limitQty" class="trade-input" type="number" min="1" value="1" style="width:50px;" placeholder="Qty">';
+    html += '<span style="color:var(--text-dim);font-size:10px;">@</span>';
+    html += '<input id="limitPrice" class="trade-input" type="number" min="0.01" step="0.5" style="width:70px;" placeholder="Price">';
+    html += '<button id="placeLimitBtn" class="trade-btn buy" style="font-size:9px;padding:4px 10px;">PLACE ORDER</button>';
+    html += '</div>';
+    el.innerHTML = html;
+    // Wire cancel buttons
+    el.querySelectorAll('.cancel-limit-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var idx = parseInt(btn.dataset.idx);
+        if (b.limitOrders && idx < b.limitOrders.length) {
+          b.limitOrders.splice(idx, 1);
+          save(function() { renderLimitOrders(); });
+        }
+      };
+    });
+    // Wire place button
+    var placeBtn = document.getElementById('placeLimitBtn');
+    if (placeBtn) {
+      placeBtn.onclick = function() {
+        var assetId = document.getElementById('limitAsset').value;
+        var qty = parseInt(document.getElementById('limitQty').value) || 1;
+        var price = parseFloat(document.getElementById('limitPrice').value);
+        if (!price || price <= 0) { showNews('Enter a valid target price.'); return; }
+        if (qty < 1) { showNews('Quantity must be at least 1.'); return; }
+        b.limitOrders.push({ assetId: assetId, qty: qty, targetPrice: price, placedAt: Date.now() });
+        SFX.click();
+        showNews('Limit order placed: BUY ' + qty + ' ' + assetId + ' at $' + price.toFixed(2));
+        save(function() { renderLimitOrders(); });
+      };
+    }
+  }
+
   function renderAll() {
     var steps = [
       ['WalletBar', renderWalletBar],
       ['Stocks', renderStocks],
       ['Funds', renderFunds],
       ['Bonds', renderBonds],
+      ['Limit Orders', renderLimitOrders],
       ['Crypto', renderCrypto],
-      ['Gambling', renderGambling],
       ['Portfolio', renderPortfolio],
       ['Upgrades', renderUpgrades]
     ];

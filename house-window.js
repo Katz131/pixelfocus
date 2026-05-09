@@ -546,6 +546,613 @@
     }
   };
 
+  
+    // =========================================================================
+    // Additional pet states: sick, sleeping, eating, excited, angry,
+    // working, dancing, scared + food bowl (full/empty)
+    // =========================================================================
+    PET_SPRITES.cat.sick = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#ff6b00','#ff6b00','#ff6b00','#ff6b00','#ff6b00','#ff6b00','transparent'],
+      ['transparent','#ff9f43','#88cc44','#ff6b00','#ff6b00','#88cc44','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff6b00','#ff6b00','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#88cc44','#88cc44','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.sleeping = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#cc7a2e','#ff9f43','#ff9f43','#cc7a2e','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.eating = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ffffff','#ff9f43','#ff9f43','#f5f0eb','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff4500','#ff4500','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#ff6347','#ff6347','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.excited = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ffd700','#ff9f43','#ff9f43','#ffd700','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff4500','#ff4500','#ff4500','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#ff6347','#ff6347','#ff6347','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.angry = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#cc7a2e','#ff9f43','#ff9f43','#cc7a2e','#ff9f43','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff4444','#ff9f43','#ff9f43','#ff4444','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#cc7a2e','#cc7a2e','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.working = [
+      ['transparent','transparent','#ffa500','#ffd700','#ffd700','#ffa500','transparent','transparent'],
+      ['transparent','#ffd700','#ff9f43','#ffd700','#ffd700','#ff9f43','#ffd700','transparent'],
+      ['transparent','#ff9f43','#ffa500','#ffa500','#ffa500','#ffa500','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ffffff','#ff9f43','#ff9f43','#ffffff','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#ff6b9d','#ff6b9d','#8B5E3C','#c0c0c0','#c0c0c0'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#8B5E3C','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#8B5E3C','transparent','transparent']
+    ];
+    PET_SPRITES.cat.dancing = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ffffff','#ff9f43','#ff9f43','#f5f0eb','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#ff6b9d','#ff6b9d','#ff9f43','transparent','transparent'],
+      ['#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.scared = [
+      ['transparent','transparent','#ffa500','transparent','transparent','#ffa500','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ffffff','#ff9f43','#ff9f43','#ffffff','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ffffff','#ff9f43','#ff9f43','#ffffff','#ff9f43','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','#333333','#333333','#ff9f43','transparent','transparent'],
+      ['transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent'],
+      ['transparent','transparent','#ff9f43','transparent','transparent','#ff9f43','transparent','transparent']
+    ];
+    PET_SPRITES.cat.bowl_full = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#ffa500','#ffa500','#ffa500','#ffa500','transparent','transparent'],
+      ['transparent','#8B5E3C','#ffa500','#ffa500','#ffa500','#ffa500','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.cat.bowl_empty = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.dog.sick = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#6b4530','#6b4530','#6b4530','#6b4530','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#88cc44','#6b4530','#6b4530','#88cc44','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#6b4530','#6b4530','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#88cc44','#88cc44','#8B5E3C','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.sleeping = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#6b4530','#8B5E3C','#8B5E3C','#6b4530','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.eating = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ffffff','#8B5E3C','#8B5E3C','#f5f0eb','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#ff4500','#ff4500','#8B5E3C','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#ff6347','#ff6347','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.excited = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ffd700','#8B5E3C','#8B5E3C','#ffd700','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#ff4500','#ff4500','#ff4500','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#ff6347','#ff6347','#ff6347','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.angry = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#6b4530','#8B5E3C','#8B5E3C','#6b4530','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ff4444','#8B5E3C','#8B5E3C','#ff4444','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#6b4530','#6b4530','#8B5E3C','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.working = [
+      ['transparent','#8B5E3C','#8B5E3C','#ffd700','#ffd700','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#ffd700','#8B5E3C','#ffd700','#ffd700','#8B5E3C','#ffd700','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ffffff','#8B5E3C','#8B5E3C','#ffffff','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#a0764e','#ff6b9d','#ff6b9d','#333333','#c0c0c0','#c0c0c0'],
+      ['transparent','#8B5E3C','#a0764e','#8B5E3C','#8B5E3C','#333333','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','#333333','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.dancing = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ffffff','#8B5E3C','#8B5E3C','#f5f0eb','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#ff6b9d','#ff6b9d','#8B5E3C','transparent','transparent'],
+      ['#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C'],
+      ['#8B5E3C','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','#8B5E3C']
+    ];
+    PET_SPRITES.dog.scared = [
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','transparent','transparent','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ffffff','#8B5E3C','#8B5E3C','#ffffff','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#ffffff','#8B5E3C','#8B5E3C','#ffffff','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#333333','#333333','#8B5E3C','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','transparent','transparent','transparent','transparent','#8B5E3C','transparent']
+    ];
+    PET_SPRITES.dog.bowl_full = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#ffa500','#ff9f43','#ffa500','#ff9f43','transparent','transparent'],
+      ['transparent','#8B5E3C','#ff9f43','#ffa500','#ffb64c','#ffa500','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.dog.bowl_empty = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.blob.sick = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#3a3abf','#3a3abf','#3a3abf','#3a3abf','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#88cc44','#3a3abf','#3a3abf','#88cc44','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#3a3abf','#3a3abf','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#88cc44','#88cc44','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.sleeping = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#3a3abf','#6b6bff','#6b6bff','#3a3abf','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.eating = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#ffffff','#6b6bff','#6b6bff','#f5f0eb','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#ff4500','#ff4500','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#ff6347','#ff6347','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.excited = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#ffd700','#6b6bff','#6b6bff','#ffd700','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#ff4500','#ff4500','#ff4500','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#ff6347','#ff6347','#ff6347','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.angry = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#3a3abf','#6b6bff','#6b6bff','#3a3abf','#6b6bff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#ff4444','#6b6bff','#6b6bff','#ff4444','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#3a3abf','#3a3abf','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.working = [
+      ['transparent','transparent','transparent','#ffd700','#ffd700','transparent','transparent','transparent'],
+      ['transparent','transparent','#ffd700','#ffd700','#ffd700','#ffd700','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#ffffff','#6b6bff','#6b6bff','#ffffff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#ff6b9d','#ff6b9d','#8B5E3C','#c0c0c0','#c0c0c0'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#8B5E3C','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#8B5E3C','transparent','transparent']
+    ];
+    PET_SPRITES.blob.dancing = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#ffffff','#6b6bff','#6b6bff','#f5f0eb','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#ff6b9d','#ff6b9d','#6b6bff','transparent','transparent'],
+      ['#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.scared = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#ffffff','#6b6bff','#6b6bff','#ffffff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#ffffff','#6b6bff','#6b6bff','#ffffff','#6b6bff','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#333333','#333333','#6b6bff','transparent','transparent'],
+      ['transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent'],
+      ['transparent','transparent','#6b6bff','#6b6bff','#6b6bff','#6b6bff','transparent','transparent']
+    ];
+    PET_SPRITES.blob.bowl_full = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#9932cc','#6b6bff','#9932cc','#6b6bff','transparent','transparent'],
+      ['transparent','#8B5E3C','#6b6bff','#9932cc','#6b6bff','#9932cc','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.blob.bowl_empty = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.sick = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#00c9a7','#44ff44','#44ff44','#44ff44','#44ff44','transparent','transparent'],
+      ['transparent','#00c9a7','#88cc44','#44ff44','#44ff44','#88cc44','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#44ff44','#44ff44','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ffa500','#ffa500','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.sleeping = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','#00c9a7','#009b82','#00c9a7','#00c9a7','#009b82','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#00f0c8','#00f0c8','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ffa500','#ffa500','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.eating = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','#00c9a7','#ffffff','#00c9a7','#00c9a7','#f5f0eb','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#00f0c8','#00f0c8','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ff4500','#ff4500','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','#00c9a7','#ff6347','#ff6347','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.excited = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','#00c9a7','#ffd700','#00c9a7','#00c9a7','#ffd700','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#ff4500','#ff4500','#ff4500','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ff6347','#ff6347','#ff6347','transparent','transparent'],
+      ['transparent','transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.angry = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#009b82','#00c9a7','#00c9a7','#009b82','#00c9a7','transparent','transparent'],
+      ['transparent','#00c9a7','#ff4444','#00c9a7','#00c9a7','#ff4444','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#00f0c8','#00f0c8','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ffa500','#ffa500','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.working = [
+      ['transparent','transparent','transparent','#ffd700','#ffd700','transparent','transparent','transparent'],
+      ['transparent','transparent','#ffd700','#ffd700','#ffd700','#ffd700','transparent','transparent'],
+      ['transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','#00c9a7','#ffffff','#00c9a7','#00c9a7','#ffffff','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00c9a7','#00f0c8','#00f0c8','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ffa500','#ffa500','#8B5E3C','#c0c0c0','#c0c0c0'],
+      ['transparent','transparent','#00c9a7','#00c9a7','#00c9a7','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','#8B5E3C','transparent','transparent']
+    ];
+    PET_SPRITES.bird.dancing = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','#00c9a7','#ffffff','#00c9a7','#00c9a7','#f5f0eb','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#00f0c8','#00f0c8','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ffa500','#ffa500','#00c9a7','transparent','transparent'],
+      ['#00c9a7','transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','#00c9a7'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.scared = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent'],
+      ['transparent','#00c9a7','#ffffff','#00c9a7','#00c9a7','#ffffff','transparent','transparent'],
+      ['transparent','#00c9a7','#ffffff','#00c9a7','#00c9a7','#ffffff','#00c9a7','transparent'],
+      ['transparent','#ffeb3b','#00f0c8','#00f0c8','#00f0c8','#00f0c8','#ffeb3b','transparent'],
+      ['transparent','transparent','#00c9a7','#ffa500','#ffa500','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','#00c9a7','#00c9a7','#00c9a7','#00c9a7','transparent','transparent'],
+      ['transparent','transparent','transparent','#00c9a7','#00c9a7','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.bowl_full = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#ffeb3b','#ffd700','#ffeb3b','#ffd700','transparent','transparent'],
+      ['transparent','#8B5E3C','#ffd700','#ffeb3b','#ffd700','#ffeb3b','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bird.bowl_empty = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.sick = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#aaaaaa','#aaaaaa','#aaaaaa','#aaaaaa','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#558833','#aaaaaa','#aaaaaa','#558833','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#aaaaaa','#aaaaaa','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff6b9d','#ff6b9d','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.sleeping = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#ffffff','#ffffff','#ffffff','#ffffff','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#ffffff','#ffffff','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff6b9d','#ff6b9d','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.eating = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#ffffff','#e8e0d8','#e8e0d8','#ffffff','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff4500','#ff4500','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff6347','#ff6347','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.excited = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#ffd700','#e8e0d8','#e8e0d8','#ffd700','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#ff4500','#ff4500','#ff4500','#e8e0d8','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff6347','#ff6347','#ff6347','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.angry = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#cc3300','#e8e0d8','#e8e0d8','#cc3300','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff6b9d','#ff6b9d','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.working = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#ffd700','#ffd700','#e8e0d8','transparent','transparent'],
+      ['transparent','#ffd700','#e8e0d8','#ffd700','#ffd700','#e8e0d8','#ffd700','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#ffffff','#e8e0d8','#e8e0d8','#ffffff','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#8B5E3C','#c0c0c0','#c0c0c0'],
+      ['transparent','transparent','#e8e0d8','#ff6b9d','#ff6b9d','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#8B5E3C','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.dancing = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#ffffff','#e8e0d8','#e8e0d8','#ffffff','#e8e0d8','transparent'],
+      ['transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent'],
+      ['#e8e0d8','transparent','#e8e0d8','#ff6b9d','#ff6b9d','#e8e0d8','transparent','#e8e0d8'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.scared = [
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','transparent','transparent','#e8e0d8','transparent','transparent'],
+      ['transparent','#e8e0d8','#333333','#e8e0d8','#e8e0d8','#333333','#e8e0d8','transparent'],
+      ['transparent','#333333','#333333','#ffffff','#ffffff','#333333','#333333','transparent'],
+      ['transparent','#e8e0d8','#333333','#ffffff','#ffffff','#333333','#e8e0d8','transparent'],
+      ['transparent','transparent','#e8e0d8','#ff6b9d','#ff6b9d','#e8e0d8','transparent','transparent'],
+      ['transparent','transparent','#e8e0d8','#e8e0d8','#e8e0d8','#e8e0d8','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.bowl_full = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#ff9f43','#ff9f43','#ff9f43','#ff9f43','transparent','transparent'],
+      ['transparent','#8B5E3C','#ff9f43','#ffb64c','#ffb64c','#ff9f43','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.bunny.bowl_empty = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.sick = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#558833','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.sleeping = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.eating = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#44ff44','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#ff4500','#ff4500','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','#ff6347','#ff6347','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.excited = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#ffd700','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#ff4500','#ff4500','#ff4500','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','#ff6347','#ff6347','#ff6347','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.angry = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#cc3300','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.working = [
+      ['transparent','transparent','#ffd700','#ffd700','transparent','transparent','transparent','transparent'],
+      ['transparent','#ffd700','#ffd700','#ffd700','#ffd700','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#ffffff','#5bc0eb','#8B5E3C','#c0c0c0','#c0c0c0','#5bc0eb'],
+      ['transparent','#5bc0eb','#5bc0eb','#5bc0eb','#8B5E3C','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#8B5E3C','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.dancing = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#5bc0eb','#44ff44','#5bc0eb','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','#5bc0eb','#5bc0eb','transparent'],
+      ['#5bc0eb','transparent','transparent','transparent','transparent','transparent','transparent','#5bc0eb'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.scared = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#ffffff','#5bc0eb','#5bc0eb','transparent','#5bc0eb','transparent'],
+      ['transparent','#ffffff','#000000','#ffffff','#5bc0eb','#5bc0eb','transparent','#5bc0eb'],
+      ['transparent','#5bc0eb','#ffffff','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','#5bc0eb','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.bowl_full = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','#88cc44','#ffd700','#88cc44','#ffd700','transparent','transparent'],
+      ['transparent','#8B5E3C','#ffd700','#88cc44','#ffd700','#88cc44','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+    PET_SPRITES.fish.bowl_empty = [
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent'],
+      ['transparent','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','transparent'],
+      ['transparent','#8B5E3C','#a0764e','#a0764e','#a0764e','#a0764e','#8B5E3C','transparent'],
+      ['transparent','transparent','#8B5E3C','#a0764e','#a0764e','#8B5E3C','transparent','transparent'],
+      ['transparent','transparent','transparent','#8B5E3C','#8B5E3C','transparent','transparent','transparent'],
+      ['transparent','transparent','transparent','transparent','transparent','transparent','transparent','transparent']
+    ];
+
+
   // Draw a pet sprite onto a canvas at a given pixel size
   function drawPetSprite(canvas, petType, mood, pxSize) {
     if (!canvas || !petType || !PET_SPRITES[petType]) return;

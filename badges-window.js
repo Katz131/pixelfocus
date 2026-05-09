@@ -293,6 +293,30 @@
     { id: 'social_150', cat: 'social', name: 'Small Following', icon: '📢', desc: '150 friends. You have a legitimate following.', req: {"type": "friends", "count": 150} },
     { id: 'social_250', cat: 'social', name: 'Micro-Celebrity', icon: '🎬', desc: '250 friends. A quarter-thousand people connected to you.', req: {"type": "friends", "count": 250} },
     { id: 'social_500', cat: 'social', name: 'Social Phenomenon', icon: '🌊', desc: '500 friends. Half a thousand connections. You ARE the community.', req: {"type": "friends", "count": 500} },
+
+    // --- Quests ---
+    { id: 'quest_1', cat: 'quests', name: 'First Quest', icon: '⚔️', desc: 'You completed your first daily quest.', req: {"type": "questsCompleted", "count": 1} },
+    { id: 'quest_5', cat: 'quests', name: 'Questbound', icon: '🗡️', desc: '5 quests completed.', req: {"type": "questsCompleted", "count": 5} },
+    { id: 'quest_10', cat: 'quests', name: 'Quest Regular', icon: '🛡️', desc: '10 quests done. Double digits!', req: {"type": "questsCompleted", "count": 10} },
+    { id: 'quest_25', cat: 'quests', name: 'Quest Veteran', icon: '🏹', desc: '25 quests completed.', req: {"type": "questsCompleted", "count": 25} },
+    { id: 'quest_50', cat: 'quests', name: 'Questmaster', icon: '🧭', desc: '50 quests completed!', req: {"type": "questsCompleted", "count": 50} },
+    { id: 'quest_100', cat: 'quests', name: 'Century Quester', icon: '👑', desc: '100 quests completed.', req: {"type": "questsCompleted", "count": 100} },
+    { id: 'quest_250', cat: 'quests', name: 'Quest Legend', icon: '🔥', desc: '250 quests completed.', req: {"type": "questsCompleted", "count": 250} },
+    { id: 'quest_500', cat: 'quests', name: 'Quest Titan', icon: '⚡', desc: '500 quests completed!', req: {"type": "questsCompleted", "count": 500} },
+    { id: 'quest_1000', cat: 'quests', name: 'Thousand Quests', icon: '🌋', desc: '1,000 quests completed.', req: {"type": "questsCompleted", "count": 1000} },
+    { id: 'quest_streak_3', cat: 'quests', name: 'Three-Quest Run', icon: '🔥', desc: '3-day quest streak.', req: {"type": "questStreak", "count": 3} },
+    { id: 'quest_streak_7', cat: 'quests', name: 'Weekly Quest Warrior', icon: '🏆', desc: '7-day quest streak.', req: {"type": "questStreak", "count": 7} },
+    { id: 'quest_streak_14', cat: 'quests', name: 'Fortnight Quester', icon: '💪', desc: '14-day quest streak.', req: {"type": "questStreak", "count": 14} },
+    { id: 'quest_streak_30', cat: 'quests', name: 'Monthly Quest Master', icon: '🌟', desc: '30-day quest streak.', req: {"type": "questStreak", "count": 30} },
+    { id: 'quest_streak_60', cat: 'quests', name: 'Quest Machine', icon: '🧠', desc: '60-day quest streak.', req: {"type": "questStreak", "count": 60} },
+    { id: 'quest_streak_90', cat: 'quests', name: 'Quarter Quest', icon: '🏅', desc: '90-day quest streak.', req: {"type": "questStreak", "count": 90} },
+    { id: 'quest_streak_180', cat: 'quests', name: 'Half-Year Quester', icon: '🌍', desc: '180-day quest streak.', req: {"type": "questStreak", "count": 180} },
+    { id: 'quest_streak_365', cat: 'quests', name: 'Perfect Quest Year', icon: '🏛️', desc: '365-day quest streak.', req: {"type": "questStreak", "count": 365} },
+    { id: 'quest_ambitious_1', cat: 'quests', name: 'First Ambitious', icon: '💎', desc: 'Completed your first ambitious quest.', req: {"type": "questsAmbitious", "count": 1} },
+    { id: 'quest_ambitious_10', cat: 'quests', name: 'Risk Taker', icon: '👿', desc: '10 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 10} },
+    { id: 'quest_ambitious_25', cat: 'quests', name: 'Ambitious Regular', icon: '🚀', desc: '25 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 25} },
+    { id: 'quest_ambitious_50', cat: 'quests', name: 'Ambitious Veteran', icon: '⚡', desc: '50 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 50} },
+    { id: 'quest_ambitious_100', cat: 'quests', name: 'Ambitious Legend', icon: '🔥', desc: '100 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 100} },
   ];
 
   var CAT_LABELS = {
@@ -300,6 +324,7 @@
     focus:    { title: '🎯 FOCUS',    cls: 'focus' },
     social:   { title: '👥 SOCIAL',   cls: 'social' },
     mastery:  { title: '⚔️ MASTERY', cls: 'mastery' },
+    quests:   { title: '⚔️ QUESTS',  cls: 'quests' },
     creative: { title: '🎨 CREATIVE', cls: 'creative' },
     business: { title: '💼 BUSINESS', cls: 'business' }
   };
@@ -359,6 +384,9 @@
       }
     }
     var marketEvents = state.marketEventsWeathered || 0;
+    var questsCompleted = state.questsCompletedLifetime || 0;
+    var questStreak = state.questStreak || 0;
+    var questsAmbitious = state.questsAmbitiousCompleted || 0;
 
     ALL_BADGES.forEach(function(b) {
       if (earned.indexOf(b.id) !== -1) return;
@@ -390,6 +418,9 @@
         case 'marketEvents':      met = marketEvents >= r.count; break;
         case 'loomSales':         met = galleryCount >= r.count; break;
         case 'loomSalesCoins':    met = loomSalesCoins >= r.count; break;
+        case 'questsCompleted':   met = questsCompleted >= r.count; break;
+        case 'questStreak':       met = questStreak >= r.count; break;
+        case 'questsAmbitious':   met = questsAmbitious >= r.count; break;
       }
 
       if (met) {
@@ -428,7 +459,7 @@
     }
 
     // Group by category
-    var cats = ['sleep', 'focus', 'social', 'mastery', 'creative', 'business'];
+    var cats = ['sleep', 'focus', 'social', 'mastery', 'quests', 'creative', 'business'];
     cats.forEach(function(cat) {
       var badges = ALL_BADGES.filter(function(b) { return b.cat === cat; });
       if (badges.length === 0) return;
@@ -483,6 +514,47 @@
     });
   }
 
+
+  // ===== Category tab filtering =====
+  var activeCat = 'all';
+  var catTabs = document.querySelectorAll('.cat-tab');
+  catTabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      catTabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      activeCat = tab.getAttribute('data-cat');
+      // Show/hide sections
+      var sections = document.querySelectorAll('#badgeContent .section');
+      sections.forEach(function(sec) {
+        if (activeCat === 'all') {
+          sec.style.display = '';
+        } else {
+          // Check if this section's title has the matching class
+          var title = sec.querySelector('.section-title');
+          if (title && title.classList.contains(activeCat)) {
+            sec.style.display = '';
+          } else {
+            sec.style.display = 'none';
+          }
+        }
+      });
+    });
+  });
+
+
+  function applyTabFilter() {
+    if (activeCat === 'all') return;
+    var sections = document.querySelectorAll('#badgeContent .section');
+    sections.forEach(function(sec) {
+      var title = sec.querySelector('.section-title');
+      if (title && title.classList.contains(activeCat)) {
+        sec.style.display = '';
+      } else {
+        sec.style.display = 'none';
+      }
+    });
+  }
+
   // ===== Nav =====
   function openWindow(path) {
     try {
@@ -498,6 +570,7 @@
   chrome.storage.local.get('pixelFocusState', function(result) {
     state = result.pixelFocusState || {};
     render();
+    applyTabFilter();
   });
 
   // Live sync
@@ -505,5 +578,6 @@
     if (area !== 'local' || !changes.pixelFocusState) return;
     state = changes.pixelFocusState.newValue || {};
     render();
+    applyTabFilter();
   });
 })();

@@ -794,6 +794,9 @@ try {
     questCompleted: false,      // true if today's quest is done
     questStreak: 0,             // consecutive days completing a quest
     questLongestStreak: 0,      // best quest streak ever
+    questsCompletedLifetime: 0, // total quests completed (for badges)
+    questsSteadyCompleted: 0,   // steady quests completed lifetime
+    questsAmbitiousCompleted: 0,// ambitious quests completed lifetime
     questDoubleTextile: false,  // if true, next session awards 2x textiles
     _questTilesLit: 0,          // number of tiles lit for current quest (for detecting new ones)
     sleepDurMin: 480,               // sleep duration in minutes (default 8h)
@@ -1325,6 +1328,12 @@ try {
         if (state.totalBlocks && !state.totalLifetimeBlocks) state.totalLifetimeBlocks = state.totalBlocks;
         if (!state.unlockedColors) state.unlockedColors = ['#00ff88'];
         if (!state.totalLifetimeBlocks) state.totalLifetimeBlocks = 0;
+        // v3.23.144: One-time clear of stuck questDoubleTextile flag
+        if (!state._fixDoubleTextile145) {
+          state._fixDoubleTextile145 = true;
+          state.questDoubleTextile = false;
+        }
+
         // v3.23.110: Compute real lifetimeSessions from focusHistory.
         if (!state._sessionBackfill110) {
           state._sessionBackfill110 = true;
@@ -3958,8 +3967,32 @@ try {
     renderWeeklyFocus();
     renderDoNowBanner();
     try { renderQuestUI(); } catch (_rqe) { console.warn('[Quest] render error:', _rqe); }
+    try { renderQuestBonusBadge(); } catch (_) {}
     refreshTrackerBriefBadge();
     attachHoverSounds();
+
+    // GUARD 1: Version monotonicity check — detect version rollbacks
+    (function _versionGuard() {
+      try {
+        var manifest = chrome.runtime.getManifest();
+        var currentVer = manifest.version; // e.g. "3.23.127"
+        var lastVer = state._lastKnownVersion || '0.0.0';
+        var _cmpVer = function(a, b) {
+          var pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+          for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+            var va = pa[i] || 0, vb = pb[i] || 0;
+            if (va > vb) return 1;
+            if (va < vb) return -1;
+          }
+          return 0;
+        };
+        if (_cmpVer(currentVer, lastVer) < 0) {
+          console.error('[VERSION GUARD] ROLLBACK DETECTED! Current: ' + currentVer + ', Last known: ' + lastVer + '. This should never happen.');
+        }
+        state._lastKnownVersion = currentVer;
+        save();
+      } catch (_vge) { console.warn('[VERSION GUARD] error:', _vge); }
+    })();
   }
 
   // v3.19.17: show/hide the Ratiocinatory nav tile based on the unlock
@@ -5718,8 +5751,15 @@ try {
   //
   // v3.19.11: extracted from beginActualSession so popup reloads can
   // re-attach the tick without starting a fresh session.
+  // v3.23.132: Guard against the completion path firing more than once.
+  // The storage ping-pong between app.js and background.js could cause
+  // re-entry into the "remaining <= 0" branch, playing the completion
+  // sound repeatedly and calling showFocusConfirmation multiple times.
+  var _sessionCompletionFired = false;
+
   function armTimerTick() {
     if (timerInterval) clearInterval(timerInterval);
+    _sessionCompletionFired = false; // reset for new session
     var lastRenderedSec = state.timerRemaining || -1;
     timerInterval = setInterval(() => {
       try {
@@ -5730,8 +5770,6 @@ try {
         if (remaining > 0) {
           if (remaining !== state.timerRemaining) {
             state.timerRemaining = remaining;
-            // Play a minute tick only when we actually cross a minute
-            // boundary in wall-clock time, not just "every 60 ticks".
             if (lastRenderedSec > 0 && Math.floor(lastRenderedSec / 60) > Math.floor(remaining / 60)) {
               try { SFX.tick(); } catch (_) {}
             }
@@ -5743,6 +5781,9 @@ try {
         } else {
           clearInterval(timerInterval);
           timerInterval = null;
+          // v3.23.132: One-shot completion guard
+          if (_sessionCompletionFired) return;
+          _sessionCompletionFired = true;
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
           state.timerState = 'completed';
@@ -6887,7 +6928,7 @@ try {
           state.timerRemaining--;
           if (state.timerRemaining % 60 === 0 && state.timerRemaining > 0) SFX.tick();
           // v3.23.127: Refresh quest progress every minute during focus
-          if (state.timerRemaining % 60 === 0) { try { renderQuestUI(); checkQuestCompletion(); } catch(_) {} }
+          // Quest progress checked by standalone 30s interval, not here
           save();
           renderTimer();
           renderBlockProgress();
@@ -7200,6 +7241,7 @@ try {
     if (state.questDoubleTextile) {
       sessionTextiles *= 2;
       state.questDoubleTextile = false;
+      state.questDoubleTextileUsed = true;
       notify('\u2728 Double Textiles! (quest reward)', '#ffd700');
     }
 
@@ -7249,8 +7291,21 @@ try {
     state.sessionBlocks++; // still counts 1 session regardless of haul
     state.lifetimeSessions = (state.lifetimeSessions || 0) + 1;
     if (typeof marketYield !== 'undefined') state.lastMarketYield = marketYield;
-    state.lifetimeSessions = (state.lifetimeSessions || 0) + 1;
-    if (typeof marketYield !== 'undefined') state.lastMarketYield = marketYield;
+    // v3.23.137: Advance treasury bonds on focus session completion
+    try {
+      if (state.brokerage && Array.isArray(state.brokerage.activeBonds)) {
+        var _bondsMatured = 0;
+        for (var _bi = 0; _bi < state.brokerage.activeBonds.length; _bi++) {
+          var _bond = state.brokerage.activeBonds[_bi];
+          _bond.sessionsElapsed = (_bond.sessionsElapsed || 0) + 1;
+          if (_bond.sessionsElapsed >= _bond.sessionsNeeded) _bondsMatured++;
+        }
+        if (_bondsMatured > 0) {
+          notify(_bondsMatured + ' bond' + (_bondsMatured > 1 ? 's' : '') + ' matured! Check brokerage to collect.', '#ffd700');
+        }
+        console.log('[BONDS] Ticked ' + state.brokerage.activeBonds.length + ' active bonds, ' + _bondsMatured + ' matured');
+      }
+    } catch(_be) { console.error('[BONDS] tick error:', _be); }
     // Drain the resource pools by the amount actually produced. This
     // call also fires depletion milestone chat lines and may flip the
     // ledger reveal on factory.html.
@@ -10476,6 +10531,25 @@ try {
               } else {
                 _lines += '<br><span style="color:' + _profitColor + ';">-$' + Math.abs(_profit).toFixed(1) + ' per unit loss</span>';
               }
+              // v3.23.137: Actionable tips when yield is poor
+              if (_yld < 1.0) {
+                var _tips = [];
+                if (_demand < 35) _tips.push('Low demand (' + _demand + '%) — try lowering your price to attract more buyers');
+                if (_margin < 15 && _demand >= 35) _tips.push('Thin margins — invest in factory upgrades to cut production costs');
+                if (_profit < 0) _tips.push('Selling below cost! Drop price for volume or upgrade factories to lower costs');
+                if (_yld < 0.5 && _tips.length === 0) _tips.push('Yield is very low — experiment with different price points on the market slider');
+                if (_tips.length > 0) {
+                  _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,107,107,0.1);border-left:2px solid #ff6b6b;border-radius:3px;font-size:10px;color:#ffaa88;text-align:left;">';
+                  _lines += '<span style="color:#ff6b6b;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">TIP</span><br>';
+                  _lines += _tips[0];
+                  _lines += '</div>';
+                }
+              } else if (_yld >= 1.5) {
+                _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(0,255,136,0.1);border-left:2px solid #00ff88;border-radius:3px;font-size:10px;color:#88ffbb;text-align:left;">';
+                _lines += '<span style="color:#00ff88;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">NICE</span><br>';
+                _lines += 'Strong yield! Your pricing is in the sweet spot.';
+                _lines += '</div>';
+              }
               _lines += '</div>';
 
               _mktInfoEl.innerHTML = _lines;
@@ -10857,7 +10931,11 @@ try {
       case 'beforeDeadlineFocus':
         if (!quest.deadline) return 0;
         var now = Date.now();
-        if (now > quest.deadline) return 0;
+        if (now > quest.deadline) {
+          // Deadline passed — but if user earned enough focus, don't erase it.
+          // Late completion detection shouldn't punish the player.
+          return todayMin >= quest.target ? todayMin : 0;
+        }
         return todayMin;
       case 'noFailStreak':
         if (state._questFailedToday) return 0;
@@ -10873,20 +10951,39 @@ try {
       state.questDate = ''; // force regen
       state.questChosen = null;
       state.questCompleted = false;
+      state.questDoubleTextileUsed = false;
     }
     // v3.23.126: Force regen — deadline quests now require real focus time
     if (state.questDate === today && state.questSteady && !state._questPoolV126) {
       state.questDate = '';
       state.questChosen = null;
       state.questCompleted = false;
+      state.questDoubleTextileUsed = false;
       state._questPoolV126 = true;
     }
     // v3.23.127: Force re-pick — quest swap now uses overlay
     if (state.questDate === today && state.questChosen && !state._questSwapV127) {
       state.questChosen = null;
       state.questCompleted = false;
+      state.questDoubleTextileUsed = false;
       state._questTilesLit = 0;
       state._questSwapV127 = true;
+    }
+    // v3.23.132: Force reset questCompleted so the 10s interval can award properly.
+    // Previous versions had the one-shot OUTSIDE the IIFE (inaccessible), so
+    // rewards were never actually given. Reset so the periodic check fires fresh.
+    if (!state._questResetV132) {
+      state._questResetV132 = true;
+      if (state.questCompleted && state.questChosen) {
+        var awardAge = Date.now() - (state._questAwardedAt || 0);
+        if (!state._questAwardedAt || awardAge > 86400000) {
+          console.log('[QUEST v132] Resetting stale questCompleted — reward was never awarded.');
+          state.questCompleted = false;
+      state.questDoubleTextileUsed = false;
+          state._questAwardedAt = 0;
+        }
+      }
+      save();
     }
     if (state.questDate === today && state.questSteady && state.questAmbitious) return;
 
@@ -10949,6 +11046,7 @@ try {
     };
     state.questChosen = null;
     state.questCompleted = false;
+      state.questDoubleTextileUsed = false;
     state._questTilesLit = 0;
     save();
   }
@@ -10962,6 +11060,112 @@ try {
       if (current >= quest.tiles[i].at) lit++;
     }
     return lit;
+  }
+
+
+  // v3.23.134: Quest completion celebration — full-screen overlay showing what
+  // you earned and where it goes. Triggered by checkQuestCompletion.
+  function showQuestCelebration(quest) {
+    var overlay = $('questCelebOverlay');
+    if (!overlay) return;
+    var isSteady = state.questChosen === 'steady';
+    var accent = isSteady ? '#4ecdc4' : '#ff6b9d';
+
+    // Icon
+    var iconEl = $('questCelebIcon');
+    if (iconEl) iconEl.textContent = isSteady ? '\u2694\uFE0F' : '\u{1F525}';
+
+    // Description
+    var descEl = $('questCelebDesc');
+    if (descEl) descEl.textContent = quest.desc;
+
+    // Rewards breakdown
+    var rewEl = $('questCelebRewards');
+    if (rewEl) {
+      rewEl.innerHTML = '';
+      var rewards = quest.rewards || {};
+
+      if (rewards.coins) {
+        var coinRow = document.createElement('div');
+        coinRow.style.cssText = 'display:flex;align-items:center;gap:10px;background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.3);border-radius:8px;padding:10px 20px;min-width:240px;';
+        coinRow.innerHTML = '<span style="font-size:24px;">\u{1F4B0}</span>'
+          + '<div style="text-align:left;">'
+          + '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#ffd700;">+$' + rewards.coins.toLocaleString() + '</div>'
+          + '<div style="font-family:\'Courier New\',monospace;font-size:9px;color:var(--text-dim);margin-top:2px;">added to your wallet</div>'
+          + '</div>';
+        rewEl.appendChild(coinRow);
+      }
+
+      if (rewards.xp) {
+        var xpRow = document.createElement('div');
+        xpRow.style.cssText = 'display:flex;align-items:center;gap:10px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.3);border-radius:8px;padding:10px 20px;min-width:240px;';
+        xpRow.innerHTML = '<span style="font-size:24px;">\u2B50</span>'
+          + '<div style="text-align:left;">'
+          + '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#a855f7;">+' + rewards.xp + ' XP</div>'
+          + '<div style="font-family:\'Courier New\',monospace;font-size:9px;color:var(--text-dim);margin-top:2px;">toward your next level</div>'
+          + '</div>';
+        rewEl.appendChild(xpRow);
+      }
+
+      if (rewards.doubleTextile) {
+        var texRow = document.createElement('div');
+        texRow.style.cssText = 'display:flex;align-items:center;gap:10px;background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.3);border-radius:8px;padding:10px 20px;min-width:240px;';
+        texRow.innerHTML = '<span style="font-size:24px;">\u{1F9F6}</span>'
+          + '<div style="text-align:left;">'
+          + '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4ecdc4;">2x TEXTILES</div>'
+          + '<div style="font-family:\'Courier New\',monospace;font-size:9px;color:var(--text-dim);margin-top:2px;">your next focus session pays double</div>'
+          + '</div>';
+        rewEl.appendChild(texRow);
+      }
+    }
+
+    // Streak
+    var streakEl = $('questCelebStreak');
+    if (streakEl) {
+      var qs = state.questStreak || 0;
+      if (qs > 0) {
+        streakEl.textContent = 'quest streak: ' + qs + ' day' + (qs !== 1 ? 's' : '') + ' \u{1F525}';
+        streakEl.style.color = qs >= 7 ? '#ffd700' : qs >= 3 ? '#ff9966' : 'var(--text-dim)';
+      } else {
+        streakEl.textContent = '';
+      }
+    }
+
+    // Dismiss button
+    var dismissBtn = $('questCelebDismiss');
+    if (dismissBtn) {
+      dismissBtn.onclick = function() {
+        overlay.style.opacity = '0';
+        setTimeout(function() { overlay.style.display = 'none'; }, 500);
+      };
+    }
+
+    // Show with fade-in
+    overlay.style.display = 'flex';
+    requestAnimationFrame(function() {
+      overlay.style.opacity = '1';
+    });
+
+    // Particles
+    try { _spawnCelebParticles($('questCelebParticles'), 40); } catch(_) {}
+
+    // Victory sound — ascending fanfare
+    try {
+      _celebNote(523, 0.2, 0, 0.12);
+      _celebNote(659, 0.2, 0.15, 0.12);
+      _celebNote(784, 0.2, 0.3, 0.12);
+      _celebChord([1047, 784, 659], 0.6, 0.45, 0.10);
+    } catch(_) {}
+  }
+
+  // v3.23.135: Show/hide the 2x textiles badge near the timer.
+  // Also retroactively applies the doubleTextile reward if the quest
+  // completed but the flag was never set (broken versions 127-131).
+  function renderQuestBonusBadge() {
+    var badge = $('questBonusBadge');
+    if (!badge) return;
+    // Retroactive fix removed in v3.23.143 — was causing infinite re-apply loop.
+    badge.style.display = state.questDoubleTextile ? 'block' : 'none';
   }
 
   function checkQuestCompletion() {
@@ -10991,7 +11195,15 @@ try {
 
     if (done && !state.questCompleted) {
       state.questCompleted = true;
+      state._questAwardedAt = Date.now(); // prevent re-award on save failure
       state._questTilesLit = quest.tiles ? quest.tiles.length : 0;
+      // v3.23.136: Increment lifetime quest counters (for badges)
+      state.questsCompletedLifetime = (state.questsCompletedLifetime || 0) + 1;
+      if (state.questChosen === 'steady') {
+        state.questsSteadyCompleted = (state.questsSteadyCompleted || 0) + 1;
+      } else if (state.questChosen === 'ambitious') {
+        state.questsAmbitiousCompleted = (state.questsAmbitiousCompleted || 0) + 1;
+      }
       if (quest.rewards.coins) awardCoins(quest.rewards.coins, 'Daily quest: ' + quest.desc);
       if (quest.rewards.xp) {
         state.xp = (state.xp || 0) + quest.rewards.xp;
@@ -11000,12 +11212,20 @@ try {
         state.questDoubleTextile = true;
       }
       save();
-      notify('⚔ QUEST COMPLETE: ' + quest.desc + ' (+$' + (quest.rewards.coins || 0) + ', +' + (quest.rewards.xp || 0) + ' XP' + (quest.rewards.doubleTextile ? ', 2x TEXTILES next session' : '') + ')', '#ffd700');
+      // v3.23.134: Show the full celebration overlay instead of a tiny banner
+      try { showQuestCelebration(quest); } catch(e) { console.error('[QUEST] celebration error:', e); }
       try { SFX.levelUp(); } catch(_) {}
-      renderQuestUI();
+      // v3.23.132: Do NOT call renderQuestUI() here — it's called by render()
+      // which runs on the next timer tick or state change. Calling it here
+      // risks re-entrant loops.
+      console.log('[QUEST] ✓ Completion detected and rewards awarded.');
+      // Update the 2x textiles badge near the timer
+      try { renderQuestBonusBadge(); } catch(_) {}
     } else {
-      save();
-      renderQuestUI();
+      // v3.23.132: Don't save or render on every check — only when something changed
+      if (nowLit > prevLit) {
+        save();
+      }
     }
   }
 
@@ -11045,12 +11265,21 @@ try {
     if (!quest) return;
 
     var current = _getQuestCurrent(quest);
+    // If quest is already completed, always show full progress (don't let
+    // _getQuestCurrent return 0 after a deadline and break the display)
+    if (state.questCompleted && current < quest.target) current = quest.target;
     quest.current = current;
     var isSteady = state.questChosen === 'steady';
     var accentColor = isSteady ? '#4ecdc4' : '#ff6b9d';
     var accentBg = isSteady ? '#4ecdc4' : '#ff6b9d';
 
-    // Build tile grid HTML
+    // Build tile grid HTML — only rebuild if progress changed (prevents animation restart)
+    var _questLitNow = _countLitTiles(quest);
+    var _questLastRenderedLit = card.getAttribute('data-lit') | 0;
+    var _questLastCompleted = card.getAttribute('data-done') === '1';
+    var _needsRebuild = (_questLitNow !== _questLastRenderedLit) || (state.questCompleted !== _questLastCompleted) || !card.getAttribute('data-lit');
+    card.setAttribute('data-lit', _questLitNow);
+    card.setAttribute('data-done', state.questCompleted ? '1' : '0');
     var tileGrid = $('questTileGrid');
     var questDesc = $('questActiveDesc');
     var questTier = $('questActiveTier');
@@ -11066,8 +11295,14 @@ try {
     if (questDesc) { questDesc.textContent = quest.desc; questDesc.title = quest.tipDesc || ''; }
 
     // Deadline countdown
+    // v3.23.133: If quest is COMPLETED, hide the deadline or show success — never show
+    // "deadline passed" on a completed quest. That's demoralizing in the wrong way.
     if (deadlineEl) {
-      if (quest.deadline && quest.deadline > 0) {
+      if (state.questCompleted) {
+        deadlineEl.textContent = '\u2694 QUEST COMPLETE!';
+        deadlineEl.style.display = 'block';
+        deadlineEl.style.color = '#ffd700';
+      } else if (quest.deadline && quest.deadline > 0) {
         var remaining = quest.deadline - Date.now();
         if (remaining > 0) {
           var dh = Math.floor(remaining / 3600000);
@@ -11077,7 +11312,7 @@ try {
           deadlineEl.style.display = 'block';
           deadlineEl.style.color = remaining < 600000 ? '#ff4444' : '#ff9966';
         } else {
-          deadlineEl.textContent = 'deadline passed';
+          deadlineEl.textContent = 'deadline passed \u2014 quest failed';
           deadlineEl.style.display = 'block';
           deadlineEl.style.color = '#ff4444';
         }
@@ -11086,8 +11321,8 @@ try {
       }
     }
 
-    // Render tiles
-    if (tileGrid) {
+    // Render tiles — only rebuild if lit count or completion changed
+    if (tileGrid && _needsRebuild) {
       tileGrid.innerHTML = '';
       var tiles = quest.tiles || [];
       for (var ti = 0; ti < tiles.length; ti++) {
@@ -11570,17 +11805,32 @@ try {
       startTabRotationTimer();
 
       // Live sync from other tabs (gallery)
+      // v3.23.132: DEBOUNCED — skip render() while timer is running to prevent
+      // storage ping-pong loop (timer tick saves every second, which triggers
+      // this listener, which calls render(), which could trigger more saves).
+      // The timer tick already handles rendering during active sessions.
+      var _storageSyncTimer = null;
       chrome.storage.onChanged.addListener(function(changes, area) {
         if (area === 'local' && changes.pixelFocusState) {
           var newState = changes.pixelFocusState.newValue;
           if (newState) {
-            // preserve in-flight timer interval state
-            var wasRunning = state.timerState === 'running';
-            state = Object.assign({}, DEFAULT_STATE, newState);
-            if (wasRunning && state.timerState !== 'running') {
-              // gallery shouldn't pause our timer
+            // While timer is running, only merge specific fields from
+            // other pages (gallery saves, etc.) — do NOT overwrite state
+            // or call render(). The tick loop handles that.
+            if (state.timerState === 'running' || state.timerState === 'countdown') {
+              // Merge only non-timer fields that other pages might write
+              if (newState.focusHistory) {
+                state.focusHistory = newState.focusHistory;
+              }
+              return; // Do NOT render — timer tick handles it
             }
-            render();
+            // Not in a timer session — safe to do a full sync
+            if (_storageSyncTimer) clearTimeout(_storageSyncTimer);
+            _storageSyncTimer = setTimeout(function() {
+              _storageSyncTimer = null;
+              state = Object.assign({}, DEFAULT_STATE, newState);
+              render();
+            }, 300); // 300ms debounce
           }
         }
       });
@@ -11619,11 +11869,54 @@ try {
           openPFWindow('morning-checkin.html');
         } catch (_) {}
       }, 1500);
+      // v3.23.132: Periodic quest completion check — runs every 10s during the session.
+      // checkQuestCompletion is defined inside the IIFE so it has access to state,
+      // _getQuestCurrent, awardCoins, save, etc. The old one-shot was outside the IIFE
+      // and silently failed every time.
+      // Also does an immediate check 3s after load for quests already met.
+      // v3.23.136: Comprehensive startup quest check.
+      // 1. If quest is complete but rewards weren't fully applied, fix them.
+      // 2. If quest is not complete, run checkQuestCompletion.
+      // 3. Ensure lifetime counters are accurate.
+      setTimeout(function() {
+        try {
+          if (state.questCompleted && state.questChosen) {
+            var q = state.questChosen === 'steady' ? state.questSteady : state.questAmbitious;
+            if (q && q.rewards) {
+              var fixed = false;
+              // v3.23.145: doubleTextile retroactive fix removed (caused infinite re-apply loop)
+              // Ensure lifetime counter was incremented
+              if (!state._questCountedV136) {
+                // Can't know if it was already counted, but if questsCompletedLifetime is 0
+                // and quest is complete, it definitely wasn't counted.
+                if ((state.questsCompletedLifetime || 0) === 0) {
+                  state.questsCompletedLifetime = 1;
+                  if (state.questChosen === 'steady') state.questsSteadyCompleted = (state.questsSteadyCompleted || 0) + 1;
+                  if (state.questChosen === 'ambitious') state.questsAmbitiousCompleted = (state.questsAmbitiousCompleted || 0) + 1;
+                  fixed = true;
+                }
+                state._questCountedV136 = true;
+              }
+              if (fixed) {
+                save();
+                try { renderQuestBonusBadge(); } catch(_) {}
+              }
+            }
+          }
+          checkQuestCompletion();
+        } catch(e) { console.error('[QUEST] startup check error:', e); }
+      }, 3000);
+      setInterval(function() {
+        try {
+          if (!state.questChosen || state.questCompleted) return;
+          checkQuestCompletion();
+        } catch(e) { console.error('[QUEST] periodic check error:', e); }
+      }, 10000);
 
     // v3.23.100: Badge check on popup open — celebrate new badges
     setTimeout(function() {
       try {
-                var BADGE_DEFS = {'early_bird_1':{icon:'🐤',name:'Early Bird',desc:'You went to bed on time 5 nights. Your sleep schedule is taking shape!'},'sleep_warrior':{icon:'🛡️',name:'Sleep Warrior',desc:'10 nights of hitting the pillow on schedule. That takes real discipline.'},'dream_weaver':{icon:'🌀',name:'Dream Weaver',desc:'15 nights on time. You\'re building a genuine bedtime habit.'},'night_master':{icon:'🌙',name:'Night Master',desc:'25 nights on time. Most people can\'t do this for a week — you did it 25 times.'},'sleep_sage':{icon:'🧘',name:'Sleep Sage',desc:'40 nights of keeping your bedtime commitment. Your body clock thanks you.'},'lunar_legend':{icon:'🌕',name:'Lunar Legend',desc:'60 nights on time. That\'s two solid months of sleep discipline.'},'rest_royalty':{icon:'👑',name:'Rest Royalty',desc:'90 nights on time — a full quarter of the year spent sleeping right.'},'eternal_dreamer':{icon:'💫',name:'Eternal Dreamer',desc:'150 nights on time. You\'ve made good sleep a core part of who you are.'},'sleep_deity':{icon:'✨',name:'Sleep Deity',desc:'200 nights! Sleep isn\'t a chore for you anymore — it\'s a lifestyle.'},'year_of_rest':{icon:'📅',name:'Year of Rest',desc:'365 nights on time. An entire year of keeping your bedtime promise.'},'sleep_olympian':{icon:'🏅',name:'Sleep Olympian',desc:'500 nights! You could teach a masterclass on sleep discipline.'},'sleep_transcendent':{icon:'🌌',name:'Transcendent Sleeper',desc:'750 nights on time. At this point your circadian rhythm runs like a Swiss watch.'},'millennium_sleeper':{icon:'🏛️',name:'Millennium Sleeper',desc:'1,000 nights on time. A thousand bedtimes honored. Absolutely legendary.'},'streak_sleep_3':{icon:'🌟',name:'Three-Peat',desc:'You went to bed on time 3 nights in a row without breaking the chain.'},'streak_sleep_5':{icon:'✋',name:'Handful of Dreams',desc:'5 consecutive nights of on-time sleep. The streak is getting real.'},'streak_sleep_7':{icon:'😴',name:'Week of Zzz',desc:'A full week of going to bed on time every single night.'},'streak_sleep_14':{icon:'🌃',name:'Fortnight Dreamer',desc:'Two straight weeks of perfect bedtimes. That\'s a real routine now.'},'streak_sleep_21':{icon:'🧠',name:'Habit Formed',desc:'21 nights in a row — they say it takes 21 days to form a habit.'},'streak_sleep_30':{icon:'🌑',name:'Monthly Moon',desc:'A full month of unbroken bedtime discipline. Not one slip.'},'streak_sleep_45':{icon:'🦾',name:'Sleep Centurion',desc:'45 nights straight. Your willpower is genuinely impressive.'},'streak_sleep_60':{icon:'🌆',name:'Two-Month Twilight',desc:'Two months without missing a single bedtime. Iron discipline.'},'streak_sleep_90':{icon:'🌅',name:'Quarter Dreamer',desc:'90 nights in a row. A full quarter of flawless sleep commitment.'},'streak_sleep_120':{icon:'🌎',name:'Unwavering Night',desc:'120 consecutive nights on time. Four months of bedtime perfection.'},'streak_sleep_180':{icon:'🎶',name:'Half-Year Harmony',desc:'Half a year of never once breaking your bedtime streak.'},'streak_sleep_270':{icon:'🌸',name:'Nine-Month Nirvana',desc:'270 nights straight. Nine months of unbroken sleep discipline.'},'streak_sleep_365':{icon:'🏆',name:'Perfect Sleep Year',desc:'You went to bed on time every single night for an entire year. Unbelievable.'},'pillow_pro':{icon:'🛌',name:'Pillow Professional',desc:'You confirmed your bedtime 3 days running. The pillow knows your name now.'},'no_phone_zone':{icon:'📵',name:'No Phone Zone',desc:'10 bedtime commitments made. You\'re taking screen-free sleep seriously.'},'melatonin_machine':{icon:'💊',name:'Melatonin Machine',desc:'50 nights of on-time sleep. Your brain\'s sleep chemistry is dialed in.'},'first_focus':{icon:'🧵',name:'First Thread',desc:'You started a focus timer and actually finished it. That\'s the hardest step!'},'five_sessions':{icon:'🌱',name:'Getting Started',desc:'5 focus sessions completed. You\'re getting the hang of deep work.'},'ten_sessions':{icon:'🏃',name:'Shuttle Runner',desc:'10 sessions done. You\'ve spent real, distraction-free time on what matters.'},'twentyfive_sess':{icon:'🎖️',name:'Quarter Century',desc:'25 focus sessions in the books. You\'re building serious momentum.'},'fifty_sessions':{icon:'⚙️',name:'Loom Veteran',desc:'50 sessions completed. Half a hundred times you chose focus over distraction.'},'century_focus':{icon:'💯',name:'Centurion',desc:'100 focus sessions! Triple digits. You\'re a certified focus machine.'},'focus_250':{icon:'🧲',name:'Loom Addict',desc:'250 sessions. You keep coming back and putting in the work. Respect.'},'focus_500':{icon:'🔥',name:'Iron Will',desc:'500 focus sessions completed. That\'s hundreds of hours of deep work.'},'focus_1000':{icon:'🧨',name:'Thousand Threads',desc:'1,000 sessions. A thousand times you sat down and got things done.'},'focus_2500':{icon:'🦾',name:'Thread Titan',desc:'2,500 sessions. At this point, focusing is just what you do.'},'focus_5000':{icon:'🌀',name:'Five Thousand Fibers',desc:'5,000 focus sessions. This is beyond dedication — it\'s who you are.'},'focus_10000':{icon:'🌌',name:'Eternal Weaver',desc:'10,000 sessions completed. Malcolm Gladwell would be proud.'},'streak_3':{icon:'🎩',name:'Hat Trick',desc:'You came back and focused 3 days in a row. Consistency is everything.'},'streak_7':{icon:'📅',name:'Weekly Weaver',desc:'A full week of returning every day to focus. Seven for seven.'},'streak_14':{icon:'💪',name:'Fortnight Focus',desc:'Two straight weeks of daily focus sessions. You didn\'t skip a single day.'},'streak_21':{icon:'🎯',name:'Three-Week Weave',desc:'21 days in a row. You\'ve turned daily focus into an unshakable habit.'},'streak_30':{icon:'📆',name:'Monthly Master',desc:'30 consecutive days of focus. A full month of showing up every single day.'},'streak_60':{icon:'🥊',name:'Bimonthly Boss',desc:'60 days straight. Two months of daily, unbroken focus sessions.'},'streak_90':{icon:'👸',name:'Quarterly Queen',desc:'90 days in a row. A full quarter of daily commitment without a gap.'},'streak_180':{icon:'🦸',name:'Half-Year Hero',desc:'180 consecutive days. Half a year of never missing a day. Superhuman.'},'streak_365':{icon:'🏆',name:'Full Year Focus',desc:'You focused every single day for an entire year. 365 days. No breaks.'},'combo_3':{icon:'⚡',name:'Triple Threat',desc:'You completed 3 focus sessions back-to-back in one sitting. Warming up!'},'combo_5':{icon:'🖐️',name:'High Five',desc:'5 sessions in a row without stopping. You\'re in the zone.'},'combo_10':{icon:'⚡',name:'Combo King',desc:'A 10x combo! Ten consecutive sessions in one sitting. Deep flow state.'},'combo_15':{icon:'💥',name:'Combo Crusher',desc:'15 sessions chained together. You\'re locked in and unstoppable.'},'combo_20':{icon:'😈',name:'Combo Demon',desc:'20x combo. That\'s hours of uninterrupted, laser-focused work.'},'combo_25':{icon:'💎',name:'Quarter-Century Combo',desc:'25 sessions back-to-back. Your focus endurance is elite.'},'combo_50':{icon:'🚀',name:'Unstoppable',desc:'A 50x combo. Fifty consecutive focus sessions. That\'s almost inhuman.'},'combo_100':{icon:'🌟',name:'Combo Deity',desc:'100 sessions in a row. A hundred consecutive focus rounds. Absolute deity.'},'blocks_10':{icon:'⏰',name:'First Hour',desc:'You\'ve woven 10 textiles — that\'s over 1.5 hours of total focused time.'},'blocks_50':{icon:'💼',name:'Half-Day Hustler',desc:'50 textiles woven. You\'ve spent over 8 hours in deep focus overall.'},'blocks_100':{icon:'🧶',name:'Century Cloth',desc:'100 textiles! That\'s more than 16 hours of focused work across your sessions.'},'blocks_250':{icon:'📦',name:'Bolt Maker',desc:'250 textiles woven — over 41 hours of productive, focused time.'},'blocks_500':{icon:'🏰',name:'Loom Legend',desc:'500 textiles! You\'ve spent 83+ hours doing real, distraction-free work.'},'blocks_1000':{icon:'🏭',name:'Thousand Bolts',desc:'1,000 textiles woven. Over 166 hours of focused time. That\'s incredible.'},'blocks_2500':{icon:'🛠️',name:'Industrial Weaver',desc:'2,500 textiles — more than 416 hours of deep work. Over 17 full days.'},'blocks_5000':{icon:'🌍',name:'Textile Empire',desc:'5,000 textiles. 833+ hours focused. You\'ve spent over a month in flow.'},'blocks_10000':{icon:'🪐',name:'Ten Thousand Threads',desc:'10,000 textiles woven. 1,666+ hours. That\'s 69 full days of pure focus.'},'first_friend':{icon:'🤝',name:'Companion',desc:'You added your first friend. Now someone else can see your progress!'},'social_duo':{icon:'👯',name:'Dynamic Duo',desc:'You\'ve got 2 friends on the platform. Accountability partners engaged.'},'social_circle':{icon:'🫂',name:'Social Circle',desc:'3 friends connected. You\'re building a little focus community.'},'social_squad':{icon:'👪',name:'Squad Goals',desc:'5 friends! You\'ve got a proper squad keeping each other accountable.'},'social_popular':{icon:'😎',name:'Popular',desc:'7 friends on your list. People want to track progress alongside you.'},'social_influencer':{icon:'📱',name:'Influencer',desc:'10 friends! You\'re becoming a hub in the focus community.'},'social_celebrity':{icon:'🌟',name:'Celebrity',desc:'15 friends. Your profile is getting noticed.'},'social_famous':{icon:'📸',name:'Famous',desc:'20 friends connected. You\'re a well-known face around here.'},'social_icon':{icon:'👑',name:'Social Icon',desc:'25 friends! A quarter-hundred people are watching your journey.'},'social_mogul':{icon:'💎',name:'Social Mogul',desc:'50 friends. You\'ve built a genuine network of accountability partners.'},'profile_pic':{icon:'🎨',name:'Self-Portrait',desc:'You created a pixel art avatar and set it as your profile picture.'},'display_name':{icon:'🏷️',name:'Named',desc:'You chose a display name so friends can recognize you.'},'full_profile':{icon:'✅',name:'Complete Profile',desc:'You set both a display name and profile picture. Your identity is complete!'},'networker':{icon:'🌐',name:'Networker',desc:'You\'ve connected with 5 friends who have display names set up.'},'party_starter':{icon:'🎉',name:'Party Starter',desc:'3 friends joined! You started a little focus party.'},'hype_crew':{icon:'🥳',name:'Hype Crew',desc:'8 friends on board. Your hype crew is assembled.'},'social_butterfly':{icon:'🦋',name:'Social Butterfly',desc:'12 friends! You\'re connecting with people left and right.'},'guild_leader':{icon:'🏰',name:'Guild Leader',desc:'30 friends. You could run a whole guild at this point.'},'level_3':{icon:'🔰',name:'Beginner',desc:'You reached level 3. You\'ve earned enough XP from focus sessions to level up twice!'},'level_5':{icon:'📖',name:'Novice',desc:'Level 5! Every focus session earns XP, and you\'ve stacked up enough for 5 levels.'},'level_10':{icon:'📜',name:'Apprentice',desc:'Level 10 reached. Double digits — you\'re past the beginner stage.'},'level_15':{icon:'🎓',name:'Sophomore',desc:'Level 15. Your XP from completing focus sessions keeps climbing.'},'level_20':{icon:'🔧',name:'Skilled',desc:'Level 20! Each level takes more XP than the last, and you\'re still rising.'},'level_25':{icon:'🗡️',name:'Journeyman',desc:'Level 25. A quarter of the way to 100. The grind is real.'},'level_30':{icon:'🔮',name:'Adept',desc:'Level 30. Thirty levels of accumulated focus work. Impressive.'},'level_40':{icon:'🎖️',name:'Veteran',desc:'Level 40. The XP curve gets steeper but you keep pushing through.'},'level_50':{icon:'🏛️',name:'Master',desc:'Level 50! Halfway to the century mark. You\'ve earned massive XP.'},'level_60':{icon:'🧙',name:'Sage',desc:'Level 60. Most people never get here. You did.'},'level_75':{icon:'📕',name:'Elder',desc:'Level 75. Three-quarters of the way to 100. The summit is in sight.'},'level_100':{icon:'🌟',name:'Grandmaster',desc:'Level 100! Triple digits. You\'ve earned an enormous amount of XP from focus work.'},'level_125':{icon:'🏅',name:'Legend',desc:'Level 125. You blew past 100 and kept going. Legendary territory.'},'level_150':{icon:'🐉',name:'Mythic',desc:'Level 150. The XP required at this point is staggering.'},'level_200':{icon:'🔥',name:'Demigod',desc:'Level 200. Two hundred levels of accumulated focus mastery.'},'level_300':{icon:'🌋',name:'Titan',desc:'Level 300. At this level the XP requirements are astronomical. You earned every point.'},'level_500':{icon:'🪐',name:'Transcendent',desc:'Level 500. Five hundred levels. This might be the most impressive thing on your profile.'},'rich_100':{icon:'💵',name:'First Paycheck',desc:'You\'ve earned $100 total from completing focus sessions. First real payday!'},'rich_500':{icon:'🪙',name:'Pocket Change',desc:'You\'ve earned $500 lifetime. Focus sessions pay off — literally.'},'rich_1000':{icon:'💰',name:'First Fortune',desc:'$1,000 earned across all your focus sessions. Your first fortune.'},'rich_5000':{icon:'💳',name:'Five Grand',desc:'$5,000 lifetime earnings. Five grand from sheer productivity.'},'rich_10000':{icon:'💎',name:'Textile Mogul',desc:'$10,000 earned! Five figures of coins from focused work.'},'rich_25000':{icon:'🤑',name:'Quarter-Millionaire',desc:'$25,000 lifetime. A quarter of the way to six figures.'},'rich_50000':{icon:'🎰',name:'Money Machine',desc:'$50,000 earned. Halfway to $100K — all from focus sessions and productivity.'},'rich_100000':{icon:'🏦',name:'Six Figures',desc:'Six figures! $100,000 earned across your entire journey. Incredible.'},'rich_250000':{icon:'🏰',name:'Cloth Rothschild',desc:'$250,000 lifetime. A quarter million coins earned through discipline.'},'rich_500000':{icon:'💸',name:'Half-Millionaire',desc:'Half a million dollars earned. $500,000 from pure productivity.'},'rich_1000000':{icon:'👑',name:'Millionaire',desc:'One million dollars earned. $1,000,000. You are the definition of productivity.'},'hoard_1000':{icon:'📥',name:'Saver',desc:'You\'re holding $1,000 in your wallet right now without spending it.'},'hoard_5000':{icon:'🧰',name:'Thrifty',desc:'$5,000 saved up at once. You\'re resisting the urge to spend.'},'hoard_10000':{icon:'🥚',name:'Nest Egg',desc:'$10,000 sitting in your wallet. That\'s serious self-control.'},'hoard_25000':{icon:'📦',name:'War Chest',desc:'$25,000 hoarded. You could buy a lot of upgrades but you\'re saving.'},'hoard_50000':{icon:'🐲',name:'Dragon Hoard',desc:'$50,000 in the bank at once. Are you saving for something big?'},'hoard_100000':{icon:'🦳',name:'Scrooge',desc:'$100,000 held at once. Six figures in the wallet. Maximum restraint.'},'hoard_500000':{icon:'🔒',name:'Vault Keeper',desc:'Half a million dollars in your wallet right now. What are you saving for?!'},'gallery_1':{icon:'🖼️',name:'First Masterpiece',desc:'You saved your first pixel art creation to the gallery. Your first masterpiece!'},'gallery_3':{icon:'🎨',name:'Small Exhibition',desc:'3 artworks saved. You\'re starting a small collection.'},'gallery_5':{icon:'🖼️',name:'Gallery Opening',desc:'5 pieces in the gallery. You\'re becoming a regular pixel artist.'},'gallery_10':{icon:'🧑‍🎨',name:'Curator',desc:'10 artworks saved! Your gallery is filling up with your creations.'},'gallery_25':{icon:'🏛️',name:'Art Collector',desc:'25 pieces of pixel art saved. You\'ve got a proper art collection.'},'gallery_50':{icon:'🏟️',name:'Museum Director',desc:'50 artworks! Your gallery could fill a small museum.'},'gallery_100':{icon:'🌍',name:'Louvre Rival',desc:'100 artworks saved. A century of pixel art creations. Incredible output.'},'gallery_250':{icon:'🎨',name:'Prolific Painter',desc:'250 pieces! You\'re one of the most prolific pixel artists on the platform.'},'canvas_12':{icon:'📐',name:'Bigger Canvas',desc:'You upgraded to a 12x12 canvas — 44% more pixels to work with!'},'canvas_16':{icon:'🎂',name:'Sweet Sixteen',desc:'16x16 canvas unlocked! Four times the area of the starter canvas.'},'canvas_24':{icon:'🖼️',name:'Full Frame',desc:'24x24 canvas! That\'s 576 pixels — nine times the original.'},'canvas_32':{icon:'📺',name:'High Resolution',desc:'32x32 canvas unlocked. Now you can create truly detailed pixel art.'},'canvas_48':{icon:'🖥️',name:'Ultra Canvas',desc:'48x48 canvas! 2,304 pixels. Massive creative space.'},'canvas_64':{icon:'🤩',name:'Pixel Perfectionist',desc:'64x64 canvas unlocked. The biggest canvas available. 4,096 pixels of pure creativity.'},'dye_1':{icon:'🌈',name:'Color Curious',desc:'You invested in dye research level 1. New colors and cheaper canvas upgrades!'},'dye_3':{icon:'🎨',name:'Color Theory',desc:'Dye research level 3. Your color palette is expanding nicely.'},'dye_5':{icon:'🧪',name:'Master Dyer',desc:'Dye research level 5. You\'re becoming a true color specialist.'},'dye_8':{icon:'🪄',name:'Chromatic Wizard',desc:'Dye research level 8. Your palette is getting exotic.'},'dye_10':{icon:'🌌',name:'Spectrum Lord',desc:'Max dye research! You\'ve unlocked the full spectrum of available colors.'},'first_sale':{icon:'💲',name:'First Sale',desc:'You sold a canvas creation for the first time. You\'re an artist AND a businessperson.'},'first_hire':{icon:'👤',name:'First Hire',desc:'You hired your first employee! They\'ll help you earn passive income over time.'},'small_team':{icon:'👥',name:'Small Team',desc:'Employee level 2. Your small team is growing.'},'growing_team':{icon:'📈',name:'Growing Company',desc:'Employee level 3. You\'re running a real operation now.'},'department':{icon:'🏢',name:'Department Head',desc:'Employee level 4. You\'ve got a proper department working for you.'},'corporation':{icon:'🏢',name:'Corporation',desc:'Employee level 5. Your workforce is a legitimate corporation.'},'enterprise':{icon:'🌍',name:'Enterprise',desc:'Employee level 7. You\'re running a full enterprise operation.'},'conglomerate':{icon:'🏰',name:'Conglomerate',desc:'Employee level 10. Maximum workforce. You\'re a textile conglomerate.'},'broker_unlocked':{icon:'📉',name:'Wall Street',desc:'You unlocked the stock brokerage! You can now buy and sell stocks.'},'first_stock':{icon:'💹',name:'First Investment',desc:'You bought your first stock. Welcome to the market!'},'diversified':{icon:'📊',name:'Diversified',desc:'You own 3 different stocks. Smart — diversification reduces risk.'},'portfolio_5':{icon:'📋',name:'Portfolio Pro',desc:'5 different stocks in your portfolio. You\'re a well-diversified investor.'},'survived_crash':{icon:'💥',name:'Crash Survivor',desc:'You lived through a market crash event. Your portfolio took a hit but you survived.'},'canvas_buyer_2':{icon:'🛒',name:'Canvas Shopper',desc:'You\'ve purchased 2 different canvas sizes. More space for art!'},'canvas_buyer_3':{icon:'🛒',name:'Canvas Collector',desc:'3 canvas sizes purchased. You\'re investing in your creative tools.'},'canvas_buyer_5':{icon:'🛒',name:'Canvas Mogul',desc:'5 canvas sizes purchased! You\'ve got canvases for every occasion.'},'sales_100':{icon:'💵',name:'Art Dealer',desc:'You\'ve earned $100 from selling your pixel art creations.'},'sales_500':{icon:'🏠',name:'Gallery Owner',desc:'$500 from art sales. Your creations are worth real (virtual) money.'},'sales_1000':{icon:'🏛️',name:'Art Empire',desc:'$1,000 earned from loom sales. Your art business is thriving.'},'sales_5000':{icon:'🏟️',name:'Auction House',desc:'$5,000 from selling artwork. You\'re running a profitable gallery.'},'sales_10000':{icon:'💎',name:'Art Magnate',desc:'$10,000 from art sales alone. You\'ve built an art empire.'},'blocks_25':{icon:'🧵',name:'Quarter Bolt',desc:'25 textiles woven — that\'s over 4 hours of total focused time.'},'blocks_750':{icon:'🏵️',name:'Master Weaver',desc:'750 textiles! You\'ve spent 125 hours in deep focus. Over 5 full days.'},'blocks_1500':{icon:'💰',name:'Textile Tycoon',desc:'1,500 textiles woven. 250 hours of focused work. That\'s ten full days.'},'blocks_3500':{icon:'🗿',name:'Cloth Colossus',desc:'3,500 textiles. 583 hours. You\'ve spent over 24 straight days focusing.'},'blocks_7500':{icon:'🏺',name:'Fiber Pharaoh',desc:'7,500 textiles. 1,250 hours focused. That\'s 52 full days of deep work.'},'combo_7':{icon:'🍀',name:'Lucky Seven',desc:'7 sessions in a row. You hit the lucky number without stopping.'},'combo_30':{icon:'📚',name:'Thirty Stack',desc:'30 consecutive sessions. You sat there and stacked thirty rounds of focus.'},'combo_75':{icon:'🏃‍♂️',name:'Marathon Mind',desc:'75 sessions chained. That\'s a mental marathon and then some.'},'focus_75':{icon:'🌙',name:'Three Quarters',desc:'75 focus sessions. Three-quarters of the way to your first hundred.'},'focus_150':{icon:'🎉',name:'Sesquicentennial',desc:'150 sessions completed. One hundred and fifty times you chose to focus.'},'focus_750':{icon:'🛡️',name:'Relentless',desc:'750 sessions. You just don\'t quit. Seven hundred and fifty rounds of work.'},'level_7':{icon:'🍀',name:'Lucky Level',desc:'Level 7! You\'ve earned enough XP from focus sessions to pass the lucky number.'},'level_35':{icon:'💼',name:'Mid-Career',desc:'Level 35. You\'re deep into the grind now. Serious XP accumulated.'},'level_90':{icon:'🏁',name:'Almost There',desc:'Level 90! Just ten more to the century. The finish line is so close.'},'level_175':{icon:'🦹',name:'Overlord',desc:'Level 175. You\'ve gone far beyond what most players will ever see.'},'level_250':{icon:'🌌',name:'Quarter Thousand',desc:'Level 250. A quarter of a thousand levels. The XP numbers are enormous.'},'level_400':{icon:'🪐',name:'Ascendant',desc:'Level 400. Four hundred levels earned through sheer focused work.'},'streak_sleep_10':{icon:'🌚',name:'Ten Straight',desc:'10 nights in a row of on-time sleep. Double-digit streak!'},'streak_sleep_50':{icon:'🌠',name:'Fifty Nights',desc:'50 consecutive nights on time. Almost two months without a slip.'},'sleep_75':{icon:'🌍',name:'Seventy-Five',desc:'75 total nights on time. Three-quarters of the way to a hundred.'},'sleep_100':{icon:'💯',name:'Century Sleeper',desc:'100 nights on time! Triple digits. You\'ve mastered your bedtime.'},'sleep_125':{icon:'🎓',name:'Sleep Scholar',desc:'125 nights of on-time sleep. You could write a thesis on discipline.'},'sleep_250':{icon:'🤴',name:'Sleep Monarch',desc:'250 nights on time. A quarter-thousand bedtimes honored.'},'sleep_400':{icon:'🏯',name:'Sleep Emperor',desc:'400 nights of keeping your bedtime promise. Over a year of discipline.'},'gallery_2':{icon:'🖌️',name:'Second Canvas',desc:'You saved a second artwork. The first wasn\'t a fluke!'},'gallery_15':{icon:'🏛️',name:'Mini Museum',desc:'15 artworks saved. You\'re curating a proper mini museum.'},'gallery_75':{icon:'🖼️',name:'Prolific Creator',desc:'75 pixel art pieces saved. Your creative output is impressive.'},'canvas_10':{icon:'📏',name:'First Upgrade',desc:'You upgraded to a 10x10 canvas. A little more room to express yourself!'},'social_trio':{icon:'👨‍👧‍👦',name:'The Trio',desc:'You, plus 3 friends. A proper trio of accountability partners.'},'social_crew_6':{icon:'🛶',name:'Full Crew',desc:'6 friends! You\'ve got a full crew rowing together.'},'social_army':{icon:'🛡️',name:'Small Army',desc:'40 friends. You\'ve assembled a small army of focused people.'},'sales_250':{icon:'🏪',name:'Art Merchant',desc:'You\'ve earned $250 from selling your pixel art creations.'},'sales_2500':{icon:'💰',name:'Canvas Capitalist',desc:'$2,500 earned from art sales. Your loom is a money-printing machine.'},'canvas_buyer_4':{icon:'📦',name:'Canvas Hoarder',desc:'4 canvas sizes purchased. You\'re collecting them like trading cards.'},'rich_2500':{icon:'🛋️',name:'Comfortable',desc:'$2,500 lifetime earnings. You\'re sitting pretty comfortably.'},'rich_75000':{icon:'💴',name:'Almost Six Figs',desc:'$75,000 earned. You\'re knocking on the door of six figures.'},'hoard_2500':{icon:'🐖',name:'Piggy Bank',desc:'$2,500 in your wallet at once. Your piggy bank is getting heavy.'},'hoard_75000':{icon:'🏦',name:'Fort Knox',desc:'$75,000 held at once. Your vault rivals Fort Knox.'},'hoard_250000':{icon:'💠',name:'Untouchable Wealth',desc:'$250,000 in the wallet. A quarter million sitting there. Unspent.'},'streak_5':{icon:'📚',name:'School Week',desc:'5 days in a row of coming back to focus. A full school week!'},'streak_10':{icon:'💪',name:'Ten-Day Tenacity',desc:'10 consecutive days of showing up. Double-digit dedication.'},'sleep_eternal_1500':{icon:'⚰️',name:'Eternal Rest',desc:'1,500 nights on time. Four years of keeping your bedtime promise. Unreal.'},'sleep_2000':{icon:'🌠',name:'Two Thousand Nights',desc:'2,000 bedtimes honored. Over five years of sleep discipline.'},'sleep_3000':{icon:'🕊️',name:'Sleep Immortal',desc:'3,000 nights on time. You are not a person — you are a sleep algorithm.'},'streak_sleep_500':{icon:'🗿',name:'Five Hundred Nights',desc:'500 nights in a row. Over 16 months without a single broken bedtime.'},'streak_sleep_730':{icon:'🏛️',name:'Two Perfect Years',desc:'730 consecutive nights on time. Two full years of unbroken discipline.'},'streak_sleep_1000':{icon:'🔱',name:'Thousand-Night Streak',desc:'One thousand consecutive nights. Nearly three years without missing one.'},'focus_15000':{icon:'🏔️',name:'Fifteen Thousand',desc:'15,000 sessions. You could have climbed Everest in the time you spent focusing.'},'focus_25000':{icon:'🪨',name:'Quarter-Hundred-K',desc:'25,000 sessions. Twenty-five thousand times you chose to sit down and work.'},'focus_50000':{icon:'🗻',name:'Fifty Thousand',desc:'50,000 focus sessions. This badge shouldn\'t exist. And yet here you are.'},'focus_100000':{icon:'🌋',name:'One Hundred Thousand',desc:'100,000 sessions. We genuinely did not think anyone would earn this.'},'streak_120':{icon:'🕯️',name:'Four-Month Flame',desc:'120 consecutive days. Four months of never missing a single day of focus.'},'streak_270':{icon:'🫃',name:'Nine-Month March',desc:'270 days straight. Nine months. You could have gestated a human.'},'streak_500':{icon:'🏺',name:'Five Hundred Days',desc:'500 consecutive days of daily focus. Over 16 months. Absurd.'},'streak_730':{icon:'📜',name:'Two-Year Streak',desc:'730 days in a row. Two full years of daily focus sessions. Inhuman.'},'streak_1000':{icon:'🔱',name:'Thousand-Day Streak',desc:'1,000 consecutive days. Nearly three years without missing one. Impossible made real.'},'streak_1461':{icon:'⚜️',name:'Four-Year Streak',desc:'1,461 days. Four full years. An entire presidential term of daily focus.'},'combo_150':{icon:'💫',name:'Combo Legend',desc:'150x combo. One hundred fifty sessions chained. You didn\'t eat or sleep, did you?'},'combo_200':{icon:'☄️',name:'Combo Immortal',desc:'200x combo. Two hundred consecutive sessions. The machine became sentient.'},'combo_500':{icon:'⛓️',name:'Five Hundred Chain',desc:'500 sessions back-to-back. If you\'re seeing this badge, we\'re concerned.'},'blocks_15000':{icon:'🏗️',name:'Fifteen K Textiles',desc:'15,000 textiles. 2,500 hours of focused time. Over 100 days of work.'},'blocks_25000':{icon:'🗽',name:'Twenty-Five Thousand',desc:'25,000 textiles. 4,166 hours. 173 full days of deep focus.'},'blocks_50000':{icon:'🌍',name:'Fifty Thousand Bolts',desc:'50,000 textiles. Over 8,300 hours. A full year of non-stop focus.'},'blocks_100000':{icon:'🪐',name:'Hundred K Textiles',desc:'100,000 textiles woven. We are not sure this is possible. Prove us wrong.'},'level_750':{icon:'🌋',name:'Three Quarter K',desc:'Level 750. The XP requirements at this level are genuinely staggering.'},'level_1000':{icon:'🏛️',name:'Level Thousand',desc:'Level 1,000. One thousand levels. If this game had a final boss, you\'d be it.'},'level_1500':{icon:'👁️',name:'Beyond Mortal',desc:'Level 1,500. We stopped writing level titles after 500 because we didn\'t think anyone would get here.'},'level_2000':{icon:'🔮',name:'Two Thousand',desc:'Level 2,000. This badge is a monument to patience. And possibly insanity.'},'rich_2000000':{icon:'💰',name:'Double Millionaire',desc:'$2,000,000 lifetime earnings. Two million from pure productivity.'},'rich_5000000':{icon:'🏝️',name:'Multi-Millionaire',desc:'$5,000,000 earned. Five million. You could buy a private island.'},'rich_10000000':{icon:'🛸',name:'Deca-Millionaire',desc:'$10,000,000 lifetime. Ten million coins earned through sheer discipline.'},'rich_50000000':{icon:'🌌',name:'Fifty Million',desc:'$50,000,000 earned. This is more money than some countries have.'},'rich_100000000':{icon:'🏰',name:'Hundred Million',desc:'$100,000,000. One. Hundred. Million. Coins.'},'hoard_1000000':{icon:'🐉',name:'Million in Pocket',desc:'One million coins in your wallet at once. Not lifetime — held simultaneously.'},'hoard_5000000':{icon:'🗝️',name:'Five Mil Hoard',desc:'$5,000,000 held at once. Your wallet weighs more than your principles.'},'hoard_10000000':{icon:'♾️',name:'Infinite Restraint',desc:'Ten million coins held simultaneously. You could buy everything. But you don\'t.'},'gallery_500':{icon:'🏭',name:'Art Factory',desc:'500 artworks saved. Half a thousand pieces of pixel art.'},'gallery_1000':{icon:'🌌',name:'Thousand Canvases',desc:'1,000 artworks saved. A thousand original pixel creations.'},'gallery_2500':{icon:'🎭',name:'Pixel Picasso',desc:'2,500 artworks. At this point you ARE the gallery.'},'sales_10':{icon:'💲',name:'Ten Sales',desc:'You sold 10 canvases. People actually want your art!'},'sales_25':{icon:'🏪',name:'Quarter Century Sales',desc:'25 canvases sold. You have an established art business.'},'sales_50':{icon:'🏬',name:'Fifty Sales',desc:'50 canvases sold. Your art is in demand.'},'sales_100_count':{icon:'🎪',name:'Century Sales',desc:'100 canvas sales. One hundred different pieces bought.'},'sales_250_count':{icon:'🏛️',name:'Gallery Tycoon',desc:'250 canvases sold. Your gallery has a waiting list.'},'sales_25000':{icon:'🏰',name:'Art Baron',desc:'$25,000 from art sales. Twenty-five grand from pixel art alone.'},'sales_50000':{icon:'🌍',name:'Art Tycoon',desc:'$50,000 from selling artwork. Your gallery is a serious business.'},'sales_100000':{icon:'💎',name:'Art Mogul',desc:'$100,000 from art sales alone. Six figures from pixel art. Legendary.'},'stocks_10':{icon:'📈',name:'Day Trader',desc:'You\'ve bought 10 stocks total. You\'re an active trader now.'},'stocks_25':{icon:'💻',name:'Trading Desk',desc:'25 stock purchases made. Your trading desk is busy.'},'stocks_50':{icon:'🏦',name:'Floor Trader',desc:'50 stock trades executed. You could work on Wall Street.'},'stocks_100':{icon:'🏢',name:'Hedge Fund',desc:'100 trades. You\'re running a one-person hedge fund.'},'market_events_3':{icon:'🌧️',name:'Weathered Investor',desc:'Survived 3 market events. Crashes, booms, bubbles — you\'ve seen them all.'},'market_events_5':{icon:'⚔️',name:'Battle-Scarred',desc:'5 market events endured. Your portfolio has the scars to prove it.'},'market_events_10':{icon:'🎖️',name:'Market Veteran',desc:'10 market events survived. You\'ve been through every kind of market.'},'market_events_25':{icon:'🛡️',name:'Market Immortal',desc:'25 market events. Nothing the market throws at you can break you.'},'portfolio_8':{icon:'📊',name:'Full Portfolio',desc:'8 different stocks owned simultaneously. Maximum diversification.'},'portfolio_10':{icon:'📋',name:'Index Fund',desc:'10 different stocks at once. You own a piece of everything.'},'employees_8':{icon:'🏗️',name:'Full Floor',desc:'Employee level 8. Your factory floor is packed.'},'canvas_buyer_6':{icon:'🎨',name:'Canvas Empire',desc:'6 canvas sizes purchased. You own every available size.'},'canvas_buyer_7':{icon:'🏆',name:'Complete Collection',desc:'7 canvas sizes purchased. You\'ve bought the full set.'},'social_75':{icon:'🗿',name:'Social Titan',desc:'75 friends! You\'re a social titan on the platform.'},'social_100':{icon:'💯',name:'Century Club',desc:'100 friends. One hundred people watching your journey.'},'social_150':{icon:'📢',name:'Small Following',desc:'150 friends. You have a legitimate following.'},'social_250':{icon:'🎬',name:'Micro-Celebrity',desc:'250 friends. A quarter-thousand people connected to you.'},'social_500':{icon:'🌊',name:'Social Phenomenon',desc:'500 friends. Half a thousand connections. You ARE the community.'}};
+                var BADGE_DEFS = {'early_bird_1':{icon:'🐤',name:'Early Bird',desc:'You went to bed on time 5 nights. Your sleep schedule is taking shape!'},'sleep_warrior':{icon:'🛡️',name:'Sleep Warrior',desc:'10 nights of hitting the pillow on schedule. That takes real discipline.'},'dream_weaver':{icon:'🌀',name:'Dream Weaver',desc:'15 nights on time. You\'re building a genuine bedtime habit.'},'night_master':{icon:'🌙',name:'Night Master',desc:'25 nights on time. Most people can\'t do this for a week — you did it 25 times.'},'sleep_sage':{icon:'🧘',name:'Sleep Sage',desc:'40 nights of keeping your bedtime commitment. Your body clock thanks you.'},'lunar_legend':{icon:'🌕',name:'Lunar Legend',desc:'60 nights on time. That\'s two solid months of sleep discipline.'},'rest_royalty':{icon:'👑',name:'Rest Royalty',desc:'90 nights on time — a full quarter of the year spent sleeping right.'},'eternal_dreamer':{icon:'💫',name:'Eternal Dreamer',desc:'150 nights on time. You\'ve made good sleep a core part of who you are.'},'sleep_deity':{icon:'✨',name:'Sleep Deity',desc:'200 nights! Sleep isn\'t a chore for you anymore — it\'s a lifestyle.'},'year_of_rest':{icon:'📅',name:'Year of Rest',desc:'365 nights on time. An entire year of keeping your bedtime promise.'},'sleep_olympian':{icon:'🏅',name:'Sleep Olympian',desc:'500 nights! You could teach a masterclass on sleep discipline.'},'sleep_transcendent':{icon:'🌌',name:'Transcendent Sleeper',desc:'750 nights on time. At this point your circadian rhythm runs like a Swiss watch.'},'millennium_sleeper':{icon:'🏛️',name:'Millennium Sleeper',desc:'1,000 nights on time. A thousand bedtimes honored. Absolutely legendary.'},'streak_sleep_3':{icon:'🌟',name:'Three-Peat',desc:'You went to bed on time 3 nights in a row without breaking the chain.'},'streak_sleep_5':{icon:'✋',name:'Handful of Dreams',desc:'5 consecutive nights of on-time sleep. The streak is getting real.'},'streak_sleep_7':{icon:'😴',name:'Week of Zzz',desc:'A full week of going to bed on time every single night.'},'streak_sleep_14':{icon:'🌃',name:'Fortnight Dreamer',desc:'Two straight weeks of perfect bedtimes. That\'s a real routine now.'},'streak_sleep_21':{icon:'🧠',name:'Habit Formed',desc:'21 nights in a row — they say it takes 21 days to form a habit.'},'streak_sleep_30':{icon:'🌑',name:'Monthly Moon',desc:'A full month of unbroken bedtime discipline. Not one slip.'},'streak_sleep_45':{icon:'🦾',name:'Sleep Centurion',desc:'45 nights straight. Your willpower is genuinely impressive.'},'streak_sleep_60':{icon:'🌆',name:'Two-Month Twilight',desc:'Two months without missing a single bedtime. Iron discipline.'},'streak_sleep_90':{icon:'🌅',name:'Quarter Dreamer',desc:'90 nights in a row. A full quarter of flawless sleep commitment.'},'streak_sleep_120':{icon:'🌎',name:'Unwavering Night',desc:'120 consecutive nights on time. Four months of bedtime perfection.'},'streak_sleep_180':{icon:'🎶',name:'Half-Year Harmony',desc:'Half a year of never once breaking your bedtime streak.'},'streak_sleep_270':{icon:'🌸',name:'Nine-Month Nirvana',desc:'270 nights straight. Nine months of unbroken sleep discipline.'},'streak_sleep_365':{icon:'🏆',name:'Perfect Sleep Year',desc:'You went to bed on time every single night for an entire year. Unbelievable.'},'pillow_pro':{icon:'🛌',name:'Pillow Professional',desc:'You confirmed your bedtime 3 days running. The pillow knows your name now.'},'no_phone_zone':{icon:'📵',name:'No Phone Zone',desc:'10 bedtime commitments made. You\'re taking screen-free sleep seriously.'},'melatonin_machine':{icon:'💊',name:'Melatonin Machine',desc:'50 nights of on-time sleep. Your brain\'s sleep chemistry is dialed in.'},'first_focus':{icon:'🧵',name:'First Thread',desc:'You started a focus timer and actually finished it. That\'s the hardest step!'},'five_sessions':{icon:'🌱',name:'Getting Started',desc:'5 focus sessions completed. You\'re getting the hang of deep work.'},'ten_sessions':{icon:'🏃',name:'Shuttle Runner',desc:'10 sessions done. You\'ve spent real, distraction-free time on what matters.'},'twentyfive_sess':{icon:'🎖️',name:'Quarter Century',desc:'25 focus sessions in the books. You\'re building serious momentum.'},'fifty_sessions':{icon:'⚙️',name:'Loom Veteran',desc:'50 sessions completed. Half a hundred times you chose focus over distraction.'},'century_focus':{icon:'💯',name:'Centurion',desc:'100 focus sessions! Triple digits. You\'re a certified focus machine.'},'focus_250':{icon:'🧲',name:'Loom Addict',desc:'250 sessions. You keep coming back and putting in the work. Respect.'},'focus_500':{icon:'🔥',name:'Iron Will',desc:'500 focus sessions completed. That\'s hundreds of hours of deep work.'},'focus_1000':{icon:'🧨',name:'Thousand Threads',desc:'1,000 sessions. A thousand times you sat down and got things done.'},'focus_2500':{icon:'🦾',name:'Thread Titan',desc:'2,500 sessions. At this point, focusing is just what you do.'},'focus_5000':{icon:'🌀',name:'Five Thousand Fibers',desc:'5,000 focus sessions. This is beyond dedication — it\'s who you are.'},'focus_10000':{icon:'🌌',name:'Eternal Weaver',desc:'10,000 sessions completed. Malcolm Gladwell would be proud.'},'streak_3':{icon:'🎩',name:'Hat Trick',desc:'You came back and focused 3 days in a row. Consistency is everything.'},'streak_7':{icon:'📅',name:'Weekly Weaver',desc:'A full week of returning every day to focus. Seven for seven.'},'streak_14':{icon:'💪',name:'Fortnight Focus',desc:'Two straight weeks of daily focus sessions. You didn\'t skip a single day.'},'streak_21':{icon:'🎯',name:'Three-Week Weave',desc:'21 days in a row. You\'ve turned daily focus into an unshakable habit.'},'streak_30':{icon:'📆',name:'Monthly Master',desc:'30 consecutive days of focus. A full month of showing up every single day.'},'streak_60':{icon:'🥊',name:'Bimonthly Boss',desc:'60 days straight. Two months of daily, unbroken focus sessions.'},'streak_90':{icon:'👸',name:'Quarterly Queen',desc:'90 days in a row. A full quarter of daily commitment without a gap.'},'streak_180':{icon:'🦸',name:'Half-Year Hero',desc:'180 consecutive days. Half a year of never missing a day. Superhuman.'},'streak_365':{icon:'🏆',name:'Full Year Focus',desc:'You focused every single day for an entire year. 365 days. No breaks.'},'combo_3':{icon:'⚡',name:'Triple Threat',desc:'You completed 3 focus sessions back-to-back in one sitting. Warming up!'},'combo_5':{icon:'🖐️',name:'High Five',desc:'5 sessions in a row without stopping. You\'re in the zone.'},'combo_10':{icon:'⚡',name:'Combo King',desc:'A 10x combo! Ten consecutive sessions in one sitting. Deep flow state.'},'combo_15':{icon:'💥',name:'Combo Crusher',desc:'15 sessions chained together. You\'re locked in and unstoppable.'},'combo_20':{icon:'😈',name:'Combo Demon',desc:'20x combo. That\'s hours of uninterrupted, laser-focused work.'},'combo_25':{icon:'💎',name:'Quarter-Century Combo',desc:'25 sessions back-to-back. Your focus endurance is elite.'},'combo_50':{icon:'🚀',name:'Unstoppable',desc:'A 50x combo. Fifty consecutive focus sessions. That\'s almost inhuman.'},'combo_100':{icon:'🌟',name:'Combo Deity',desc:'100 sessions in a row. A hundred consecutive focus rounds. Absolute deity.'},'blocks_10':{icon:'⏰',name:'First Hour',desc:'You\'ve woven 10 textiles — that\'s over 1.5 hours of total focused time.'},'blocks_50':{icon:'💼',name:'Half-Day Hustler',desc:'50 textiles woven. You\'ve spent over 8 hours in deep focus overall.'},'blocks_100':{icon:'🧶',name:'Century Cloth',desc:'100 textiles! That\'s more than 16 hours of focused work across your sessions.'},'blocks_250':{icon:'📦',name:'Bolt Maker',desc:'250 textiles woven — over 41 hours of productive, focused time.'},'blocks_500':{icon:'🏰',name:'Loom Legend',desc:'500 textiles! You\'ve spent 83+ hours doing real, distraction-free work.'},'blocks_1000':{icon:'🏭',name:'Thousand Bolts',desc:'1,000 textiles woven. Over 166 hours of focused time. That\'s incredible.'},'blocks_2500':{icon:'🛠️',name:'Industrial Weaver',desc:'2,500 textiles — more than 416 hours of deep work. Over 17 full days.'},'blocks_5000':{icon:'🌍',name:'Textile Empire',desc:'5,000 textiles. 833+ hours focused. You\'ve spent over a month in flow.'},'blocks_10000':{icon:'🪐',name:'Ten Thousand Threads',desc:'10,000 textiles woven. 1,666+ hours. That\'s 69 full days of pure focus.'},'first_friend':{icon:'🤝',name:'Companion',desc:'You added your first friend. Now someone else can see your progress!'},'social_duo':{icon:'👯',name:'Dynamic Duo',desc:'You\'ve got 2 friends on the platform. Accountability partners engaged.'},'social_circle':{icon:'🫂',name:'Social Circle',desc:'3 friends connected. You\'re building a little focus community.'},'social_squad':{icon:'👪',name:'Squad Goals',desc:'5 friends! You\'ve got a proper squad keeping each other accountable.'},'social_popular':{icon:'😎',name:'Popular',desc:'7 friends on your list. People want to track progress alongside you.'},'social_influencer':{icon:'📱',name:'Influencer',desc:'10 friends! You\'re becoming a hub in the focus community.'},'social_celebrity':{icon:'🌟',name:'Celebrity',desc:'15 friends. Your profile is getting noticed.'},'social_famous':{icon:'📸',name:'Famous',desc:'20 friends connected. You\'re a well-known face around here.'},'social_icon':{icon:'👑',name:'Social Icon',desc:'25 friends! A quarter-hundred people are watching your journey.'},'social_mogul':{icon:'💎',name:'Social Mogul',desc:'50 friends. You\'ve built a genuine network of accountability partners.'},'profile_pic':{icon:'🎨',name:'Self-Portrait',desc:'You created a pixel art avatar and set it as your profile picture.'},'display_name':{icon:'🏷️',name:'Named',desc:'You chose a display name so friends can recognize you.'},'full_profile':{icon:'✅',name:'Complete Profile',desc:'You set both a display name and profile picture. Your identity is complete!'},'networker':{icon:'🌐',name:'Networker',desc:'You\'ve connected with 5 friends who have display names set up.'},'party_starter':{icon:'🎉',name:'Party Starter',desc:'3 friends joined! You started a little focus party.'},'hype_crew':{icon:'🥳',name:'Hype Crew',desc:'8 friends on board. Your hype crew is assembled.'},'social_butterfly':{icon:'🦋',name:'Social Butterfly',desc:'12 friends! You\'re connecting with people left and right.'},'guild_leader':{icon:'🏰',name:'Guild Leader',desc:'30 friends. You could run a whole guild at this point.'},'level_3':{icon:'🔰',name:'Beginner',desc:'You reached level 3. You\'ve earned enough XP from focus sessions to level up twice!'},'level_5':{icon:'📖',name:'Novice',desc:'Level 5! Every focus session earns XP, and you\'ve stacked up enough for 5 levels.'},'level_10':{icon:'📜',name:'Apprentice',desc:'Level 10 reached. Double digits — you\'re past the beginner stage.'},'level_15':{icon:'🎓',name:'Sophomore',desc:'Level 15. Your XP from completing focus sessions keeps climbing.'},'level_20':{icon:'🔧',name:'Skilled',desc:'Level 20! Each level takes more XP than the last, and you\'re still rising.'},'level_25':{icon:'🗡️',name:'Journeyman',desc:'Level 25. A quarter of the way to 100. The grind is real.'},'level_30':{icon:'🔮',name:'Adept',desc:'Level 30. Thirty levels of accumulated focus work. Impressive.'},'level_40':{icon:'🎖️',name:'Veteran',desc:'Level 40. The XP curve gets steeper but you keep pushing through.'},'level_50':{icon:'🏛️',name:'Master',desc:'Level 50! Halfway to the century mark. You\'ve earned massive XP.'},'level_60':{icon:'🧙',name:'Sage',desc:'Level 60. Most people never get here. You did.'},'level_75':{icon:'📕',name:'Elder',desc:'Level 75. Three-quarters of the way to 100. The summit is in sight.'},'level_100':{icon:'🌟',name:'Grandmaster',desc:'Level 100! Triple digits. You\'ve earned an enormous amount of XP from focus work.'},'level_125':{icon:'🏅',name:'Legend',desc:'Level 125. You blew past 100 and kept going. Legendary territory.'},'level_150':{icon:'🐉',name:'Mythic',desc:'Level 150. The XP required at this point is staggering.'},'level_200':{icon:'🔥',name:'Demigod',desc:'Level 200. Two hundred levels of accumulated focus mastery.'},'level_300':{icon:'🌋',name:'Titan',desc:'Level 300. At this level the XP requirements are astronomical. You earned every point.'},'level_500':{icon:'🪐',name:'Transcendent',desc:'Level 500. Five hundred levels. This might be the most impressive thing on your profile.'},'rich_100':{icon:'💵',name:'First Paycheck',desc:'You\'ve earned $100 total from completing focus sessions. First real payday!'},'rich_500':{icon:'🪙',name:'Pocket Change',desc:'You\'ve earned $500 lifetime. Focus sessions pay off — literally.'},'rich_1000':{icon:'💰',name:'First Fortune',desc:'$1,000 earned across all your focus sessions. Your first fortune.'},'rich_5000':{icon:'💳',name:'Five Grand',desc:'$5,000 lifetime earnings. Five grand from sheer productivity.'},'rich_10000':{icon:'💎',name:'Textile Mogul',desc:'$10,000 earned! Five figures of coins from focused work.'},'rich_25000':{icon:'🤑',name:'Quarter-Millionaire',desc:'$25,000 lifetime. A quarter of the way to six figures.'},'rich_50000':{icon:'🎰',name:'Money Machine',desc:'$50,000 earned. Halfway to $100K — all from focus sessions and productivity.'},'rich_100000':{icon:'🏦',name:'Six Figures',desc:'Six figures! $100,000 earned across your entire journey. Incredible.'},'rich_250000':{icon:'🏰',name:'Cloth Rothschild',desc:'$250,000 lifetime. A quarter million coins earned through discipline.'},'rich_500000':{icon:'💸',name:'Half-Millionaire',desc:'Half a million dollars earned. $500,000 from pure productivity.'},'rich_1000000':{icon:'👑',name:'Millionaire',desc:'One million dollars earned. $1,000,000. You are the definition of productivity.'},'hoard_1000':{icon:'📥',name:'Saver',desc:'You\'re holding $1,000 in your wallet right now without spending it.'},'hoard_5000':{icon:'🧰',name:'Thrifty',desc:'$5,000 saved up at once. You\'re resisting the urge to spend.'},'hoard_10000':{icon:'🥚',name:'Nest Egg',desc:'$10,000 sitting in your wallet. That\'s serious self-control.'},'hoard_25000':{icon:'📦',name:'War Chest',desc:'$25,000 hoarded. You could buy a lot of upgrades but you\'re saving.'},'hoard_50000':{icon:'🐲',name:'Dragon Hoard',desc:'$50,000 in the bank at once. Are you saving for something big?'},'hoard_100000':{icon:'🦳',name:'Scrooge',desc:'$100,000 held at once. Six figures in the wallet. Maximum restraint.'},'hoard_500000':{icon:'🔒',name:'Vault Keeper',desc:'Half a million dollars in your wallet right now. What are you saving for?!'},'gallery_1':{icon:'🖼️',name:'First Masterpiece',desc:'You saved your first pixel art creation to the gallery. Your first masterpiece!'},'gallery_3':{icon:'🎨',name:'Small Exhibition',desc:'3 artworks saved. You\'re starting a small collection.'},'gallery_5':{icon:'🖼️',name:'Gallery Opening',desc:'5 pieces in the gallery. You\'re becoming a regular pixel artist.'},'gallery_10':{icon:'🧑‍🎨',name:'Curator',desc:'10 artworks saved! Your gallery is filling up with your creations.'},'gallery_25':{icon:'🏛️',name:'Art Collector',desc:'25 pieces of pixel art saved. You\'ve got a proper art collection.'},'gallery_50':{icon:'🏟️',name:'Museum Director',desc:'50 artworks! Your gallery could fill a small museum.'},'gallery_100':{icon:'🌍',name:'Louvre Rival',desc:'100 artworks saved. A century of pixel art creations. Incredible output.'},'gallery_250':{icon:'🎨',name:'Prolific Painter',desc:'250 pieces! You\'re one of the most prolific pixel artists on the platform.'},'canvas_12':{icon:'📐',name:'Bigger Canvas',desc:'You upgraded to a 12x12 canvas — 44% more pixels to work with!'},'canvas_16':{icon:'🎂',name:'Sweet Sixteen',desc:'16x16 canvas unlocked! Four times the area of the starter canvas.'},'canvas_24':{icon:'🖼️',name:'Full Frame',desc:'24x24 canvas! That\'s 576 pixels — nine times the original.'},'canvas_32':{icon:'📺',name:'High Resolution',desc:'32x32 canvas unlocked. Now you can create truly detailed pixel art.'},'canvas_48':{icon:'🖥️',name:'Ultra Canvas',desc:'48x48 canvas! 2,304 pixels. Massive creative space.'},'canvas_64':{icon:'🤩',name:'Pixel Perfectionist',desc:'64x64 canvas unlocked. The biggest canvas available. 4,096 pixels of pure creativity.'},'dye_1':{icon:'🌈',name:'Color Curious',desc:'You invested in dye research level 1. New colors and cheaper canvas upgrades!'},'dye_3':{icon:'🎨',name:'Color Theory',desc:'Dye research level 3. Your color palette is expanding nicely.'},'dye_5':{icon:'🧪',name:'Master Dyer',desc:'Dye research level 5. You\'re becoming a true color specialist.'},'dye_8':{icon:'🪄',name:'Chromatic Wizard',desc:'Dye research level 8. Your palette is getting exotic.'},'dye_10':{icon:'🌌',name:'Spectrum Lord',desc:'Max dye research! You\'ve unlocked the full spectrum of available colors.'},'first_sale':{icon:'💲',name:'First Sale',desc:'You sold a canvas creation for the first time. You\'re an artist AND a businessperson.'},'first_hire':{icon:'👤',name:'First Hire',desc:'You hired your first employee! They\'ll help you earn passive income over time.'},'small_team':{icon:'👥',name:'Small Team',desc:'Employee level 2. Your small team is growing.'},'growing_team':{icon:'📈',name:'Growing Company',desc:'Employee level 3. You\'re running a real operation now.'},'department':{icon:'🏢',name:'Department Head',desc:'Employee level 4. You\'ve got a proper department working for you.'},'corporation':{icon:'🏢',name:'Corporation',desc:'Employee level 5. Your workforce is a legitimate corporation.'},'enterprise':{icon:'🌍',name:'Enterprise',desc:'Employee level 7. You\'re running a full enterprise operation.'},'conglomerate':{icon:'🏰',name:'Conglomerate',desc:'Employee level 10. Maximum workforce. You\'re a textile conglomerate.'},'broker_unlocked':{icon:'📉',name:'Wall Street',desc:'You unlocked the stock brokerage! You can now buy and sell stocks.'},'first_stock':{icon:'💹',name:'First Investment',desc:'You bought your first stock. Welcome to the market!'},'diversified':{icon:'📊',name:'Diversified',desc:'You own 3 different stocks. Smart — diversification reduces risk.'},'portfolio_5':{icon:'📋',name:'Portfolio Pro',desc:'5 different stocks in your portfolio. You\'re a well-diversified investor.'},'survived_crash':{icon:'💥',name:'Crash Survivor',desc:'You lived through a market crash event. Your portfolio took a hit but you survived.'},'canvas_buyer_2':{icon:'🛒',name:'Canvas Shopper',desc:'You\'ve purchased 2 different canvas sizes. More space for art!'},'canvas_buyer_3':{icon:'🛒',name:'Canvas Collector',desc:'3 canvas sizes purchased. You\'re investing in your creative tools.'},'canvas_buyer_5':{icon:'🛒',name:'Canvas Mogul',desc:'5 canvas sizes purchased! You\'ve got canvases for every occasion.'},'sales_100':{icon:'💵',name:'Art Dealer',desc:'You\'ve earned $100 from selling your pixel art creations.'},'sales_500':{icon:'🏠',name:'Gallery Owner',desc:'$500 from art sales. Your creations are worth real (virtual) money.'},'sales_1000':{icon:'🏛️',name:'Art Empire',desc:'$1,000 earned from loom sales. Your art business is thriving.'},'sales_5000':{icon:'🏟️',name:'Auction House',desc:'$5,000 from selling artwork. You\'re running a profitable gallery.'},'sales_10000':{icon:'💎',name:'Art Magnate',desc:'$10,000 from art sales alone. You\'ve built an art empire.'},'blocks_25':{icon:'🧵',name:'Quarter Bolt',desc:'25 textiles woven — that\'s over 4 hours of total focused time.'},'blocks_750':{icon:'🏵️',name:'Master Weaver',desc:'750 textiles! You\'ve spent 125 hours in deep focus. Over 5 full days.'},'blocks_1500':{icon:'💰',name:'Textile Tycoon',desc:'1,500 textiles woven. 250 hours of focused work. That\'s ten full days.'},'blocks_3500':{icon:'🗿',name:'Cloth Colossus',desc:'3,500 textiles. 583 hours. You\'ve spent over 24 straight days focusing.'},'blocks_7500':{icon:'🏺',name:'Fiber Pharaoh',desc:'7,500 textiles. 1,250 hours focused. That\'s 52 full days of deep work.'},'combo_7':{icon:'🍀',name:'Lucky Seven',desc:'7 sessions in a row. You hit the lucky number without stopping.'},'combo_30':{icon:'📚',name:'Thirty Stack',desc:'30 consecutive sessions. You sat there and stacked thirty rounds of focus.'},'combo_75':{icon:'🏃‍♂️',name:'Marathon Mind',desc:'75 sessions chained. That\'s a mental marathon and then some.'},'focus_75':{icon:'🌙',name:'Three Quarters',desc:'75 focus sessions. Three-quarters of the way to your first hundred.'},'focus_150':{icon:'🎉',name:'Sesquicentennial',desc:'150 sessions completed. One hundred and fifty times you chose to focus.'},'focus_750':{icon:'🛡️',name:'Relentless',desc:'750 sessions. You just don\'t quit. Seven hundred and fifty rounds of work.'},'level_7':{icon:'🍀',name:'Lucky Level',desc:'Level 7! You\'ve earned enough XP from focus sessions to pass the lucky number.'},'level_35':{icon:'💼',name:'Mid-Career',desc:'Level 35. You\'re deep into the grind now. Serious XP accumulated.'},'level_90':{icon:'🏁',name:'Almost There',desc:'Level 90! Just ten more to the century. The finish line is so close.'},'level_175':{icon:'🦹',name:'Overlord',desc:'Level 175. You\'ve gone far beyond what most players will ever see.'},'level_250':{icon:'🌌',name:'Quarter Thousand',desc:'Level 250. A quarter of a thousand levels. The XP numbers are enormous.'},'level_400':{icon:'🪐',name:'Ascendant',desc:'Level 400. Four hundred levels earned through sheer focused work.'},'streak_sleep_10':{icon:'🌚',name:'Ten Straight',desc:'10 nights in a row of on-time sleep. Double-digit streak!'},'streak_sleep_50':{icon:'🌠',name:'Fifty Nights',desc:'50 consecutive nights on time. Almost two months without a slip.'},'sleep_75':{icon:'🌍',name:'Seventy-Five',desc:'75 total nights on time. Three-quarters of the way to a hundred.'},'sleep_100':{icon:'💯',name:'Century Sleeper',desc:'100 nights on time! Triple digits. You\'ve mastered your bedtime.'},'sleep_125':{icon:'🎓',name:'Sleep Scholar',desc:'125 nights of on-time sleep. You could write a thesis on discipline.'},'sleep_250':{icon:'🤴',name:'Sleep Monarch',desc:'250 nights on time. A quarter-thousand bedtimes honored.'},'sleep_400':{icon:'🏯',name:'Sleep Emperor',desc:'400 nights of keeping your bedtime promise. Over a year of discipline.'},'gallery_2':{icon:'🖌️',name:'Second Canvas',desc:'You saved a second artwork. The first wasn\'t a fluke!'},'gallery_15':{icon:'🏛️',name:'Mini Museum',desc:'15 artworks saved. You\'re curating a proper mini museum.'},'gallery_75':{icon:'🖼️',name:'Prolific Creator',desc:'75 pixel art pieces saved. Your creative output is impressive.'},'canvas_10':{icon:'📏',name:'First Upgrade',desc:'You upgraded to a 10x10 canvas. A little more room to express yourself!'},'social_trio':{icon:'👨‍👧‍👦',name:'The Trio',desc:'You, plus 3 friends. A proper trio of accountability partners.'},'social_crew_6':{icon:'🛶',name:'Full Crew',desc:'6 friends! You\'ve got a full crew rowing together.'},'social_army':{icon:'🛡️',name:'Small Army',desc:'40 friends. You\'ve assembled a small army of focused people.'},'sales_250':{icon:'🏪',name:'Art Merchant',desc:'You\'ve earned $250 from selling your pixel art creations.'},'sales_2500':{icon:'💰',name:'Canvas Capitalist',desc:'$2,500 earned from art sales. Your loom is a money-printing machine.'},'canvas_buyer_4':{icon:'📦',name:'Canvas Hoarder',desc:'4 canvas sizes purchased. You\'re collecting them like trading cards.'},'rich_2500':{icon:'🛋️',name:'Comfortable',desc:'$2,500 lifetime earnings. You\'re sitting pretty comfortably.'},'rich_75000':{icon:'💴',name:'Almost Six Figs',desc:'$75,000 earned. You\'re knocking on the door of six figures.'},'hoard_2500':{icon:'🐖',name:'Piggy Bank',desc:'$2,500 in your wallet at once. Your piggy bank is getting heavy.'},'hoard_75000':{icon:'🏦',name:'Fort Knox',desc:'$75,000 held at once. Your vault rivals Fort Knox.'},'hoard_250000':{icon:'💠',name:'Untouchable Wealth',desc:'$250,000 in the wallet. A quarter million sitting there. Unspent.'},'streak_5':{icon:'📚',name:'School Week',desc:'5 days in a row of coming back to focus. A full school week!'},'streak_10':{icon:'💪',name:'Ten-Day Tenacity',desc:'10 consecutive days of showing up. Double-digit dedication.'},'sleep_eternal_1500':{icon:'⚰️',name:'Eternal Rest',desc:'1,500 nights on time. Four years of keeping your bedtime promise. Unreal.'},'sleep_2000':{icon:'🌠',name:'Two Thousand Nights',desc:'2,000 bedtimes honored. Over five years of sleep discipline.'},'sleep_3000':{icon:'🕊️',name:'Sleep Immortal',desc:'3,000 nights on time. You are not a person — you are a sleep algorithm.'},'streak_sleep_500':{icon:'🗿',name:'Five Hundred Nights',desc:'500 nights in a row. Over 16 months without a single broken bedtime.'},'streak_sleep_730':{icon:'🏛️',name:'Two Perfect Years',desc:'730 consecutive nights on time. Two full years of unbroken discipline.'},'streak_sleep_1000':{icon:'🔱',name:'Thousand-Night Streak',desc:'One thousand consecutive nights. Nearly three years without missing one.'},'focus_15000':{icon:'🏔️',name:'Fifteen Thousand',desc:'15,000 sessions. You could have climbed Everest in the time you spent focusing.'},'focus_25000':{icon:'🪨',name:'Quarter-Hundred-K',desc:'25,000 sessions. Twenty-five thousand times you chose to sit down and work.'},'focus_50000':{icon:'🗻',name:'Fifty Thousand',desc:'50,000 focus sessions. This badge shouldn\'t exist. And yet here you are.'},'focus_100000':{icon:'🌋',name:'One Hundred Thousand',desc:'100,000 sessions. We genuinely did not think anyone would earn this.'},'streak_120':{icon:'🕯️',name:'Four-Month Flame',desc:'120 consecutive days. Four months of never missing a single day of focus.'},'streak_270':{icon:'🫃',name:'Nine-Month March',desc:'270 days straight. Nine months. You could have gestated a human.'},'streak_500':{icon:'🏺',name:'Five Hundred Days',desc:'500 consecutive days of daily focus. Over 16 months. Absurd.'},'streak_730':{icon:'📜',name:'Two-Year Streak',desc:'730 days in a row. Two full years of daily focus sessions. Inhuman.'},'streak_1000':{icon:'🔱',name:'Thousand-Day Streak',desc:'1,000 consecutive days. Nearly three years without missing one. Impossible made real.'},'streak_1461':{icon:'⚜️',name:'Four-Year Streak',desc:'1,461 days. Four full years. An entire presidential term of daily focus.'},'combo_150':{icon:'💫',name:'Combo Legend',desc:'150x combo. One hundred fifty sessions chained. You didn\'t eat or sleep, did you?'},'combo_200':{icon:'☄️',name:'Combo Immortal',desc:'200x combo. Two hundred consecutive sessions. The machine became sentient.'},'combo_500':{icon:'⛓️',name:'Five Hundred Chain',desc:'500 sessions back-to-back. If you\'re seeing this badge, we\'re concerned.'},'blocks_15000':{icon:'🏗️',name:'Fifteen K Textiles',desc:'15,000 textiles. 2,500 hours of focused time. Over 100 days of work.'},'blocks_25000':{icon:'🗽',name:'Twenty-Five Thousand',desc:'25,000 textiles. 4,166 hours. 173 full days of deep focus.'},'blocks_50000':{icon:'🌍',name:'Fifty Thousand Bolts',desc:'50,000 textiles. Over 8,300 hours. A full year of non-stop focus.'},'blocks_100000':{icon:'🪐',name:'Hundred K Textiles',desc:'100,000 textiles woven. We are not sure this is possible. Prove us wrong.'},'level_750':{icon:'🌋',name:'Three Quarter K',desc:'Level 750. The XP requirements at this level are genuinely staggering.'},'level_1000':{icon:'🏛️',name:'Level Thousand',desc:'Level 1,000. One thousand levels. If this game had a final boss, you\'d be it.'},'level_1500':{icon:'👁️',name:'Beyond Mortal',desc:'Level 1,500. We stopped writing level titles after 500 because we didn\'t think anyone would get here.'},'level_2000':{icon:'🔮',name:'Two Thousand',desc:'Level 2,000. This badge is a monument to patience. And possibly insanity.'},'rich_2000000':{icon:'💰',name:'Double Millionaire',desc:'$2,000,000 lifetime earnings. Two million from pure productivity.'},'rich_5000000':{icon:'🏝️',name:'Multi-Millionaire',desc:'$5,000,000 earned. Five million. You could buy a private island.'},'rich_10000000':{icon:'🛸',name:'Deca-Millionaire',desc:'$10,000,000 lifetime. Ten million coins earned through sheer discipline.'},'rich_50000000':{icon:'🌌',name:'Fifty Million',desc:'$50,000,000 earned. This is more money than some countries have.'},'rich_100000000':{icon:'🏰',name:'Hundred Million',desc:'$100,000,000. One. Hundred. Million. Coins.'},'hoard_1000000':{icon:'🐉',name:'Million in Pocket',desc:'One million coins in your wallet at once. Not lifetime — held simultaneously.'},'hoard_5000000':{icon:'🗝️',name:'Five Mil Hoard',desc:'$5,000,000 held at once. Your wallet weighs more than your principles.'},'hoard_10000000':{icon:'♾️',name:'Infinite Restraint',desc:'Ten million coins held simultaneously. You could buy everything. But you don\'t.'},'gallery_500':{icon:'🏭',name:'Art Factory',desc:'500 artworks saved. Half a thousand pieces of pixel art.'},'gallery_1000':{icon:'🌌',name:'Thousand Canvases',desc:'1,000 artworks saved. A thousand original pixel creations.'},'gallery_2500':{icon:'🎭',name:'Pixel Picasso',desc:'2,500 artworks. At this point you ARE the gallery.'},'sales_10':{icon:'💲',name:'Ten Sales',desc:'You sold 10 canvases. People actually want your art!'},'sales_25':{icon:'🏪',name:'Quarter Century Sales',desc:'25 canvases sold. You have an established art business.'},'sales_50':{icon:'🏬',name:'Fifty Sales',desc:'50 canvases sold. Your art is in demand.'},'sales_100_count':{icon:'🎪',name:'Century Sales',desc:'100 canvas sales. One hundred different pieces bought.'},'sales_250_count':{icon:'🏛️',name:'Gallery Tycoon',desc:'250 canvases sold. Your gallery has a waiting list.'},'sales_25000':{icon:'🏰',name:'Art Baron',desc:'$25,000 from art sales. Twenty-five grand from pixel art alone.'},'sales_50000':{icon:'🌍',name:'Art Tycoon',desc:'$50,000 from selling artwork. Your gallery is a serious business.'},'sales_100000':{icon:'💎',name:'Art Mogul',desc:'$100,000 from art sales alone. Six figures from pixel art. Legendary.'},'stocks_10':{icon:'📈',name:'Day Trader',desc:'You\'ve bought 10 stocks total. You\'re an active trader now.'},'stocks_25':{icon:'💻',name:'Trading Desk',desc:'25 stock purchases made. Your trading desk is busy.'},'stocks_50':{icon:'🏦',name:'Floor Trader',desc:'50 stock trades executed. You could work on Wall Street.'},'stocks_100':{icon:'🏢',name:'Hedge Fund',desc:'100 trades. You\'re running a one-person hedge fund.'},'market_events_3':{icon:'🌧️',name:'Weathered Investor',desc:'Survived 3 market events. Crashes, booms, bubbles — you\'ve seen them all.'},'market_events_5':{icon:'⚔️',name:'Battle-Scarred',desc:'5 market events endured. Your portfolio has the scars to prove it.'},'market_events_10':{icon:'🎖️',name:'Market Veteran',desc:'10 market events survived. You\'ve been through every kind of market.'},'market_events_25':{icon:'🛡️',name:'Market Immortal',desc:'25 market events. Nothing the market throws at you can break you.'},'portfolio_8':{icon:'📊',name:'Full Portfolio',desc:'8 different stocks owned simultaneously. Maximum diversification.'},'portfolio_10':{icon:'📋',name:'Index Fund',desc:'10 different stocks at once. You own a piece of everything.'},'employees_8':{icon:'🏗️',name:'Full Floor',desc:'Employee level 8. Your factory floor is packed.'},'canvas_buyer_6':{icon:'🎨',name:'Canvas Empire',desc:'6 canvas sizes purchased. You own every available size.'},'canvas_buyer_7':{icon:'🏆',name:'Complete Collection',desc:'7 canvas sizes purchased. You\'ve bought the full set.'},'social_75':{icon:'🗿',name:'Social Titan',desc:'75 friends! You\'re a social titan on the platform.'},'social_100':{icon:'💯',name:'Century Club',desc:'100 friends. One hundred people watching your journey.'},'social_150':{icon:'📢',name:'Small Following',desc:'150 friends. You have a legitimate following.'},'social_250':{icon:'🎬',name:'Micro-Celebrity',desc:'250 friends. A quarter-thousand people connected to you.'},'social_500':{icon:'🌊',name:'Social Phenomenon',desc:'500 friends. Half a thousand connections. You ARE the community.'},'quest_1':{icon:'⚔️',name:'First Quest',desc:'You completed your first daily quest. The journey of a thousand quests begins with one.'},'quest_5':{icon:'🗡️',name:'Questbound',desc:'5 quests completed. You are getting into the daily quest habit.'},'quest_10':{icon:'🛡️',name:'Quest Regular',desc:'10 quests done. Double digits of daily challenges conquered.'},'quest_25':{icon:'🏹',name:'Quest Veteran',desc:'25 quests completed. A full month of daily challenges.'},'quest_50':{icon:'🧭',name:'Questmaster',desc:'50 quests! Half a hundred daily challenges completed.'},'quest_100':{icon:'👑',name:'Century Quester',desc:'100 quests completed. Triple digits. You never skip quest day.'},'quest_250':{icon:'🔥',name:'Quest Legend',desc:'250 quests completed. A quarter thousand daily challenges conquered.'},'quest_500':{icon:'⚡',name:'Quest Titan',desc:'500 quests! Five hundred daily challenges. Unstoppable.'},'quest_1000':{icon:'🌋',name:'Thousand Quests',desc:'1,000 quests completed. A thousand daily challenges. You ARE the quest board.'},'quest_streak_3':{icon:'🔥',name:'Three-Quest Run',desc:'3-day quest streak. You completed a quest three days in a row.'},'quest_streak_7':{icon:'🏆',name:'Weekly Quest Warrior',desc:'7-day quest streak. A full week of completing daily quests.'},'quest_streak_14':{icon:'💪',name:'Fortnight Quester',desc:'14-day quest streak. Two solid weeks of daily quest completion.'},'quest_streak_30':{icon:'🌟',name:'Monthly Quest Master',desc:'30-day quest streak. A full month without missing a quest.'},'quest_streak_60':{icon:'🧠',name:'Quest Machine',desc:'60-day quest streak. Two months of daily quest perfection.'},'quest_streak_90':{icon:'🏅',name:'Quarter Quest',desc:'90-day quest streak. A full quarter of daily quests completed.'},'quest_streak_180':{icon:'🌍',name:'Half-Year Quester',desc:'180-day quest streak. Six months of never missing a daily quest.'},'quest_streak_365':{icon:'🏛️',name:'Perfect Quest Year',desc:'365-day quest streak. An entire year of completing daily quests. Every. Single. Day.'},'quest_ambitious_1':{icon:'💎',name:'First Ambitious',desc:'You completed your first ambitious quest. Going for the harder option pays off.'},'quest_ambitious_10':{icon:'👿',name:'Risk Taker',desc:'10 ambitious quests completed. You consistently choose the harder path.'},'quest_ambitious_25':{icon:'🚀',name:'Ambitious Regular',desc:'25 ambitious quests. You do not play it safe.'},'quest_ambitious_50':{icon:'⚡',name:'Ambitious Veteran',desc:'50 ambitious quests completed. Half a hundred hard-mode victories.'},'quest_ambitious_100':{icon:'🔥',name:'Ambitious Legend',desc:'100 ambitious quests. A hundred times you chose the harder quest and won.'}};
 
         function _getLevelFromXP(xp) {
           var level = 1, needed = 0;
@@ -11677,7 +11970,10 @@ try {
             ['currentCoins',cc],['lifetimeBlocks',lb],['gallery',gc],['canvasSize',cs],
             ['canvasCount',cn],['dyeResearch',dr],['employees',el],['brokerageUnlocked',bu],
             ['stocksBought',sb],['stocksOwned',so],['marketEvents',me],['loomSales',gc],
-            ['loomSalesCoins',lsc]
+            ['loomSalesCoins',lsc],
+            ['questsCompleted',state.questsCompletedLifetime || 0],
+            ['questStreak',state.questStreak || 0],
+            ['questsAmbitious',state.questsAmbitiousCompleted || 0]
           ];
           var valMap = {};
           for (var v = 0; v < reqs.length; v++) valMap[reqs[v][0]] = reqs[v][1];
@@ -11688,7 +11984,7 @@ try {
           // Check all badges from BADGE_DEFS keys
           var allIds = Object.keys(BADGE_DEFS);
           // We need requirement info — embed minimal requirement map
-          var REQ_MAP = {'early_bird_1':['bedtimeTotal',5],'sleep_warrior':['bedtimeTotal',10],'dream_weaver':['bedtimeTotal',15],'night_master':['bedtimeTotal',25],'sleep_sage':['bedtimeTotal',40],'lunar_legend':['bedtimeTotal',60],'rest_royalty':['bedtimeTotal',90],'eternal_dreamer':['bedtimeTotal',150],'sleep_deity':['bedtimeTotal',200],'year_of_rest':['bedtimeTotal',365],'sleep_olympian':['bedtimeTotal',500],'sleep_transcendent':['bedtimeTotal',750],'millennium_sleeper':['bedtimeTotal',1000],'streak_sleep_3':['bedtimeStreak',3],'streak_sleep_5':['bedtimeStreak',5],'streak_sleep_7':['bedtimeStreak',7],'streak_sleep_14':['bedtimeStreak',14],'streak_sleep_21':['bedtimeStreak',21],'streak_sleep_30':['bedtimeStreak',30],'streak_sleep_45':['bedtimeStreak',45],'streak_sleep_60':['bedtimeStreak',60],'streak_sleep_90':['bedtimeStreak',90],'streak_sleep_120':['bedtimeStreak',120],'streak_sleep_180':['bedtimeStreak',180],'streak_sleep_270':['bedtimeStreak',270],'streak_sleep_365':['bedtimeStreak',365],'pillow_pro':['bedtimeStreak',3],'no_phone_zone':['bedtimeTotal',10],'melatonin_machine':['bedtimeTotal',50],'first_focus':['sessions',1],'five_sessions':['sessions',5],'ten_sessions':['sessions',10],'twentyfive_sess':['sessions',25],'fifty_sessions':['sessions',50],'century_focus':['sessions',100],'focus_250':['sessions',250],'focus_500':['sessions',500],'focus_1000':['sessions',1000],'focus_2500':['sessions',2500],'focus_5000':['sessions',5000],'focus_10000':['sessions',10000],'streak_3':['streak',3],'streak_7':['streak',7],'streak_14':['streak',14],'streak_21':['streak',21],'streak_30':['streak',30],'streak_60':['streak',60],'streak_90':['streak',90],'streak_180':['streak',180],'streak_365':['streak',365],'combo_3':['combo',3],'combo_5':['combo',5],'combo_10':['combo',10],'combo_15':['combo',15],'combo_20':['combo',20],'combo_25':['combo',25],'combo_50':['combo',50],'combo_100':['combo',100],'blocks_10':['lifetimeBlocks',10],'blocks_50':['lifetimeBlocks',50],'blocks_100':['lifetimeBlocks',100],'blocks_250':['lifetimeBlocks',250],'blocks_500':['lifetimeBlocks',500],'blocks_1000':['lifetimeBlocks',1000],'blocks_2500':['lifetimeBlocks',2500],'blocks_5000':['lifetimeBlocks',5000],'blocks_10000':['lifetimeBlocks',10000],'first_friend':['friends',1],'social_duo':['friends',2],'social_circle':['friends',3],'social_squad':['friends',5],'social_popular':['friends',7],'social_influencer':['friends',10],'social_celebrity':['friends',15],'social_famous':['friends',20],'social_icon':['friends',25],'social_mogul':['friends',50],'profile_pic':['profilePic',1],'display_name':['displayName',1],'full_profile':['fullProfile',1],'networker':['friends',5],'party_starter':['friends',3],'hype_crew':['friends',8],'social_butterfly':['friends',12],'guild_leader':['friends',30],'level_3':['level',3],'level_5':['level',5],'level_10':['level',10],'level_15':['level',15],'level_20':['level',20],'level_25':['level',25],'level_30':['level',30],'level_40':['level',40],'level_50':['level',50],'level_60':['level',60],'level_75':['level',75],'level_100':['level',100],'level_125':['level',125],'level_150':['level',150],'level_200':['level',200],'level_300':['level',300],'level_500':['level',500],'rich_100':['lifetimeCoins',100],'rich_500':['lifetimeCoins',500],'rich_1000':['lifetimeCoins',1000],'rich_5000':['lifetimeCoins',5000],'rich_10000':['lifetimeCoins',10000],'rich_25000':['lifetimeCoins',25000],'rich_50000':['lifetimeCoins',50000],'rich_100000':['lifetimeCoins',100000],'rich_250000':['lifetimeCoins',250000],'rich_500000':['lifetimeCoins',500000],'rich_1000000':['lifetimeCoins',1000000],'hoard_1000':['currentCoins',1000],'hoard_5000':['currentCoins',5000],'hoard_10000':['currentCoins',10000],'hoard_25000':['currentCoins',25000],'hoard_50000':['currentCoins',50000],'hoard_100000':['currentCoins',100000],'hoard_500000':['currentCoins',500000],'gallery_1':['gallery',1],'gallery_3':['gallery',3],'gallery_5':['gallery',5],'gallery_10':['gallery',10],'gallery_25':['gallery',25],'gallery_50':['gallery',50],'gallery_100':['gallery',100],'gallery_250':['gallery',250],'canvas_12':['canvasSize',12],'canvas_16':['canvasSize',16],'canvas_24':['canvasSize',24],'canvas_32':['canvasSize',32],'canvas_48':['canvasSize',48],'canvas_64':['canvasSize',64],'dye_1':['dyeResearch',1],'dye_3':['dyeResearch',3],'dye_5':['dyeResearch',5],'dye_8':['dyeResearch',8],'dye_10':['dyeResearch',10],'first_sale':['loomSales',1],'first_hire':['employees',1],'small_team':['employees',2],'growing_team':['employees',3],'department':['employees',4],'corporation':['employees',5],'enterprise':['employees',7],'conglomerate':['employees',10],'broker_unlocked':['brokerageUnlocked',1],'first_stock':['stocksBought',1],'diversified':['stocksOwned',3],'portfolio_5':['stocksOwned',5],'survived_crash':['marketEvents',1],'canvas_buyer_2':['canvasCount',2],'canvas_buyer_3':['canvasCount',3],'canvas_buyer_5':['canvasCount',5],'sales_100':['loomSalesCoins',100],'sales_500':['loomSalesCoins',500],'sales_1000':['loomSalesCoins',1000],'sales_5000':['loomSalesCoins',5000],'sales_10000':['loomSalesCoins',10000],'blocks_25':['lifetimeBlocks',25],'blocks_750':['lifetimeBlocks',750],'blocks_1500':['lifetimeBlocks',1500],'blocks_3500':['lifetimeBlocks',3500],'blocks_7500':['lifetimeBlocks',7500],'combo_7':['combo',7],'combo_30':['combo',30],'combo_75':['combo',75],'focus_75':['sessions',75],'focus_150':['sessions',150],'focus_750':['sessions',750],'level_7':['level',7],'level_35':['level',35],'level_90':['level',90],'level_175':['level',175],'level_250':['level',250],'level_400':['level',400],'streak_sleep_10':['bedtimeStreak',10],'streak_sleep_50':['bedtimeStreak',50],'sleep_75':['bedtimeTotal',75],'sleep_100':['bedtimeTotal',100],'sleep_125':['bedtimeTotal',125],'sleep_250':['bedtimeTotal',250],'sleep_400':['bedtimeTotal',400],'gallery_2':['gallery',2],'gallery_15':['gallery',15],'gallery_75':['gallery',75],'canvas_10':['canvasSize',10],'social_trio':['friends',3],'social_crew_6':['friends',6],'social_army':['friends',40],'sales_250':['loomSalesCoins',250],'sales_2500':['loomSalesCoins',2500],'canvas_buyer_4':['canvasCount',4],'rich_2500':['lifetimeCoins',2500],'rich_75000':['lifetimeCoins',75000],'hoard_2500':['currentCoins',2500],'hoard_75000':['currentCoins',75000],'hoard_250000':['currentCoins',250000],'streak_5':['streak',5],'streak_10':['streak',10],'sleep_eternal_1500':['bedtimeTotal',1500],'sleep_2000':['bedtimeTotal',2000],'sleep_3000':['bedtimeTotal',3000],'streak_sleep_500':['bedtimeStreak',500],'streak_sleep_730':['bedtimeStreak',730],'streak_sleep_1000':['bedtimeStreak',1000],'focus_15000':['sessions',15000],'focus_25000':['sessions',25000],'focus_50000':['sessions',50000],'focus_100000':['sessions',100000],'streak_120':['streak',120],'streak_270':['streak',270],'streak_500':['streak',500],'streak_730':['streak',730],'streak_1000':['streak',1000],'streak_1461':['streak',1461],'combo_150':['combo',150],'combo_200':['combo',200],'combo_500':['combo',500],'blocks_15000':['lifetimeBlocks',15000],'blocks_25000':['lifetimeBlocks',25000],'blocks_50000':['lifetimeBlocks',50000],'blocks_100000':['lifetimeBlocks',100000],'level_750':['level',750],'level_1000':['level',1000],'level_1500':['level',1500],'level_2000':['level',2000],'rich_2000000':['lifetimeCoins',2000000],'rich_5000000':['lifetimeCoins',5000000],'rich_10000000':['lifetimeCoins',10000000],'rich_50000000':['lifetimeCoins',50000000],'rich_100000000':['lifetimeCoins',100000000],'hoard_1000000':['currentCoins',1000000],'hoard_5000000':['currentCoins',5000000],'hoard_10000000':['currentCoins',10000000],'gallery_500':['gallery',500],'gallery_1000':['gallery',1000],'gallery_2500':['gallery',2500],'sales_10':['loomSales',10],'sales_25':['loomSales',25],'sales_50':['loomSales',50],'sales_100_count':['loomSales',100],'sales_250_count':['loomSales',250],'sales_25000':['loomSalesCoins',25000],'sales_50000':['loomSalesCoins',50000],'sales_100000':['loomSalesCoins',100000],'stocks_10':['stocksBought',10],'stocks_25':['stocksBought',25],'stocks_50':['stocksBought',50],'stocks_100':['stocksBought',100],'market_events_3':['marketEvents',3],'market_events_5':['marketEvents',5],'market_events_10':['marketEvents',10],'market_events_25':['marketEvents',25],'portfolio_8':['stocksOwned',8],'portfolio_10':['stocksOwned',10],'employees_8':['employees',8],'canvas_buyer_6':['canvasCount',6],'canvas_buyer_7':['canvasCount',7],'social_75':['friends',75],'social_100':['friends',100],'social_150':['friends',150],'social_250':['friends',250],'social_500':['friends',500]};
+          var REQ_MAP = {'early_bird_1':['bedtimeTotal',5],'sleep_warrior':['bedtimeTotal',10],'dream_weaver':['bedtimeTotal',15],'night_master':['bedtimeTotal',25],'sleep_sage':['bedtimeTotal',40],'lunar_legend':['bedtimeTotal',60],'rest_royalty':['bedtimeTotal',90],'eternal_dreamer':['bedtimeTotal',150],'sleep_deity':['bedtimeTotal',200],'year_of_rest':['bedtimeTotal',365],'sleep_olympian':['bedtimeTotal',500],'sleep_transcendent':['bedtimeTotal',750],'millennium_sleeper':['bedtimeTotal',1000],'streak_sleep_3':['bedtimeStreak',3],'streak_sleep_5':['bedtimeStreak',5],'streak_sleep_7':['bedtimeStreak',7],'streak_sleep_14':['bedtimeStreak',14],'streak_sleep_21':['bedtimeStreak',21],'streak_sleep_30':['bedtimeStreak',30],'streak_sleep_45':['bedtimeStreak',45],'streak_sleep_60':['bedtimeStreak',60],'streak_sleep_90':['bedtimeStreak',90],'streak_sleep_120':['bedtimeStreak',120],'streak_sleep_180':['bedtimeStreak',180],'streak_sleep_270':['bedtimeStreak',270],'streak_sleep_365':['bedtimeStreak',365],'pillow_pro':['bedtimeStreak',3],'no_phone_zone':['bedtimeTotal',10],'melatonin_machine':['bedtimeTotal',50],'first_focus':['sessions',1],'five_sessions':['sessions',5],'ten_sessions':['sessions',10],'twentyfive_sess':['sessions',25],'fifty_sessions':['sessions',50],'century_focus':['sessions',100],'focus_250':['sessions',250],'focus_500':['sessions',500],'focus_1000':['sessions',1000],'focus_2500':['sessions',2500],'focus_5000':['sessions',5000],'focus_10000':['sessions',10000],'streak_3':['streak',3],'streak_7':['streak',7],'streak_14':['streak',14],'streak_21':['streak',21],'streak_30':['streak',30],'streak_60':['streak',60],'streak_90':['streak',90],'streak_180':['streak',180],'streak_365':['streak',365],'combo_3':['combo',3],'combo_5':['combo',5],'combo_10':['combo',10],'combo_15':['combo',15],'combo_20':['combo',20],'combo_25':['combo',25],'combo_50':['combo',50],'combo_100':['combo',100],'blocks_10':['lifetimeBlocks',10],'blocks_50':['lifetimeBlocks',50],'blocks_100':['lifetimeBlocks',100],'blocks_250':['lifetimeBlocks',250],'blocks_500':['lifetimeBlocks',500],'blocks_1000':['lifetimeBlocks',1000],'blocks_2500':['lifetimeBlocks',2500],'blocks_5000':['lifetimeBlocks',5000],'blocks_10000':['lifetimeBlocks',10000],'first_friend':['friends',1],'social_duo':['friends',2],'social_circle':['friends',3],'social_squad':['friends',5],'social_popular':['friends',7],'social_influencer':['friends',10],'social_celebrity':['friends',15],'social_famous':['friends',20],'social_icon':['friends',25],'social_mogul':['friends',50],'profile_pic':['profilePic',1],'display_name':['displayName',1],'full_profile':['fullProfile',1],'networker':['friends',5],'party_starter':['friends',3],'hype_crew':['friends',8],'social_butterfly':['friends',12],'guild_leader':['friends',30],'level_3':['level',3],'level_5':['level',5],'level_10':['level',10],'level_15':['level',15],'level_20':['level',20],'level_25':['level',25],'level_30':['level',30],'level_40':['level',40],'level_50':['level',50],'level_60':['level',60],'level_75':['level',75],'level_100':['level',100],'level_125':['level',125],'level_150':['level',150],'level_200':['level',200],'level_300':['level',300],'level_500':['level',500],'rich_100':['lifetimeCoins',100],'rich_500':['lifetimeCoins',500],'rich_1000':['lifetimeCoins',1000],'rich_5000':['lifetimeCoins',5000],'rich_10000':['lifetimeCoins',10000],'rich_25000':['lifetimeCoins',25000],'rich_50000':['lifetimeCoins',50000],'rich_100000':['lifetimeCoins',100000],'rich_250000':['lifetimeCoins',250000],'rich_500000':['lifetimeCoins',500000],'rich_1000000':['lifetimeCoins',1000000],'hoard_1000':['currentCoins',1000],'hoard_5000':['currentCoins',5000],'hoard_10000':['currentCoins',10000],'hoard_25000':['currentCoins',25000],'hoard_50000':['currentCoins',50000],'hoard_100000':['currentCoins',100000],'hoard_500000':['currentCoins',500000],'gallery_1':['gallery',1],'gallery_3':['gallery',3],'gallery_5':['gallery',5],'gallery_10':['gallery',10],'gallery_25':['gallery',25],'gallery_50':['gallery',50],'gallery_100':['gallery',100],'gallery_250':['gallery',250],'canvas_12':['canvasSize',12],'canvas_16':['canvasSize',16],'canvas_24':['canvasSize',24],'canvas_32':['canvasSize',32],'canvas_48':['canvasSize',48],'canvas_64':['canvasSize',64],'dye_1':['dyeResearch',1],'dye_3':['dyeResearch',3],'dye_5':['dyeResearch',5],'dye_8':['dyeResearch',8],'dye_10':['dyeResearch',10],'first_sale':['loomSales',1],'first_hire':['employees',1],'small_team':['employees',2],'growing_team':['employees',3],'department':['employees',4],'corporation':['employees',5],'enterprise':['employees',7],'conglomerate':['employees',10],'broker_unlocked':['brokerageUnlocked',1],'first_stock':['stocksBought',1],'diversified':['stocksOwned',3],'portfolio_5':['stocksOwned',5],'survived_crash':['marketEvents',1],'canvas_buyer_2':['canvasCount',2],'canvas_buyer_3':['canvasCount',3],'canvas_buyer_5':['canvasCount',5],'sales_100':['loomSalesCoins',100],'sales_500':['loomSalesCoins',500],'sales_1000':['loomSalesCoins',1000],'sales_5000':['loomSalesCoins',5000],'sales_10000':['loomSalesCoins',10000],'blocks_25':['lifetimeBlocks',25],'blocks_750':['lifetimeBlocks',750],'blocks_1500':['lifetimeBlocks',1500],'blocks_3500':['lifetimeBlocks',3500],'blocks_7500':['lifetimeBlocks',7500],'combo_7':['combo',7],'combo_30':['combo',30],'combo_75':['combo',75],'focus_75':['sessions',75],'focus_150':['sessions',150],'focus_750':['sessions',750],'level_7':['level',7],'level_35':['level',35],'level_90':['level',90],'level_175':['level',175],'level_250':['level',250],'level_400':['level',400],'streak_sleep_10':['bedtimeStreak',10],'streak_sleep_50':['bedtimeStreak',50],'sleep_75':['bedtimeTotal',75],'sleep_100':['bedtimeTotal',100],'sleep_125':['bedtimeTotal',125],'sleep_250':['bedtimeTotal',250],'sleep_400':['bedtimeTotal',400],'gallery_2':['gallery',2],'gallery_15':['gallery',15],'gallery_75':['gallery',75],'canvas_10':['canvasSize',10],'social_trio':['friends',3],'social_crew_6':['friends',6],'social_army':['friends',40],'sales_250':['loomSalesCoins',250],'sales_2500':['loomSalesCoins',2500],'canvas_buyer_4':['canvasCount',4],'rich_2500':['lifetimeCoins',2500],'rich_75000':['lifetimeCoins',75000],'hoard_2500':['currentCoins',2500],'hoard_75000':['currentCoins',75000],'hoard_250000':['currentCoins',250000],'streak_5':['streak',5],'streak_10':['streak',10],'sleep_eternal_1500':['bedtimeTotal',1500],'sleep_2000':['bedtimeTotal',2000],'sleep_3000':['bedtimeTotal',3000],'streak_sleep_500':['bedtimeStreak',500],'streak_sleep_730':['bedtimeStreak',730],'streak_sleep_1000':['bedtimeStreak',1000],'focus_15000':['sessions',15000],'focus_25000':['sessions',25000],'focus_50000':['sessions',50000],'focus_100000':['sessions',100000],'streak_120':['streak',120],'streak_270':['streak',270],'streak_500':['streak',500],'streak_730':['streak',730],'streak_1000':['streak',1000],'streak_1461':['streak',1461],'combo_150':['combo',150],'combo_200':['combo',200],'combo_500':['combo',500],'blocks_15000':['lifetimeBlocks',15000],'blocks_25000':['lifetimeBlocks',25000],'blocks_50000':['lifetimeBlocks',50000],'blocks_100000':['lifetimeBlocks',100000],'level_750':['level',750],'level_1000':['level',1000],'level_1500':['level',1500],'level_2000':['level',2000],'rich_2000000':['lifetimeCoins',2000000],'rich_5000000':['lifetimeCoins',5000000],'rich_10000000':['lifetimeCoins',10000000],'rich_50000000':['lifetimeCoins',50000000],'rich_100000000':['lifetimeCoins',100000000],'hoard_1000000':['currentCoins',1000000],'hoard_5000000':['currentCoins',5000000],'hoard_10000000':['currentCoins',10000000],'gallery_500':['gallery',500],'gallery_1000':['gallery',1000],'gallery_2500':['gallery',2500],'sales_10':['loomSales',10],'sales_25':['loomSales',25],'sales_50':['loomSales',50],'sales_100_count':['loomSales',100],'sales_250_count':['loomSales',250],'sales_25000':['loomSalesCoins',25000],'sales_50000':['loomSalesCoins',50000],'sales_100000':['loomSalesCoins',100000],'stocks_10':['stocksBought',10],'stocks_25':['stocksBought',25],'stocks_50':['stocksBought',50],'stocks_100':['stocksBought',100],'market_events_3':['marketEvents',3],'market_events_5':['marketEvents',5],'market_events_10':['marketEvents',10],'market_events_25':['marketEvents',25],'portfolio_8':['stocksOwned',8],'portfolio_10':['stocksOwned',10],'employees_8':['employees',8],'canvas_buyer_6':['canvasCount',6],'canvas_buyer_7':['canvasCount',7],'social_75':['friends',75],'social_100':['friends',100],'social_150':['friends',150],'social_250':['friends',250],'social_500':['friends',500],'quest_1':['questsCompleted',1],'quest_5':['questsCompleted',5],'quest_10':['questsCompleted',10],'quest_25':['questsCompleted',25],'quest_50':['questsCompleted',50],'quest_100':['questsCompleted',100],'quest_250':['questsCompleted',250],'quest_500':['questsCompleted',500],'quest_1000':['questsCompleted',1000],'quest_streak_3':['questStreak',3],'quest_streak_7':['questStreak',7],'quest_streak_14':['questStreak',14],'quest_streak_30':['questStreak',30],'quest_streak_60':['questStreak',60],'quest_streak_90':['questStreak',90],'quest_streak_180':['questStreak',180],'quest_streak_365':['questStreak',365],'quest_ambitious_1':['questsAmbitious',1],'quest_ambitious_10':['questsAmbitious',10],'quest_ambitious_25':['questsAmbitious',25],'quest_ambitious_50':['questsAmbitious',50],'quest_ambitious_100':['questsAmbitious',100]};
 
           for (var id in REQ_MAP) {
             var rr = REQ_MAP[id];
@@ -11796,6 +12092,9 @@ try {
           // Session ended while backgrounded — finalize now.
           clearInterval(timerInterval);
           timerInterval = null;
+          // v3.23.132: One-shot guard — don't re-fire if tick already completed
+          if (_sessionCompletionFired) return;
+          _sessionCompletionFired = true;
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
           state.timerState = 'completed';
@@ -15179,3 +15478,20 @@ try {
 } catch (pixelFocusInitError) {
   console.error('PixelFocus app.js fatal error:', pixelFocusInitError);
 }
+
+// GUARD 2: Always log version on load for debugging
+try { console.log('[TodoOfTheLoom] v' + chrome.runtime.getManifest().version + ' loaded'); } catch(_) {}
+
+// v3.23.132: One-shot quest check moved INSIDE the IIFE (was inaccessible here)
+
+// GUARD 4: Show version in UI — always visible, no hiding
+try {
+  var _vLabel = document.getElementById('versionLabel');
+  if (!_vLabel) {
+    _vLabel = document.createElement('div');
+    _vLabel.id = 'versionLabel';
+    _vLabel.style.cssText = 'position:fixed;bottom:4px;right:8px;font-family:Courier New,monospace;font-size:8px;color:#2a2a3a;z-index:1;pointer-events:none;';
+    document.body.appendChild(_vLabel);
+  }
+  _vLabel.textContent = 'v' + chrome.runtime.getManifest().version;
+} catch(_) {}

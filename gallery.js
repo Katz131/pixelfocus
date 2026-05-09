@@ -1591,8 +1591,11 @@
     else if (rating >= 45) band = 'serviceable';
     else if (rating >= 30) band = 'unremarkable';
     else                    band = 'best not discussed';
+    // v3.23.139: Clear canvas after saving so the same art can't be re-saved
+    state.pixelCanvas = {};
     notify('Saved to gallery (' + pixelCount + ' pixels) \u2014 ' + band + ' [' + rating + ']');
     save();
+    renderCanvas();
     renderStats();
     renderGallery();
     if (typeof renderLoomPracticeSheet === 'function') {
