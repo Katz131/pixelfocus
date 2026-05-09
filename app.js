@@ -793,6 +793,7 @@ try {
     houseEvents: [],                 // active event objects in the house
     houseEventLastRoll: 0,           // timestamp of last event generation roll
     houseEventHistory: [],           // IDs of recently completed events (prevents repeats)
+    houseFeedLog: [],                 // timestamped feed entries for house window (money changes, penalties, etc.)
     // v3.23.118: Daily quest system
     _morningRedirectDate: '',           // 'YYYY-MM-DD' — prevents morning banner from firing twice
     questDate: '',              // 'YYYY-MM-DD' — date quests were generated
@@ -2575,6 +2576,26 @@ try {
     return baseRate * streakScale * getLobbyingMult() * getTotalMoneyMult() * getV317StreakTrickleMult() * incinBonus * dissMult * matBonus * bridgeBonus * eventsMult;
   }
 
+  // v3.23.155: Log significant events to the house feed.
+  // Entries older than 48h are pruned. Same-type entries within 2min are merged.
+  function logHouseFeed(type, msg, amount) {
+    if (!state) return;
+    if (!Array.isArray(state.houseFeedLog)) state.houseFeedLog = [];
+    var now = Date.now();
+    var TWO_MIN = 2 * 60 * 1000;
+    var TWO_DAYS = 48 * 60 * 60 * 1000;
+    state.houseFeedLog = state.houseFeedLog.filter(function(e) { return now - e.ts < TWO_DAYS; });
+    var last = state.houseFeedLog.length > 0 ? state.houseFeedLog[state.houseFeedLog.length - 1] : null;
+    if (last && last.type === type && (now - last.ts) < TWO_MIN) {
+      last.amount = (last.amount || 0) + (amount || 0);
+      last.msg = msg;
+      last.ts = now;
+    } else {
+      state.houseFeedLog.push({ type: type, msg: msg, amount: amount || 0, ts: now });
+    }
+    if (state.houseFeedLog.length > 30) state.houseFeedLog = state.houseFeedLog.slice(-30);
+  }
+
   function awardCoins(amount, reason) {
     if (!amount || amount <= 0) return;
     // Apply the late-game money multiplier stack (automated leadership x
@@ -2587,6 +2608,9 @@ try {
     state.coinsEarnedToday = (state.coinsEarnedToday || 0) + total;
     if (reason) {
       notify('+$' + Math.floor(total) + ' (' + reason + ')', '#ffd700');
+    }
+    if (total >= 1 && reason) {
+      logHouseFeed('money_gain', '+$' + Math.floor(total) + ' (' + reason + ')', Math.floor(total));
     }
   }
 
@@ -2648,6 +2672,7 @@ try {
     } catch (_) {}
     save();
     notify('+$' + payout + ' severance payout (downsized to L' + state.employeesLevel + ')', '#ff6b6b');
+    logHouseFeed('layoff', 'Severance: +$' + payout + ' (downsized)', payout);
     return payout;
   }
 
@@ -2663,6 +2688,7 @@ try {
     // Don't let coins go below zero from payroll
     if (state.coins < 0) { cost = cost + state.coins; state.coins = 0; }
     state.totalWagesPaid = (state.totalWagesPaid || 0) + cost;
+    if (cost > 0) logHouseFeed('payroll', 'Daily payroll: -$' + Math.floor(cost), -Math.floor(cost));
     return cost;
   }
 
@@ -2697,6 +2723,7 @@ try {
     // a fresh load, so schedule it.
     setTimeout(function() {
       notify('+$' + payout + ' end-of-day bonus (' + Math.round(minutesYesterday) + 'm worked, ' + streakAfterRoll + '-day streak)', '#ffd700');
+      try { logHouseFeed('eod_bonus', 'End-of-day bonus: +$' + payout, payout); } catch(_) {}
     }, 1200);
   }
 
@@ -8248,7 +8275,7 @@ try {
 
       var doneBtn = document.createElement('button');
       doneBtn.type = 'button';
-      doneBtn.textContent = '\u2713';
+      doneBtn.textContent = '\u25A1';
       doneBtn.title = (p.recurrence && p.recurrence !== 'none')
         ? 'Mark this recurring task done for today. It will reappear on the next scheduled day.'
         : 'Mark this priority task done. It will be removed from the list.';
@@ -9375,7 +9402,7 @@ try {
       row.appendChild(aqBtn);
 
       var doneBtn = document.createElement('button');
-      doneBtn.type = 'button'; doneBtn.textContent = '\u2713';
+      doneBtn.type = 'button'; doneBtn.textContent = '\u25A1';
       if (hasOpenAqueducts) {
         doneBtn.title = 'Complete aqueduct stages first.';
         doneBtn.style.cssText = 'background:#1a1a1a;color:#555;border:1px solid #333;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:not-allowed;opacity:0.4;';
@@ -10891,6 +10918,21 @@ try {
     for (var i = 0; i < seed.length; i++) { h = ((h << 5) - h) + seed.charCodeAt(i); h |= 0; }
     return function() { h = (h * 1103515245 + 12345) & 0x7fffffff; return (h % 1000) / 1000; };
   }
+  function _questTypeLabel(quest) {
+    if (!quest) return '';
+    switch (quest.type) {
+      case 'sessions': return ' sessions';
+      case 'combo': return ' combo';
+      case 'focusMin': return ' min focused';
+      case 'singleSessionMin': return ' min (single)';
+      case 'qualifiedSessions': return ' sessions (' + (quest.qualifyMin || 30) + 'm+)';
+      case 'beforeDeadline': return ' (start before deadline)';
+      case 'beforeDeadlineFocus': return ' min (before deadline)';
+      case 'noFailStreak': return ' sessions (no fails)';
+      default: return '';
+    }
+  }
+
   function _getQuestCurrent(quest) {
     if (!quest) return 0;
     var today = _questTodayStr();
@@ -11892,7 +11934,13 @@ try {
             var q = state.questChosen === 'steady' ? state.questSteady : state.questAmbitious;
             if (q && q.rewards) {
               var fixed = false;
-              // v3.23.145: doubleTextile retroactive fix removed (caused infinite re-apply loop)
+              // v3.23.155: Safe retroactive doubleTextile restore
+              if (state.questChosen === 'ambitious' && !state.questDoubleTextileUsed && !state.questDoubleTextile) {
+                if (q.rewards && q.rewards.doubleTextile) {
+                  state.questDoubleTextile = true;
+                  console.log('[QUEST] Startup: doubleTextile restored for completed ambitious quest');
+                }
+              }
               // Ensure lifetime counter was incremented
               if (!state._questCountedV136) {
                 // Can't know if it was already counted, but if questsCompletedLifetime is 0
@@ -12789,9 +12837,21 @@ try {
             } else {
               html += '<div style="font-size:9px;color:var(--text-dim);font-style:italic;">Friend only — no task access granted.</div>';
             }
-            // v3.23.66: Button to request task access TO this friend's projects
+            // v3.23.155: Smart access section — full/partial/none
+            var _allGranted = hasTaskAccess && perms.length >= projects.length && projects.length > 0;
+            var _partialAccess = hasTaskAccess && perms.length > 0 && perms.length < projects.length;
             html += '<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">';
-            html += '<button class="btn btn-small friend-req-access-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#4ecdc4;color:#4ecdc4;font-size:7px;padding:2px 8px;">REQUEST ACCESS TO THEIR TASKS</button>';
+            if (_allGranted) {
+              html += '<div style="font-size:8px;color:#00ff88;font-family:monospace;margin-bottom:4px;">\u2713 FULL TASK ACCESS</div>';
+              html += '<div style="display:flex;gap:4px;align-items:center;">';
+              html += '<input type="text" class="friend-task-input" data-fid="' + escHtml(fid) + '" placeholder="Add a task for ' + escHtml(f.displayName || 'them') + '..." style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:9px;color:var(--text);font-family:monospace;outline:none;" />';
+              html += '<button class="btn btn-small friend-task-send-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#00ff88;color:#00ff88;font-size:7px;padding:2px 6px;white-space:nowrap;">SEND</button>';
+              html += '</div>';
+            } else {
+              var _reqLabel = _partialAccess ? 'INCOMPLETE ACCESS' : 'REQUEST ACCESS TO THEIR TASKS';
+              var _reqColor = _partialAccess ? '#ff9f43' : '#4ecdc4';
+              html += '<button class="btn btn-small friend-req-access-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:' + _reqColor + ';color:' + _reqColor + ';font-size:7px;padding:2px 8px;">' + _reqLabel + '</button>';
+            }
             html += '</div>';
             html += '</div>';
           });
@@ -12872,6 +12932,57 @@ try {
               } catch(_) {
                 btn.disabled = false;
                 btn.textContent = 'REQUEST ACCESS TO THEIR TASKS';
+              }
+            });
+          });
+
+          // v3.23.155: Inline task send handler (full access mode)
+          friendsList.querySelectorAll('.friend-task-send-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              var input = friendsList.querySelector('.friend-task-input[data-fid="' + fid + '"]');
+              if (!input) return;
+              var text = (input.value || '').trim();
+              if (!text) { input.style.borderColor = '#ff4444'; return; }
+              input.style.borderColor = 'var(--border)';
+              var friend = state.friends[fid] || {};
+              var targetProject = (friend.theirProjects && friend.theirProjects.length > 0) ? friend.theirProjects[0] : ((state.projects && state.projects.length > 0) ? state.projects[0].id : 'general');
+              btn.disabled = true;
+              btn.textContent = '...';
+              try {
+                window.ProfileSync.sendInboxMessage(fid, {
+                  type: 'task',
+                  fromId: state.profileId,
+                  fromName: state.displayName || 'A weaver',
+                  project: targetProject,
+                  text: text.substring(0, 200),
+                  createdAt: new Date().toISOString()
+                }).then(function() {
+                  btn.disabled = false;
+                  btn.textContent = 'SEND';
+                  input.value = '';
+                  notify('Task sent to ' + (fname || fid) + ': ' + text.substring(0, 40), '#00ff88');
+                }).catch(function() {
+                  btn.disabled = false;
+                  btn.textContent = 'SEND';
+                  notify('Failed to send task. Try again.', '#ff4444');
+                });
+              } catch(_) {
+                btn.disabled = false;
+                btn.textContent = 'SEND';
+              }
+            });
+          });
+
+          // Enter key on inline task input
+          friendsList.querySelectorAll('.friend-task-input').forEach(function(inp) {
+            inp.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') {
+                var fid = inp.getAttribute('data-fid');
+                var sendBtn = friendsList.querySelector('.friend-task-send-btn[data-fid="' + fid + '"]');
+                if (sendBtn) sendBtn.click();
               }
             });
           });
@@ -13157,6 +13268,13 @@ try {
               // Process access-granted notices
               accessGrantNotices.forEach(function(notice) {
                 notify(escHtml(notice.fromName || notice.fromId) + ' granted you task access!', '#4ecdc4');
+                // v3.23.155: Store their permitted projects for inline task sending
+                if (notice.fromId && notice.projects && notice.projects.length > 0) {
+                  if (!state.friends[notice.fromId]) {
+                    state.friends[notice.fromId] = { displayName: notice.fromName || notice.fromId, status: 'accepted', taskAccessGranted: false, permittedProjects: [] };
+                  }
+                  state.friends[notice.fromId].theirProjects = notice.projects;
+                }
                 try { window.ProfileSync.deleteInboxMessage(state.profileId, notice._id); } catch(_) {}
                 // v3.23.78: Persist with retry
                 _retrySocialWrite();

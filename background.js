@@ -330,6 +330,17 @@ function applyPromisePenalty() {
     _safeSaveState(state);
     console.log('[PromiseTimer] PENALTY APPLIED: $' + PROMISE_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
+    // v3.23.155: Log penalty to house feed
+    if (!Array.isArray(state.houseFeedLog)) state.houseFeedLog = [];
+    state.houseFeedLog.push({
+      type: 'promise_fail',
+      msg: 'Surveillance promise broken \u2014 $' + PROMISE_PENALTY + ' penalty',
+      amount: -PROMISE_PENALTY,
+      ts: Date.now()
+    });
+    if (state.houseFeedLog.length > 30) state.houseFeedLog = state.houseFeedLog.slice(-30);
+    _safeSaveState(state);
+
     try {
       chrome.notifications.create('promise-penalty-' + Date.now(), {
         type: 'basic',

@@ -2633,6 +2633,63 @@
   // Render — builds the rap sheet and writes it into the DOM. Never mutates
   // state, never persists.
   // -------------------------------------------------------------------------
+  // v3.23.155: Render recent activity feed (money changes, penalties)
+  var FEED_ICONS = {
+    money_gain: '\u25B2', eod_bonus: '\u2605', payroll: '\u25BC',
+    layoff: '\u2702', promise_fail: '\u26A0', money_loss: '\u25BC'
+  };
+  var FEED_COLORS = {
+    money_gain: '#4ecdc4', eod_bonus: '#ffd700', payroll: '#ff9f43',
+    layoff: '#ff6b6b', promise_fail: '#ff4444', money_loss: '#ff6b6b'
+  };
+
+  function renderFeedLog() {
+    var existing = document.getElementById('houseFeedLogPanel');
+    if (existing) existing.remove();
+    if (!state || !Array.isArray(state.houseFeedLog) || state.houseFeedLog.length === 0) return;
+    var now = Date.now();
+    var DAY = 24 * 60 * 60 * 1000;
+    var recent = state.houseFeedLog.filter(function(e) { return now - e.ts < DAY; });
+    if (recent.length === 0) return;
+    recent.sort(function(a, b) { return b.ts - a.ts; });
+    if (recent.length > 8) recent = recent.slice(0, 8);
+
+    var panel = document.createElement('div');
+    panel.id = 'houseFeedLogPanel';
+    panel.style.cssText = 'margin-top:12px;padding:8px 10px;background:rgba(20,20,40,0.5);border:1px solid #2a2a4e;border-radius:6px;';
+
+    var label = document.createElement('div');
+    label.style.cssText = 'font-size:8px;color:#5a5a7e;font-family:monospace;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase;';
+    label.textContent = 'Recent Activity';
+    panel.appendChild(label);
+
+    recent.forEach(function(entry) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 0;font-size:10px;font-family:monospace;';
+      var icon = document.createElement('span');
+      icon.style.cssText = 'color:' + (FEED_COLORS[entry.type] || '#888') + ';font-size:10px;width:12px;text-align:center;';
+      icon.textContent = FEED_ICONS[entry.type] || '\u2022';
+      var msg = document.createElement('span');
+      msg.style.cssText = 'color:#c0c0d8;flex:1;';
+      msg.textContent = entry.msg || '';
+      var ago = document.createElement('span');
+      ago.style.cssText = 'color:#5a5a7e;font-size:8px;white-space:nowrap;';
+      var mins = Math.floor((now - entry.ts) / 60000);
+      if (mins < 1) ago.textContent = 'just now';
+      else if (mins < 60) ago.textContent = mins + 'm ago';
+      else ago.textContent = Math.floor(mins / 60) + 'h ago';
+      row.appendChild(icon);
+      row.appendChild(msg);
+      row.appendChild(ago);
+      panel.appendChild(row);
+    });
+
+    var eventsPanel = document.getElementById('houseEventsPanel');
+    if (eventsPanel && eventsPanel.parentNode) {
+      eventsPanel.parentNode.insertBefore(panel, eventsPanel.nextSibling);
+    }
+  }
+
   function render() {
     if (!state) return;
     var sheet = (window.House && window.House.getRapSheet) ? window.House.getRapSheet(state) : null;
