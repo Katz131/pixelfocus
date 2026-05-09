@@ -1,4 +1,4 @@
-// badges-window.js — v3.23.99
+// badges-window.js — v3.23.157
 // Handles the dedicated Badges page.
 // Loaded by badges.html.
 
@@ -141,11 +141,11 @@
     { id: 'rich_500', cat: 'mastery', name: 'Pocket Change', icon: '🪙', desc: 'You\'ve earned $500 lifetime. Focus sessions pay off — literally.', req: {"type": "lifetimeCoins", "count": 500} },
     { id: 'rich_1000', cat: 'mastery', name: 'First Fortune', icon: '💰', desc: '$1,000 earned across all your focus sessions. Your first fortune.', req: {"type": "lifetimeCoins", "count": 1000} },
     { id: 'rich_5000', cat: 'mastery', name: 'Five Grand', icon: '💳', desc: '$5,000 lifetime earnings. Five grand from sheer productivity.', req: {"type": "lifetimeCoins", "count": 5000} },
-    { id: 'rich_10000', cat: 'mastery', name: 'Textile Mogul', icon: '💎', desc: '$10,000 earned! Five figures of coins from focused work.', req: {"type": "lifetimeCoins", "count": 10000} },
+    { id: 'rich_10000', cat: 'mastery', name: 'Textile Mogul', icon: '💎', desc: '$10,000 earned! Five figures from focused work.', req: {"type": "lifetimeCoins", "count": 10000} },
     { id: 'rich_25000', cat: 'mastery', name: 'Quarter-Millionaire', icon: '🤑', desc: '$25,000 lifetime. A quarter of the way to six figures.', req: {"type": "lifetimeCoins", "count": 25000} },
     { id: 'rich_50000', cat: 'mastery', name: 'Money Machine', icon: '🎰', desc: '$50,000 earned. Halfway to $100K — all from focus sessions and productivity.', req: {"type": "lifetimeCoins", "count": 50000} },
     { id: 'rich_100000', cat: 'mastery', name: 'Six Figures', icon: '🏦', desc: 'Six figures! $100,000 earned across your entire journey. Incredible.', req: {"type": "lifetimeCoins", "count": 100000} },
-    { id: 'rich_250000', cat: 'mastery', name: 'Cloth Rothschild', icon: '🏰', desc: '$250,000 lifetime. A quarter million coins earned through discipline.', req: {"type": "lifetimeCoins", "count": 250000} },
+    { id: 'rich_250000', cat: 'mastery', name: 'Cloth Rothschild', icon: '🏰', desc: '$250,000 lifetime. A quarter million earned through discipline.', req: {"type": "lifetimeCoins", "count": 250000} },
     { id: 'rich_500000', cat: 'mastery', name: 'Half-Millionaire', icon: '💸', desc: 'Half a million dollars earned. $500,000 from pure productivity.', req: {"type": "lifetimeCoins", "count": 500000} },
     { id: 'rich_1000000', cat: 'mastery', name: 'Millionaire', icon: '👑', desc: 'One million dollars earned. $1,000,000. You are the definition of productivity.', req: {"type": "lifetimeCoins", "count": 1000000} },
     { id: 'hoard_1000', cat: 'mastery', name: 'Saver', icon: '📥', desc: 'You\'re holding $1,000 in your wallet right now without spending it.', req: {"type": "currentCoins", "count": 1000} },
@@ -252,12 +252,12 @@
     { id: 'level_2000', cat: 'mastery', name: 'Two Thousand', icon: '🔮', desc: 'Level 2,000. This badge is a monument to patience. And possibly insanity.', req: {"type": "level", "count": 2000} },
     { id: 'rich_2000000', cat: 'mastery', name: 'Double Millionaire', icon: '💰', desc: '$2,000,000 lifetime earnings. Two million from pure productivity.', req: {"type": "lifetimeCoins", "count": 2000000} },
     { id: 'rich_5000000', cat: 'mastery', name: 'Multi-Millionaire', icon: '🏝️', desc: '$5,000,000 earned. Five million. You could buy a private island.', req: {"type": "lifetimeCoins", "count": 5000000} },
-    { id: 'rich_10000000', cat: 'mastery', name: 'Deca-Millionaire', icon: '🛸', desc: '$10,000,000 lifetime. Ten million coins earned through sheer discipline.', req: {"type": "lifetimeCoins", "count": 10000000} },
+    { id: 'rich_10000000', cat: 'mastery', name: 'Deca-Millionaire', icon: '🛸', desc: '$10,000,000 lifetime. Ten million earned through sheer discipline.', req: {"type": "lifetimeCoins", "count": 10000000} },
     { id: 'rich_50000000', cat: 'mastery', name: 'Fifty Million', icon: '🌌', desc: '$50,000,000 earned. This is more money than some countries have.', req: {"type": "lifetimeCoins", "count": 50000000} },
-    { id: 'rich_100000000', cat: 'mastery', name: 'Hundred Million', icon: '🏰', desc: '$100,000,000. One. Hundred. Million. Coins.', req: {"type": "lifetimeCoins", "count": 100000000} },
-    { id: 'hoard_1000000', cat: 'mastery', name: 'Million in Pocket', icon: '🐉', desc: 'One million coins in your wallet at once. Not lifetime — held simultaneously.', req: {"type": "currentCoins", "count": 1000000} },
+    { id: 'rich_100000000', cat: 'mastery', name: 'Hundred Million', icon: '🏰', desc: '$100,000,000. One. Hundred. Million. Dollars.', req: {"type": "lifetimeCoins", "count": 100000000} },
+    { id: 'hoard_1000000', cat: 'mastery', name: 'Million in Pocket', icon: '🐉', desc: 'One million in your wallet at once. Not lifetime — held simultaneously.', req: {"type": "currentCoins", "count": 1000000} },
     { id: 'hoard_5000000', cat: 'mastery', name: 'Five Mil Hoard', icon: '🗝️', desc: '$5,000,000 held at once. Your wallet weighs more than your principles.', req: {"type": "currentCoins", "count": 5000000} },
-    { id: 'hoard_10000000', cat: 'mastery', name: 'Infinite Restraint', icon: '♾️', desc: 'Ten million coins held simultaneously. You could buy everything. But you don\'t.', req: {"type": "currentCoins", "count": 10000000} },
+    { id: 'hoard_10000000', cat: 'mastery', name: 'Infinite Restraint', icon: '♾️', desc: 'Ten million held simultaneously. You could buy everything. But you don\'t.', req: {"type": "currentCoins", "count": 10000000} },
 
     // --- Creative Endgame ---
     { id: 'gallery_500', cat: 'creative', name: 'Art Factory', icon: '🏭', desc: '500 artworks saved. Half a thousand pieces of pixel art.', req: {"type": "gallery", "count": 500} },
@@ -437,6 +437,82 @@
     return earned;
   }
 
+
+  // ===== Badge progress helper (v3.23.156) =====
+  function _badgeCurrentVal(reqType, st) {
+    var level = 1, xpNeeded = 0, lv = 1;
+    var totalXP = st.xp || 0;
+    while (lv < 999) { var nx = (lv + 1) * 50; if (xpNeeded + nx > totalXP) break; xpNeeded += nx; lv++; }
+    level = lv;
+    var sessions = st.lifetimeSessions || st.totalLifetimeSessions || 0;
+    var streak = st.longestStreak || Math.max(st.streak || 0, st.longestStreak || 0);
+    var combo = st.maxCombo || 0;
+    var friends = 0;
+    if (Array.isArray(st.friends)) {
+      for (var i = 0; i < st.friends.length; i++) {
+        if (st.friends[i] && st.friends[i].status === 'accepted') friends++;
+      }
+    }
+    var bedtimeTotal = st.bedtimeTotalSuccesses || 0;
+    var bedtimeStreakBest = Math.max(st.bedtimeStreak || 0, st.bedtimeBestStreak || 0);
+    var lifetimeCoins = st.lifetimeCoins || 0;
+    var currentCoins = st.coins || 0;
+    var lifetimeBlocks = st.totalLifetimeBlocks || 0;
+    var galleryCount = (st.savedArtworks && st.savedArtworks.length) || 0;
+    var canvasSize = st.canvasSize || 8;
+    var canvasCount = (st.purchasedCanvasSizes && st.purchasedCanvasSizes.length) || 1;
+    var dyeResearch = st.dyeResearchLevel || 0;
+    var employeesLevel = st.employeesLevel || 0;
+    var brokerageUnlocked = st.brokerageUnlocked ? 1 : 0;
+    var stocksOwned = 0, stocksBought = 0;
+    if (st.portfolio && typeof st.portfolio === 'object') {
+      var keys = Object.keys(st.portfolio);
+      for (var k = 0; k < keys.length; k++) {
+        if (st.portfolio[keys[k]] && st.portfolio[keys[k]].shares > 0) { stocksOwned++; stocksBought++; }
+      }
+    }
+    var marketEvents = st.marketEventsWeathered || 0;
+    var questsCompleted = st.questsCompletedLifetime || 0;
+    var questStreak = st.questStreak || 0;
+    var questsAmbitious = st.questsAmbitiousCompleted || 0;
+    var hasProfilePic = !!(st.profilePicture && st.profilePicture.pixels);
+    var hasDisplayName = !!(st.displayName && st.displayName.trim());
+    var hasFullProfile = hasProfilePic && hasDisplayName;
+    var loomSalesCount = galleryCount;
+    var loomSalesCoins = st.coinsFromLoomSales || 0;
+
+    var map = {
+      bedtimeTotal: bedtimeTotal, bedtimeStreak: bedtimeStreakBest,
+      sessions: sessions, streak: streak, combo: combo,
+      friends: friends, profilePic: hasProfilePic ? 1 : 0,
+      displayName: hasDisplayName ? 1 : 0, fullProfile: hasFullProfile ? 1 : 0,
+      level: level, lifetimeCoins: lifetimeCoins, currentCoins: currentCoins,
+      lifetimeBlocks: lifetimeBlocks, gallery: galleryCount,
+      canvasSize: canvasSize, canvasCount: canvasCount,
+      dyeResearch: dyeResearch, employees: employeesLevel,
+      brokerageUnlocked: brokerageUnlocked, stocksBought: stocksBought,
+      stocksOwned: stocksOwned, marketEvents: marketEvents,
+      loomSales: loomSalesCount, loomSalesCoins: loomSalesCoins,
+      questsCompleted: questsCompleted, questStreak: questStreak,
+      questsAmbitious: questsAmbitious
+    };
+    return map[reqType] || 0;
+  }
+
+  var _BADGE_TYPE_LABELS = {
+    bedtimeTotal: 'nights', bedtimeStreak: 'night streak',
+    sessions: 'sessions', streak: 'day streak', combo: 'combo',
+    friends: 'friends', profilePic: '', displayName: '', fullProfile: '',
+    level: 'levels', lifetimeCoins: '$ earned', currentCoins: '$ held',
+    lifetimeBlocks: 'textiles', gallery: 'artworks',
+    canvasSize: 'px canvas', canvasCount: 'sizes owned',
+    dyeResearch: 'dye level', employees: 'employee level',
+    brokerageUnlocked: '', stocksBought: 'trades', stocksOwned: 'stocks owned',
+    marketEvents: 'events', loomSales: 'sales', loomSalesCoins: '$ from sales',
+    questsCompleted: 'quests', questStreak: 'day quest streak',
+    questsAmbitious: 'ambitious quests'
+  };
+
   // ===== Render =====
   function render() {
     var earned = computeEarnedBadges();
@@ -494,6 +570,34 @@
         desc.className = 'badge-desc';
         desc.textContent = b.desc;
         card.appendChild(desc);
+
+
+        // --- Progress indicator (v3.23.156) ---
+        var _boolTypes = {profilePic:1, displayName:1, fullProfile:1, brokerageUnlocked:1};
+        var progWrap = document.createElement('div');
+        progWrap.className = 'badge-progress';
+        if (_boolTypes[b.req.type]) {
+          var pTxt = document.createElement('div');
+          pTxt.className = 'badge-progress-text';
+          pTxt.textContent = isEarned ? 'COMPLETE' : 'NOT YET';
+          progWrap.appendChild(pTxt);
+        } else {
+          var curVal = _badgeCurrentVal(b.req.type, state);
+          var pct = Math.min(100, Math.round((curVal / b.req.count) * 100));
+          var pTxt = document.createElement('div');
+          pTxt.className = 'badge-progress-text';
+          var lbl = _BADGE_TYPE_LABELS[b.req.type] || '';
+          pTxt.textContent = curVal + ' / ' + b.req.count + (lbl ? ' ' + lbl : '');
+          progWrap.appendChild(pTxt);
+          var pBar = document.createElement('div');
+          pBar.className = 'badge-progress-bar';
+          var pFill = document.createElement('div');
+          pFill.className = 'badge-progress-fill';
+          pFill.style.width = pct + '%';
+          pBar.appendChild(pFill);
+          progWrap.appendChild(pBar);
+        }
+        card.appendChild(progWrap);
 
         if (!isEarned) {
           var lock = document.createElement('div');

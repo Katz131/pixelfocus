@@ -1241,22 +1241,164 @@
   }
 
   // =========================================================================
-  // Pet mood from household condition — maps the story arc to sprite states.
-  // The pet never knows about the factory. It only knows whether you are home,
-  // whether it has been fed, and whether the door still opens.
   // =========================================================================
-  // Condition-to-mood mapping. Uses only calm/neutral moods.
-  // Dramatic states (scared, angry, sick) are reserved for the event
-  // system so they only fire on the specific pet the event targets.
-  var CONDITION_TO_PET_MOOD = {
-    'Settling in.':                                         'happy',
-    'Warm. The light is good.':                             'happy',
-    'Tidy. The hallway has new flowers.':                   'excited',
-    'Quiet. Everyone is where they should be.':             'dancing',
-    'Distracted. The kettle has been on twice.':            'working',
-    'Watchful. The door is checked after it is already locked.': 'sad',
-    'Unwell. A letter was left on the desk, unopened.':     'sad',
-    'Drifted. The calendar is three weeks out of date.':    'sleeping'
+  // Pet mood from household condition — intelligent per-species responses.
+  //
+  // Each pet type reacts differently to each household condition based on
+  // what that animal would actually do. Dogs sense anxiety. Cats love
+  // quiet. Birds need stimulation. Bunnies freeze at noise. Fish are
+  // oblivious. Blobs thrive in chaos.
+  // =========================================================================
+
+  // Complete condition → mood mapping for each pet type.
+  // Every condition is mapped for every species — no fallbacks, no gaps.
+  var PET_CONDITION_MAP = {
+    dog: {
+      'Settling in.':                                              'excited',
+      'Warm. The light is good.':                                  'happy',
+      'Tidy. The hallway has new flowers.':                        'dancing',
+      'Quiet. Everyone is where they should be.':                  'working',
+      'Distracted. The kettle has been on twice.':                 'excited',
+      'Watchful. The door is checked after it is already locked.': 'scared',
+      'Unwell. A letter was left on the desk, unopened.':          'sad',
+      'Drifted. The calendar is three weeks out of date.':         'sad'
+    },
+    cat: {
+      'Settling in.':                                              'excited',
+      'Warm. The light is good.':                                  'dancing',
+      'Tidy. The hallway has new flowers.':                        'happy',
+      'Quiet. Everyone is where they should be.':                  'sleeping',
+      'Distracted. The kettle has been on twice.':                 'angry',
+      'Watchful. The door is checked after it is already locked.': 'working',
+      'Unwell. A letter was left on the desk, unopened.':          'sleeping',
+      'Drifted. The calendar is three weeks out of date.':         'happy'
+    },
+    bird: {
+      'Settling in.':                                              'excited',
+      'Warm. The light is good.':                                  'dancing',
+      'Tidy. The hallway has new flowers.':                        'happy',
+      'Quiet. Everyone is where they should be.':                  'sad',
+      'Distracted. The kettle has been on twice.':                 'excited',
+      'Watchful. The door is checked after it is already locked.': 'scared',
+      'Unwell. A letter was left on the desk, unopened.':          'sick',
+      'Drifted. The calendar is three weeks out of date.':         'scared'
+    },
+    bunny: {
+      'Settling in.':                                              'happy',
+      'Warm. The light is good.':                                  'dancing',
+      'Tidy. The hallway has new flowers.':                        'excited',
+      'Quiet. Everyone is where they should be.':                  'happy',
+      'Distracted. The kettle has been on twice.':                 'scared',
+      'Watchful. The door is checked after it is already locked.': 'scared',
+      'Unwell. A letter was left on the desk, unopened.':          'sad',
+      'Drifted. The calendar is three weeks out of date.':         'sleeping'
+    },
+    fish: {
+      'Settling in.':                                              'happy',
+      'Warm. The light is good.':                                  'happy',
+      'Tidy. The hallway has new flowers.':                        'excited',
+      'Quiet. Everyone is where they should be.':                  'happy',
+      'Distracted. The kettle has been on twice.':                 'happy',
+      'Watchful. The door is checked after it is already locked.': 'happy',
+      'Unwell. A letter was left on the desk, unopened.':          'working',
+      'Drifted. The calendar is three weeks out of date.':         'sick'
+    },
+    blob: {
+      'Settling in.':                                              'happy',
+      'Warm. The light is good.':                                  'happy',
+      'Tidy. The hallway has new flowers.':                        'angry',
+      'Quiet. Everyone is where they should be.':                  'dancing',
+      'Distracted. The kettle has been on twice.':                 'excited',
+      'Watchful. The door is checked after it is already locked.': 'working',
+      'Unwell. A letter was left on the desk, unopened.':          'sick',
+      'Drifted. The calendar is three weeks out of date.':         'dancing'
+    }
+  };
+
+  // Condition-specific reason labels per pet type.
+  // These explain WHY this specific animal feels this way about this
+  // specific condition — not generic mood words.
+  var PET_CONDITION_LABEL = {
+    dog: {
+      'Settling in.':                                              'Exploring',
+      'Warm. The light is good.':                                  'Content',
+      'Tidy. The hallway has new flowers.':                        'Tail wagging',
+      'Quiet. Everyone is where they should be.':                  'Bored',
+      'Distracted. The kettle has been on twice.':                 'Alert',
+      'Watchful. The door is checked after it is already locked.': 'Whimpering',
+      'Unwell. A letter was left on the desk, unopened.':          'Stays close',
+      'Drifted. The calendar is three weeks out of date.':         'Pacing'
+    },
+    cat: {
+      'Settling in.':                                              'Curious',
+      'Warm. The light is good.':                                  'Sunbathing',
+      'Tidy. The hallway has new flowers.':                        'Grooming',
+      'Quiet. Everyone is where they should be.':                  'Napping',
+      'Distracted. The kettle has been on twice.':                 'Hissing',
+      'Watchful. The door is checked after it is already locked.': 'Watching',
+      'Unwell. A letter was left on the desk, unopened.':          'Distant',
+      'Drifted. The calendar is three weeks out of date.':         'Unbothered'
+    },
+    bird: {
+      'Settling in.':                                              'Chirping',
+      'Warm. The light is good.':                                  'Singing',
+      'Tidy. The hallway has new flowers.':                        'Preening',
+      'Quiet. Everyone is where they should be.':                  'Too quiet',
+      'Distracted. The kettle has been on twice.':                 'Vocal',
+      'Watchful. The door is checked after it is already locked.': 'Fluffed up',
+      'Unwell. A letter was left on the desk, unopened.':          'Silent',
+      'Drifted. The calendar is three weeks out of date.':         'Ruffled'
+    },
+    bunny: {
+      'Settling in.':                                              'Nibbling',
+      'Warm. The light is good.':                                  'Stretched out',
+      'Tidy. The hallway has new flowers.':                        'Binkying',
+      'Quiet. Everyone is where they should be.':                  'Relaxed',
+      'Distracted. The kettle has been on twice.':                 'Thumping',
+      'Watchful. The door is checked after it is already locked.': 'Frozen',
+      'Unwell. A letter was left on the desk, unopened.':          'Hiding',
+      'Drifted. The calendar is three weeks out of date.':         'Withdrawn'
+    },
+    fish: {
+      'Settling in.':                                              'Swimming',
+      'Warm. The light is good.':                                  'Active',
+      'Tidy. The hallway has new flowers.':                        'Clean tank',
+      'Quiet. Everyone is where they should be.':                  'Drifting',
+      'Distracted. The kettle has been on twice.':                 'Unbothered',
+      'Watchful. The door is checked after it is already locked.': 'Oblivious',
+      'Unwell. A letter was left on the desk, unopened.':          'Sluggish',
+      'Drifted. The calendar is three weeks out of date.':         'Murky water'
+    },
+    blob: {
+      'Settling in.':                                              'Pulsing',
+      'Warm. The light is good.':                                  'Absorbing',
+      'Tidy. The hallway has new flowers.':                        'Too clean',
+      'Quiet. Everyone is where they should be.':                  'Meditating',
+      'Distracted. The kettle has been on twice.':                 'Feeding',
+      'Watchful. The door is checked after it is already locked.': 'Curious',
+      'Unwell. A letter was left on the desk, unopened.':          'Dimming',
+      'Drifted. The calendar is three weeks out of date.':         'Thriving'
+    }
+  };
+
+  // Map mood strings to actual sprite states (only 'happy' and 'sad' exist).
+  // This fixes the bug where negative moods like 'scared' showed happy sprite.
+  var MOOD_TO_SPRITE = {
+    happy: 'happy', excited: 'happy', dancing: 'happy', working: 'happy',
+    sad: 'sad', sleeping: 'sad', scared: 'sad', angry: 'sad', sick: 'sad'
+  };
+
+  // Generic fallback labels (only used when condition is unknown)
+  var PET_MOOD_REASONS = {
+    happy:    'Content',
+    excited:  'Excited',
+    dancing:  'Joyful',
+    working:  'Restless',
+    sad:      'Unsettled',
+    sleeping: 'Withdrawn',
+    scared:   'Nervous',
+    angry:    'Irritable',
+    sick:     'Unwell'
   };
 
   function petMoodFromCondition(condition, wb, petType) {
@@ -1271,7 +1413,20 @@
       }
       return 'happy';
     }
-    return CONDITION_TO_PET_MOOD[condition] || 'happy';
+    // Look up mood from per-pet-type condition map
+    var typeMap = PET_CONDITION_MAP[petType];
+    if (typeMap && typeMap[condition]) return typeMap[condition];
+    // Fallback for unknown pet types — default to dog behaviour
+    var dogMap = PET_CONDITION_MAP.dog;
+    return (dogMap && dogMap[condition]) || 'happy';
+  }
+
+  // Get the condition-specific reason label for this pet
+  function petMoodLabel(condition, petType, mood) {
+    var typeLabels = PET_CONDITION_LABEL[petType];
+    if (typeLabels && condition && typeLabels[condition]) return typeLabels[condition];
+    // Fallback to generic mood label
+    return PET_MOOD_REASONS[mood] || mood || 'Content';
   }
 
   // Bowl state: depends on petFullness in state. If the player hasn't
@@ -1415,7 +1570,7 @@
       result: '{{name}} took the medicine without too much fuss.'
     },
     {
-      id: 'grooming', petTypes: null,
+      id: 'grooming', petTypes: ['dog','cat','bunny','bird'],
       title: '{{name}} could use grooming',
       desc: 'Looking a bit scruffy. A grooming session would help.',
       action: 'Groom',
@@ -1425,7 +1580,7 @@
       result: '{{name}} looks much better. Almost smug about it.'
     },
     {
-      id: 'new_toy', petTypes: null,
+      id: 'new_toy', petTypes: ['dog','cat','bunny','bird','blob'],
       title: 'New toy for {{name}}',
       desc: 'There\'s something at the pet store that {{name}} would love.',
       action: 'Buy toy',
@@ -1445,7 +1600,7 @@
       result: '{{name}} ate every last crumb and is now looking at you with hope.'
     },
     {
-      id: 'comfort', petTypes: null,
+      id: 'comfort', petTypes: ['dog','cat','bunny','bird','blob'],
       title: '{{name}} is frightened',
       desc: 'Something spooked them. They\'re hiding.',
       action: 'Comfort',
@@ -1455,7 +1610,7 @@
       result: '{{name}} calmed down after some gentle attention.'
     },
     {
-      id: 'found_thing', petTypes: null,
+      id: 'found_thing', petTypes: ['dog','cat','bunny','blob'],
       title: '{{name}} found something',
       desc: 'Dragged something out from behind the couch. Looks valuable.',
       action: 'Inspect',
@@ -1475,7 +1630,7 @@
       result: '{{name}} perked up once you sat down nearby. Just needed you.'
     },
     {
-      id: 'angry_furniture', petTypes: null,
+      id: 'angry_furniture', petTypes: ['dog','cat','bunny'],
       title: '{{name}} destroyed a cushion',
       desc: 'There are feathers everywhere. {{name}} is glaring at you.',
       action: 'Clean up',
@@ -2563,7 +2718,7 @@
       var spriteMood = (_currentlyEating[i]) ? 'eating' : (eventMood || mood);
       var cv = document.createElement('canvas');
       cv.style.cssText = 'image-rendering:pixelated;width:32px;height:32px;display:block;margin:0 auto;';
-      drawPetSprite(cv, petType, spriteMood, 4);
+      drawPetSprite(cv, petType, MOOD_TO_SPRITE[spriteMood] || 'happy', 4);
 
       // Bowl sprite canvas (smaller, below the pet)
       var bowlState = petBowlState(i);
@@ -2591,10 +2746,25 @@
         wrapEl.addEventListener('mouseleave', function() { tipEl.style.display = 'none'; });
       })(tip, wrap);
 
+      // Mood reason label — only shown when pet has the sad sprite.
+      // Happy pets get no label (no clutter). Sad pets get a small
+      // color-coded reason so the player knows what's wrong.
+      var actualSprite = MOOD_TO_SPRITE[spriteMood] || 'happy';
+      var moodLbl = null;
+      if (actualSprite === 'sad') {
+        var reasonText = petMoodLabel(condition, petType, spriteMood);
+        var moodColors = {sad:'#6b6bff',sleeping:'#5a5a7e',scared:'#ff6347',angry:'#ff4444',sick:'#9966cc'};
+        moodLbl = document.createElement('div');
+        moodLbl.style.cssText = 'font-size:7px;margin-top:1px;font-family:monospace;letter-spacing:0.3px;'
+          + 'color:' + (moodColors[spriteMood] || '#ff6347') + ';';
+        moodLbl.textContent = reasonText.toUpperCase();
+      }
+
       wrap.appendChild(tip);
       wrap.appendChild(cv);
       wrap.appendChild(bowlCv);
       wrap.appendChild(lbl);
+      if (moodLbl) wrap.appendChild(moodLbl);
       row.appendChild(wrap);
     }
 
@@ -2950,8 +3120,7 @@
     wireNav();
     try {
       chrome.storage.local.get(STATE_KEY, function (result) {
-        state = (result && result[STATE_KEY]) || {};
-        render();
+        state = (result && result[STATE_KEY]) || {};        render();
       });
       chrome.storage.onChanged.addListener(function (changes, area) {
         if (area !== 'local') return;

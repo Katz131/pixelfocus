@@ -11343,6 +11343,7 @@ try {
       questTier.style.color = accentColor;
     }
     if (questDesc) { questDesc.textContent = quest.desc; questDesc.title = quest.tipDesc || ''; }
+    card.title = 'Quest: ' + quest.desc + '\nType: ' + quest.type + ' | Tier: ' + (isSteady ? 'steady' : 'ambitious') + '\nProgress: ' + current + ' / ' + quest.target + _questTypeLabel(quest) + '\nTiles lit: ' + _questLitNow + ' / ' + (quest.tiles ? quest.tiles.length : 0) + '\nCompleted: ' + (state.questCompleted ? 'YES' : 'no') + '\n2x textiles: ' + (state.questDoubleTextile ? 'ACTIVE' : 'off') + '\nStreak: ' + (state.questStreak || 0) + ' days';
 
     // Deadline countdown
     // v3.23.133: If quest is COMPLETED, hide the deadline or show success — never show
@@ -11442,7 +11443,7 @@ try {
         progText.textContent = 'complete!';
         progText.style.color = accentColor;
       } else {
-        progText.textContent = Math.min(current, quest.target) + ' / ' + quest.target;
+        progText.textContent = Math.min(current, quest.target) + ' / ' + quest.target + _questTypeLabel(quest) + ' (' + Math.round(Math.min(100, (current / quest.target) * 100)) + '%)';
         progText.style.color = '';
       }
     }
@@ -12932,6 +12933,57 @@ try {
               } catch(_) {
                 btn.disabled = false;
                 btn.textContent = 'REQUEST ACCESS TO THEIR TASKS';
+              }
+            });
+          });
+
+          // v3.23.155: Inline task send handler (full access mode)
+          friendsList.querySelectorAll('.friend-task-send-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              var input = friendsList.querySelector('.friend-task-input[data-fid="' + fid + '"]');
+              if (!input) return;
+              var text = (input.value || '').trim();
+              if (!text) { input.style.borderColor = '#ff4444'; return; }
+              input.style.borderColor = 'var(--border)';
+              var friend = state.friends[fid] || {};
+              var targetProject = (friend.theirProjects && friend.theirProjects.length > 0) ? friend.theirProjects[0] : ((state.projects && state.projects.length > 0) ? state.projects[0].id : 'general');
+              btn.disabled = true;
+              btn.textContent = '...';
+              try {
+                window.ProfileSync.sendInboxMessage(fid, {
+                  type: 'task',
+                  fromId: state.profileId,
+                  fromName: state.displayName || 'A weaver',
+                  project: targetProject,
+                  text: text.substring(0, 200),
+                  createdAt: new Date().toISOString()
+                }).then(function() {
+                  btn.disabled = false;
+                  btn.textContent = 'SEND';
+                  input.value = '';
+                  notify('Task sent to ' + (fname || fid) + ': ' + text.substring(0, 40), '#00ff88');
+                }).catch(function() {
+                  btn.disabled = false;
+                  btn.textContent = 'SEND';
+                  notify('Failed to send task. Try again.', '#ff4444');
+                });
+              } catch(_) {
+                btn.disabled = false;
+                btn.textContent = 'SEND';
+              }
+            });
+          });
+
+          // Enter key on inline task input
+          friendsList.querySelectorAll('.friend-task-input').forEach(function(inp) {
+            inp.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') {
+                var fid = inp.getAttribute('data-fid');
+                var sendBtn = friendsList.querySelector('.friend-task-send-btn[data-fid="' + fid + '"]');
+                if (sendBtn) sendBtn.click();
               }
             });
           });

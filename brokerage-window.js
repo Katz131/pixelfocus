@@ -622,15 +622,15 @@
         '<div class="stock-row">' +
           '<span class="stock-ticker" style="color:#ff6b9d;" title="Cryptocurrency ticker">' + c.id + '</span>' +
           '<span class="stock-name">' + esc(c.name) + '<br><span style="font-size:10px;color:var(--text-dim);">' + esc(c.desc) + '</span></span>' +
-          '<span class="stock-price ' + (change >= 0 ? 'up' : 'down') + '" title="Current price per coin">$' + fmt(price) + '</span>' +
+          '<span class="stock-price ' + (change >= 0 ? 'up' : 'down') + '" title="Current price per token">$' + fmt(price) + '</span>' +
           '<span class="stock-change ' + (change >= 0 ? 'up' : 'down') + '" title="Price change since last tick">' + fmtPct(change) + '</span>' +
         '</div>' +
         '<canvas class="mini-chart" id="chart_' + c.id + '" title="Price history — crypto swings hard"></canvas>' +
         '<div class="trade-row">' +
-          (coins > 0 ? '<span class="holding-badge" title="Your crypto position">' + fmt(coins) + ' COINS (AVG $' + fmt(holding.avgCost) + ')</span>' : '') +
-          '<input class="trade-input" type="number" min="1" value="10" id="qty_' + c.id + '" title="Number of coins to buy or sell">' +
-          '<button class="trade-btn buy" data-id="' + c.id + '" data-type="crypto" title="Buy crypto coins at the current price">BUY</button>' +
-          (coins > 0 ? '<button class="trade-btn sell" data-id="' + c.id + '" data-type="crypto" title="Sell coins back to brokerage cash">SELL</button>' : '') +
+          (coins > 0 ? '<span class="holding-badge" title="Your crypto position">' + fmt(coins) + ' HELD (AVG $' + fmt(holding.avgCost) + ')</span>' : '') +
+          '<input class="trade-input" type="number" min="1" value="10" id="qty_' + c.id + '" title="Number of tokens to buy or sell">' +
+          '<button class="trade-btn buy" data-id="' + c.id + '" data-type="crypto" title="Buy crypto at the current price">BUY</button>' +
+          (coins > 0 ? '<button class="trade-btn sell" data-id="' + c.id + '" data-type="crypto" title="Sell back to brokerage cash">SELL</button>' : '') +
           '<span class="trade-info" title="Total cost for the selected quantity">Cost: $<span id="cost_' + c.id + '">' + fmt(10 * price) + '</span></span>' +
         '</div>';
 

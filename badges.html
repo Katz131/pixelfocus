@@ -82,6 +82,17 @@
   .cat-tab.mastery.active { color:#ffd700; box-shadow:inset 0 -2px 0 #ffd700; background:rgba(255,215,0,0.08); }
   .cat-tab.creative.active { color:#e040fb; box-shadow:inset 0 -2px 0 #e040fb; background:rgba(224,64,251,0.08); }
   .cat-tab.business.active { color:#ff9f43; box-shadow:inset 0 -2px 0 #ff9f43; background:rgba(255,159,67,0.08); }
+
+  /* --- Badge progress indicators v3.23.156 --- */
+  .badge-progress { margin-top:8px; }
+  .badge-progress-text { font-family:'Press Start 2P',monospace; font-size:7px;
+    color:var(--text-dim); letter-spacing:0.3px; margin-bottom:4px; }
+  .badge-card.earned .badge-progress-text { color:var(--success); }
+  .badge-progress-bar { width:100%; height:4px; background:var(--border); border-radius:2px;
+    overflow:hidden; }
+  .badge-progress-fill { height:100%; border-radius:2px; transition:width 0.3s ease; }
+  .badge-card.locked .badge-progress-fill { background:linear-gradient(90deg, #5a5a7e, #7a7a9e); }
+  .badge-card.earned .badge-progress-fill { background:linear-gradient(90deg, var(--success), #66ffaa); }
 </style>
 </head>
 <body>
