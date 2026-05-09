@@ -389,11 +389,79 @@
     fish: FISH_NOTES
   };
 
-  // Resolve which note pool to use for a given pet index
+  // Eating-specific notes — only mixed into the feed when the bowl has food.
+  // Prefixed with \x01 so renderPetSprites can detect them and swap the
+  // sprite to the eating state. The prefix is stripped before display.
+  var EATING_PREFIX = '\x01';
+
+  var CAT_EATING_NOTES = [
+    'Eating from its bowl. Slowly, as if judging each piece.',
+    'Crunching kibble with its eyes half-closed.',
+    'Licking the bowl clean. Pausing. Licking again.',
+    'Eating with one paw on the rim, possessively.',
+    'Nibbling carefully. It has opinions about this food.'
+  ];
+  var DOG_EATING_NOTES = [
+    'Eating so fast the bowl is sliding across the floor.',
+    'Inhaling food. Has not tasted any of it.',
+    'Eating with tail wagging. Simple joy.',
+    'Finished the bowl. Checking for seconds.',
+    'Crunching happily. This is the best part of the day.'
+  ];
+  var BLOB_EATING_NOTES = [
+    'Absorbing its food. The process is unclear but thorough.',
+    'Enveloping the contents of the bowl. Slowly.',
+    'Eating. Or possibly just sitting in the bowl.',
+    'Food is disappearing into the blob. No chewing detected.',
+    'The bowl is emptier than it was. The blob is larger.'
+  ];
+  var BIRD_EATING_NOTES = [
+    'Pecking at seeds with quick, precise taps.',
+    'Eating with one eye on the room.',
+    'Scattering seeds everywhere. Eating two of them.',
+    'Cracking a seed. Dropping the shell. Very efficient.',
+    'Eating and singing between bites.'
+  ];
+  var BUNNY_EATING_NOTES = [
+    'Munching steadily. Nose going a mile a minute.',
+    'Eating hay. Chewing sideways. Very serious about it.',
+    'Nibbling from the bowl with delicate precision.',
+    'Eating quietly. Ears up. Listening while it chews.',
+    'Working through the food systematically, left to right.'
+  ];
+  var FISH_EATING_NOTES = [
+    'Rising to the surface for each flake. One at a time.',
+    'Eating with small, precise gulps.',
+    'Chasing a piece of food around the tank.',
+    'Eating calmly near the surface. Unbothered.',
+    'Food is disappearing. The fish looks satisfied, somehow.'
+  ];
+
+  var PET_EATING_POOLS = {
+    cat: CAT_EATING_NOTES,
+    dog: DOG_EATING_NOTES,
+    blob: BLOB_EATING_NOTES,
+    bird: BIRD_EATING_NOTES,
+    bunny: BUNNY_EATING_NOTES,
+    fish: FISH_EATING_NOTES
+  };
+
+  // Resolve which note pool to use for a given pet index.
+  // When the bowl is full, eating notes are mixed in (~1 in 4 chance per rotation).
   function petPoolFor(idx) {
     var types = (state && state.housePetTypes) || [];
     var t = types[idx];
-    return (t && PET_POOLS[t]) || GENERIC_PET_NOTES;
+    var basePool = (t && PET_POOLS[t]) || GENERIC_PET_NOTES;
+
+    // If the bowl is full, mix eating notes into the pool
+    var bowl = petBowlState(idx);
+    if (bowl === 'bowl_full' && t && PET_EATING_POOLS[t]) {
+      // Tag eating notes with prefix so the sprite renderer can detect them
+      var eatingPool = PET_EATING_POOLS[t].map(function(n) { return EATING_PREFIX + n; });
+      // Interleave: add eating notes so they show up roughly 1 in 4 rotations
+      return basePool.concat(eatingPool);
+    }
+    return basePool;
   }
 
   // Get the display name for a pet (player-chosen name or fallback)
@@ -1172,9 +1240,914 @@
     }
   }
 
-  // Determine pet mood from household wellbeing
+  // =========================================================================
+  // Pet mood from household condition — maps the story arc to sprite states.
+  // The pet never knows about the factory. It only knows whether you are home,
+  // whether it has been fed, and whether the door still opens.
+  // =========================================================================
+  // Condition-to-mood mapping. Uses only calm/neutral moods.
+  // Dramatic states (scared, angry, sick) are reserved for the event
+  // system so they only fire on the specific pet the event targets.
+  var CONDITION_TO_PET_MOOD = {
+    'Settling in.':                                         'happy',
+    'Warm. The light is good.':                             'happy',
+    'Tidy. The hallway has new flowers.':                   'excited',
+    'Quiet. Everyone is where they should be.':             'dancing',
+    'Distracted. The kettle has been on twice.':            'working',
+    'Watchful. The door is checked after it is already locked.': 'sad',
+    'Unwell. A letter was left on the desk, unopened.':     'sad',
+    'Drifted. The calendar is three weeks out of date.':    'sleeping'
+  };
+
+  function petMoodFromCondition(condition, wb, petType) {
+    if (!condition) {
+      if (typeof wb === 'number') {
+        if (wb >= 80) return 'dancing';
+        if (wb >= 70) return 'excited';
+        if (wb >= 55) return 'happy';
+        if (wb >= 40) return 'working';
+        if (wb >= 15) return 'sad';
+        return 'sleeping';
+      }
+      return 'happy';
+    }
+    return CONDITION_TO_PET_MOOD[condition] || 'happy';
+  }
+
+  // Bowl state: depends on petFullness in state. If the player hasn't
+  // spent money to feed, the bowl is empty. Fullness drains over time
+  // (handled by app.js rollover). This is read-only — we just check.
+  function petBowlState(petIndex) {
+    if (!state) return 'bowl_empty';
+    var fullness = state.petFullness;
+    if (typeof fullness === 'number') return fullness > 0 ? 'bowl_full' : 'bowl_empty';
+    if (Array.isArray(fullness)) {
+      var f = fullness[petIndex] || 0;
+      return f > 0 ? 'bowl_full' : 'bowl_empty';
+    }
+    return 'bowl_empty';
+  }
+
+  // =========================================================================
+  // Pet tooltip — a single sentence describing how the pet is doing.
+  // Never mentions the factory, dissidents, incinerators, or game mechanics.
+  // The pet only knows its own small world.
+  // =========================================================================
+  var PET_TOOLTIPS = {
+    happy: {
+      cat:   ['Sitting in the window. The light is warm.', 'Watching a bird outside. Content.', 'Purring on the arm of the sofa.'],
+      dog:   ['Lying by the door, tail moving slowly.', 'Found a comfortable spot on the rug.', 'Chewing on a toy. All is well.'],
+      blob:  ['Settled on the shelf. Slightly luminous.', 'Wobbling gently. A good sign.', 'Warm to the touch.'],
+      bird:  ['Hopping between perches. Feathers tidy.', 'Singing something small and repetitive.', 'Tilting its head at nothing.'],
+      bunny: ['Nose twitching. Ears up. Comfortable.', 'Grooming itself carefully.', 'Sitting in the corner of its space, relaxed.'],
+      fish:  ['Swimming in slow circles. The water is clean.', 'Drifting near the surface. Calm.', 'Following your finger against the glass.']
+    },
+    excited: {
+      cat:   ['Knocked a glass off the counter. No remorse.', 'Running between rooms for no reason.', 'Staring at you with enormous pupils.'],
+      dog:   ['Spinning in circles. Cannot be stopped.', 'Brought you a shoe. Very proud of it.', 'Tail going so fast the whole body moves.'],
+      blob:  ['Bouncing. Actually bouncing.', 'Changed colour twice in the last minute.', 'Vibrating with what appears to be joy.'],
+      bird:  ['Flapping hard enough to move its cage.', 'Singing loud enough to hear from outside.', 'Head-bobbing like it means something.'],
+      bunny: ['Doing binkies across the room.', 'Thumping its back feet. Excited, not angry.', 'Zooming in tight circles.'],
+      fish:  ['Splashing at the surface. Energetic.', 'Swimming fast laps. Something is good.', 'Blowing bubbles enthusiastically.']
+    },
+    dancing: {
+      cat:   ['Dancing. It does not know what is coming.', 'Perfectly content. This will not last.', 'Playing with a piece of string. Everything is fine.'],
+      dog:   ['Rolling on its back. Pure joy.', 'Playing with the children. Everyone is laughing.', 'This is the happiest it will ever be.'],
+      blob:  ['Shimmering with every colour it has.', 'Dancing on the windowsill. Beautiful.', 'This is its best moment.'],
+      bird:  ['Singing something it made up. Proud of it.', 'Swaying on its perch. The house is full.', 'This is the song it will stop singing later.'],
+      bunny: ['Flopped on its side. Completely trusting.', 'Licking your hand. This means something.', 'Stretched out. No fear. Not yet.'],
+      fish:  ['Swimming in figure eights. Showing off.', 'The tank is clean. The water is warm. Everything works.', 'Doing that thing where it looks right at you.']
+    },
+    working: {
+      cat:   ['Rearranged the shoes by the door. Again.', 'Sitting by your coat. Waiting.', 'Keeping busy. Watching the clock.'],
+      dog:   ['Carried its leash to the door. Put it back. Carried it again.', 'Pacing between rooms. Not anxious. Not yet.', 'Guarding the front window. Shift work.'],
+      blob:  ['Organizing itself. Staying productive.', 'Reshaping into tidy forms. Coping.', 'Keeping the shelf clean. Staying useful.'],
+      bird:  ['Rearranging seeds. Systematically.', 'Quiet. Focused on something only it can see.', 'Preening more than usual.'],
+      bunny: ['Digging at the corner of its bed. Busy.', 'Rearranging hay. Purposefully.', 'Keeping its space in order.'],
+      fish:  ['Swimming the same route. Precise. Repetitive.', 'Tidying the gravel with its nose.', 'Patrolling. Making sure everything is fine.']
+    },
+    scared: {
+      cat:   ['Hides under the bed when it hears the door.', 'Ears flat. Watching the hallway.', 'Will not come out for food.'],
+      dog:   ['Pressed against the wall. Eyes wide.', 'Whimpers when the letterbox opens.', 'Sleeping by the door. Not really sleeping.'],
+      blob:  ['Pressed flat. Almost invisible.', 'Shaking slightly. Cold to the touch.', 'Tucked behind the books. Trying not to be seen.'],
+      bird:  ['Silent. Feathers puffed. Very still.', 'Will not come to the front of the cage.', 'Stopped singing three days ago.'],
+      bunny: ['Thumping. Not excited. Afraid.', 'Hiding in the back. Will not eat.', 'Ears flat against its head.'],
+      fish:  ['Hiding behind the filter. Will not come out.', 'Staying at the bottom. Very still.', 'Darting away from shadows.']
+    },
+    sick: {
+      cat:   ['Not eating. The bowl has been full since yesterday.', 'Sleeping too much. Not the good kind.', 'Its fur looks different. Duller.'],
+      dog:   ['Lying on its side. Barely lifts its head.', 'Refused the treat. That has never happened before.', 'Nose is warm. Eyes are dull.'],
+      blob:  ['Lost its colour. Grey now.', 'Not moving. Barely visible.', 'Cold. Smaller than it was.'],
+      bird:  ['Feathers ruffled. Sitting at the bottom.', 'Not eating. The seed tray is untouched.', 'Silent. Has been silent.'],
+      bunny: ['Not moving. Breathing too fast.', 'Lying flat. Eyes half closed.', 'Will not eat. Will not groom.'],
+      fish:  ['Floating at an angle. Still alive.', 'Not eating. The food sits on the surface.', 'Moving very slowly. Something is wrong.']
+    },
+    sleeping: {
+      cat:   ['Sleeping. Has been sleeping for a long time.', 'Curled up. Does not react when you enter.', 'The house is very quiet.'],
+      dog:   ['Asleep by the door. Has been there all day.', 'Does not get up when you come in.', 'Dreaming. Its paws twitch.'],
+      blob:  ['Dormant. Barely perceptible.', 'Asleep. Has not moved in days.', 'A small, still shape on the shelf.'],
+      bird:  ['Head tucked. Sleeping on the cage floor.', 'Does not sing anymore. Just sleeps.', 'The cage is very quiet.'],
+      bunny: ['Curled in the corner. Sleeping through everything.', 'Does not come out when called.', 'The hay is untouched.'],
+      fish:  ['Resting at the bottom. The tank light is off.', 'Barely moving. The water is still.', 'Floating. Not swimming. Just floating.']
+    },
+    angry: {
+      cat:   ['Hissing at the door. It used to like the door.', 'Scratched the sofa. Looked at you while it did it.', 'Knocked everything off the shelf. On purpose.'],
+      dog:   ['Growled when you reached for it.', 'Chewed through a cushion. Not playing.', 'Barking at nothing. Or at you.'],
+      blob:  ['Turned a colour you have not seen before. It is not a good colour.', 'Spiky. Do not touch.', 'Hot to the touch. Pulling away.'],
+      bird:  ['Biting the bars. Loud. Persistent.', 'Screaming. Not singing. Screaming.', 'Threw its water dish.'],
+      bunny: ['Thumping hard. Not a warning. A verdict.', 'Bit you. Drew blood. No apology.', 'Lunging at the cage door.'],
+      fish:  ['Ramming the glass. Over and over.', 'Flaring at its own reflection.', 'Aggressive. Territorial. Something broke.']
+    }
+  };
+
+  function petTooltipText(mood, petType, petIndex) {
+    var pool = (PET_TOOLTIPS[mood] && PET_TOOLTIPS[mood][petType]) || PET_TOOLTIPS.happy.cat;
+    // Use a stable selection based on petIndex and a slow-rotating seed
+    var seed = Math.floor(Date.now() / 120000) + (petIndex || 0) * 7;
+    return pool[seed % pool.length];
+  }
+
+  // Legacy wrapper — old code that called petMoodFromWellbeing still works
   function petMoodFromWellbeing(wb) {
-    return (typeof wb === 'number' && wb < 50) ? 'sad' : 'happy';
+    return petMoodFromCondition(null, wb);
+  }
+
+  // =========================================================================
+  // HOUSEHOLD EVENTS (v3.23.152)
+  //
+  // Care tasks, surprises, and small moments that appear when you visit
+  // the house. Some cost money, some earn it. Events are generated with
+  // random timing -- sometimes multiple in a day, sometimes nothing for a
+  // day. Addictive check-in mechanic: you don\'t know what you\'ll find.
+  //
+  // Each event targets a specific pet (by index) or the whole household
+  // (petIndex: -1). Events specify which sprite state the pet shows while
+  // the event is active, and which state it shows after completion.
+  //
+  // Event lifecycle:
+  //   1. Generated on house visit (random roll)
+  //   2. Displayed as a card in the events panel
+  //   3. Player clicks the action button (may cost or earn money)
+  //   4. Result message shown, pet sprite briefly shows result state
+  //   5. Event moves to history (prevents repeats for a while)
+  // =========================================================================
+
+  var HOUSE_EVENT_POOL = [
+    // ---- UNIVERSAL PET EVENTS (any pet type) ----
+    {
+      id: 'vet_checkup', petTypes: null,
+      title: '{{name}} needs a check-up',
+      desc: 'Been sneezing more than usual. A vet visit would put your mind at ease.',
+      action: 'Take to vet',
+      cost: 20,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: '{{name}} got a clean bill of health. Back to normal.'
+    },
+    {
+      id: 'medication', petTypes: null,
+      title: '{{name}} needs medication',
+      desc: 'The vet left a prescription. Time to administer it.',
+      action: 'Give medication',
+      cost: 10,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: '{{name}} took the medicine without too much fuss.'
+    },
+    {
+      id: 'grooming', petTypes: null,
+      title: '{{name}} could use grooming',
+      desc: 'Looking a bit scruffy. A grooming session would help.',
+      action: 'Groom',
+      cost: 8,
+      triggerState: 'working',
+      resultState: 'excited',
+      result: '{{name}} looks much better. Almost smug about it.'
+    },
+    {
+      id: 'new_toy', petTypes: null,
+      title: 'New toy for {{name}}',
+      desc: 'There\'s something at the pet store that {{name}} would love.',
+      action: 'Buy toy',
+      cost: 5,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: '{{name}} hasn\'t put the new toy down since you brought it home.'
+    },
+    {
+      id: 'special_treat', petTypes: null,
+      title: 'Special treat for {{name}}?',
+      desc: 'You found the fancy treats at the back of the cupboard.',
+      action: 'Give treat',
+      cost: 3,
+      triggerState: 'happy',
+      resultState: 'excited',
+      result: '{{name}} ate every last crumb and is now looking at you with hope.'
+    },
+    {
+      id: 'comfort', petTypes: null,
+      title: '{{name}} is frightened',
+      desc: 'Something spooked them. They\'re hiding.',
+      action: 'Comfort',
+      cost: 0,
+      triggerState: 'scared',
+      resultState: 'happy',
+      result: '{{name}} calmed down after some gentle attention.'
+    },
+    {
+      id: 'found_thing', petTypes: null,
+      title: '{{name}} found something',
+      desc: 'Dragged something out from behind the couch. Looks valuable.',
+      action: 'Inspect',
+      cost: -8,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: '{{name}} found some loose change and a forgotten gift card. +$8.'
+    },
+    {
+      id: 'sad_lonely', petTypes: null,
+      title: '{{name}} seems lonely',
+      desc: 'Sitting in the corner, not interested in anything. Just wants company.',
+      action: 'Spend time together',
+      cost: 0,
+      triggerState: 'sad',
+      resultState: 'happy',
+      result: '{{name}} perked up once you sat down nearby. Just needed you.'
+    },
+    {
+      id: 'angry_furniture', petTypes: null,
+      title: '{{name}} destroyed a cushion',
+      desc: 'There are feathers everywhere. {{name}} is glaring at you.',
+      action: 'Clean up',
+      cost: 6,
+      triggerState: 'angry',
+      resultState: 'happy',
+      result: 'Mess cleaned. {{name}} has no regrets but seems calmer now.'
+    },
+
+    // ---- HOUSEHOLD-WIDE EVENTS ----
+    {
+      id: 'vacuum', petTypes: null, household: true,
+      title: 'Time to vacuum',
+      desc: 'The floors need cleaning. The pets will not enjoy this.',
+      action: 'Start vacuuming',
+      cost: 0,
+      triggerState: 'scared',
+      resultState: 'happy',
+      result: 'Floors are clean. The pets are recovering from the noise.'
+    },
+    {
+      id: 'new_blinds', petTypes: null, household: true,
+      title: 'Install new blinds',
+      desc: 'The old blinds are fraying. Time for an upgrade.',
+      action: 'Install',
+      cost: 12,
+      triggerState: 'excited',
+      resultState: 'happy',
+      result: 'New blinds installed. Everyone is investigating the cords.'
+    },
+    {
+      id: 'thunderstorm', petTypes: null, household: true,
+      title: 'Thunderstorm',
+      desc: 'The sky went dark. Thunder is rattling the windows.',
+      action: 'Comfort everyone',
+      cost: 0,
+      triggerState: 'scared',
+      resultState: 'happy',
+      result: 'The storm passed. Everyone is back to normal, mostly.'
+    },
+    {
+      id: 'spring_cleaning', petTypes: null, household: true,
+      title: 'Spring cleaning day',
+      desc: 'The house could use a deep clean. Everyone will need to pitch in.',
+      action: 'Start cleaning',
+      cost: 0,
+      triggerState: 'working',
+      resultState: 'dancing',
+      result: 'The house is spotless. Everyone feels accomplished.'
+    },
+    {
+      id: 'power_outage', petTypes: null, household: true,
+      title: 'Power outage',
+      desc: 'The lights went out. The pets are uneasy in the dark.',
+      action: 'Light candles',
+      cost: 2,
+      triggerState: 'scared',
+      resultState: 'happy',
+      result: 'Candles lit. The house is cozy now, actually.'
+    },
+    {
+      id: 'yard_sale', petTypes: null, household: true,
+      title: 'Yard sale finds',
+      desc: 'The neighbors are having a yard sale. Found some pet supplies.',
+      action: 'Browse sale',
+      cost: -10,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: 'Great haul. Sold some old things too. +$10.'
+    },
+
+    // ---- CAT-SPECIFIC ----
+    {
+      id: 'cat_knocked', petTypes: ['cat'],
+      title: '{{name}} knocked a glass off the table',
+      desc: 'Looked you dead in the eye while doing it.',
+      action: 'Clean up',
+      cost: 0,
+      triggerState: 'angry',
+      resultState: 'happy',
+      result: '{{name}} has zero remorse but is purring now.'
+    },
+    {
+      id: 'cat_bird_window', petTypes: ['cat'],
+      title: '{{name}} spotted a bird outside',
+      desc: 'Making that weird chattering sound at the window.',
+      action: 'Open the blinds wider',
+      cost: 0,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: '{{name}} is in heaven. The bird has no idea.'
+    },
+    {
+      id: 'cat_hairball', petTypes: ['cat'],
+      title: '{{name}} has a hairball problem',
+      desc: 'Found evidence on the good rug.',
+      action: 'Buy hairball remedy',
+      cost: 5,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: '{{name}} is feeling better. The rug is not.'
+    },
+    {
+      id: 'cat_zoomies', petTypes: ['cat'],
+      title: '{{name}} has the midnight zoomies',
+      desc: 'Running laps at 3am. The whole house is awake.',
+      action: 'Wait it out',
+      cost: 0,
+      triggerState: 'dancing',
+      resultState: 'sleeping',
+      result: '{{name}} crashed hard. Asleep on the stairs now.'
+    },
+    {
+      id: 'cat_box', petTypes: ['cat'],
+      title: 'A box arrived for {{name}}',
+      desc: 'The delivery was for you, but {{name}} claimed the box.',
+      action: 'Let them keep it',
+      cost: 0,
+      triggerState: 'excited',
+      resultState: 'happy',
+      result: '{{name}} has been in the box for two hours. Content.'
+    },
+
+    // ---- DOG-SPECIFIC ----
+    {
+      id: 'dog_show', petTypes: ['dog'],
+      title: 'Dog show training for {{name}}',
+      desc: 'The local dog show is next week. Time to practice.',
+      action: 'Train',
+      cost: 10,
+      triggerState: 'working',
+      resultState: 'excited',
+      result: '{{name}} learned a new trick. Tail hasn\'t stopped wagging.'
+    },
+    {
+      id: 'dog_fetch', petTypes: ['dog'],
+      title: '{{name}} won the fetch championship',
+      desc: 'Brought back every stick, every time. Crowd went wild.',
+      action: 'Collect prize',
+      cost: -12,
+      triggerState: 'dancing',
+      resultState: 'excited',
+      result: '{{name}} is the champion. +$12. Strutting around the house.'
+    },
+    {
+      id: 'dog_ate_something', petTypes: ['dog'],
+      title: '{{name}} ate something weird',
+      desc: 'Found them chewing on something unidentifiable in the yard.',
+      action: 'Take to vet',
+      cost: 15,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: '{{name}} is fine. The vet says to keep an eye on them.'
+    },
+    {
+      id: 'dog_trick', petTypes: ['dog'],
+      title: '{{name}} learned a trick on its own',
+      desc: 'Sat down and offered a paw without being asked.',
+      action: 'Give a treat',
+      cost: 2,
+      triggerState: 'happy',
+      resultState: 'dancing',
+      result: '{{name}} is showing everyone. Over and over.'
+    },
+    {
+      id: 'dog_walk', petTypes: ['dog'],
+      title: '{{name}} needs a walk',
+      desc: 'Brought the leash. Dropped it at your feet. Eyes enormous.',
+      action: 'Go for a walk',
+      cost: 0,
+      triggerState: 'sad',
+      resultState: 'dancing',
+      result: '{{name}} is exhausted and happy. Best walk ever, apparently.'
+    },
+
+    // ---- BLOB-SPECIFIC ----
+    {
+      id: 'blob_telekinesis', petTypes: ['blob'],
+      title: '{{name}} is practicing telekinesis',
+      desc: 'Small objects are hovering slightly. The blob is concentrating.',
+      action: 'Encourage training',
+      cost: 8,
+      triggerState: 'working',
+      resultState: 'excited',
+      result: '{{name}} moved a spoon three inches. Monumental progress.'
+    },
+    {
+      id: 'blob_split', petTypes: ['blob'],
+      title: '{{name}} briefly split in two',
+      desc: 'Both halves looked equally confused. Recombined after a minute.',
+      action: 'Monitor closely',
+      cost: 0,
+      triggerState: 'scared',
+      resultState: 'happy',
+      result: '{{name}} is whole again. Seems embarrassed about the whole thing.'
+    },
+    {
+      id: 'blob_color', petTypes: ['blob'],
+      title: '{{name}} changed color',
+      desc: 'Shifted from its usual hue to something entirely new. Seems intentional.',
+      action: 'Admire it',
+      cost: 0,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: '{{name}} is showing off its new color to anyone who looks.'
+    },
+    {
+      id: 'blob_absorbed', petTypes: ['blob'],
+      title: '{{name}} absorbed something valuable',
+      desc: 'Found it sitting on the kitchen counter looking satisfied. Your change jar is empty.',
+      action: 'Negotiate its return',
+      cost: -7,
+      triggerState: 'happy',
+      resultState: 'excited',
+      result: '{{name}} produced $7 in assorted coins. Seemed proud.'
+    },
+    {
+      id: 'blob_dormant', petTypes: ['blob'],
+      title: '{{name}} went dormant',
+      desc: 'Hasn\'t moved in hours. Barely visible. Just resting, probably.',
+      action: 'Keep watch',
+      cost: 0,
+      triggerState: 'sleeping',
+      resultState: 'happy',
+      result: '{{name}} woke up. Slightly bigger than before.'
+    },
+
+    // ---- BIRD-SPECIFIC ----
+    {
+      id: 'bird_song', petTypes: ['bird'],
+      title: '{{name}} learned a new song',
+      desc: 'Been practicing all morning. Getting pretty good at it.',
+      action: 'Listen',
+      cost: 0,
+      triggerState: 'dancing',
+      resultState: 'happy',
+      result: '{{name}} finished the performance. Took a bow. (A small head dip.)'
+    },
+    {
+      id: 'bird_escaped', petTypes: ['bird'],
+      title: '{{name}} got out of the cage',
+      desc: 'Currently on top of the bookshelf. Looking down at you.',
+      action: 'Coax back gently',
+      cost: 0,
+      triggerState: 'scared',
+      resultState: 'happy',
+      result: '{{name}} returned on its own terms. Dignity intact.'
+    },
+    {
+      id: 'bird_contest', petTypes: ['bird'],
+      title: 'Singing contest entry for {{name}}',
+      desc: 'The neighborhood bird club is holding a competition.',
+      action: 'Enter contest',
+      cost: 3,
+      triggerState: 'working',
+      resultState: 'dancing',
+      result: '{{name}} placed second. Would have won but got distracted by a mirror.'
+    },
+    {
+      id: 'bird_molting', petTypes: ['bird'],
+      title: '{{name}} is molting',
+      desc: 'Feathers everywhere. Looks uncomfortable.',
+      action: 'Buy supplements',
+      cost: 5,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: '{{name}} is growing new feathers. Looks ridiculous but feels better.'
+    },
+    {
+      id: 'bird_mimic', petTypes: ['bird'],
+      title: '{{name}} is mimicking the doorbell',
+      desc: 'You\'ve answered the door four times. Nobody was there.',
+      action: 'Accept your fate',
+      cost: 0,
+      triggerState: 'excited',
+      resultState: 'happy',
+      result: '{{name}} has moved on to mimicking the microwave.'
+    },
+
+    // ---- BUNNY-SPECIFIC ----
+    {
+      id: 'bunny_dig', petTypes: ['bunny'],
+      title: '{{name}} found a tunnel project',
+      desc: 'Digging with great purpose in the corner of the garden.',
+      action: 'Let them dig',
+      cost: 0,
+      triggerState: 'working',
+      resultState: 'excited',
+      result: '{{name}} constructed an impressive hole. Very satisfied.'
+    },
+    {
+      id: 'bunny_stash', petTypes: ['bunny'],
+      title: '{{name}} has a hidden stash',
+      desc: 'Found treats hidden behind the bookshelf. Entrepreneurial.',
+      action: 'Discover it together',
+      cost: -6,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: '{{name}}\'s stash included some things of actual value. +$6.'
+    },
+    {
+      id: 'bunny_ate_bad', petTypes: ['bunny'],
+      title: '{{name}} ate something it shouldn\'t have',
+      desc: 'Got into the houseplants again.',
+      action: 'Take to vet',
+      cost: 12,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: '{{name}} is fine but the fern is not.'
+    },
+    {
+      id: 'bunny_binky', petTypes: ['bunny'],
+      title: '{{name}} is doing binkies',
+      desc: 'Leaping and twisting in the air. Pure joy.',
+      action: 'Watch and enjoy',
+      cost: 0,
+      triggerState: 'dancing',
+      resultState: 'happy',
+      result: '{{name}} stuck the landing. Or close enough.'
+    },
+    {
+      id: 'bunny_angry_thump', petTypes: ['bunny'],
+      title: '{{name}} is thumping angrily',
+      desc: 'You moved the water bowl two inches to the left. Unforgivable.',
+      action: 'Move it back',
+      cost: 0,
+      triggerState: 'angry',
+      resultState: 'happy',
+      result: '{{name}} inspected the bowl. Acceptable. For now.'
+    },
+
+    // ---- FISH-SPECIFIC ----
+    {
+      id: 'fish_tank', petTypes: ['fish'],
+      title: 'Tank cleaning day for {{name}}',
+      desc: 'The water\'s looking a bit murky. Time for maintenance.',
+      action: 'Clean tank',
+      cost: 5,
+      triggerState: 'working',
+      resultState: 'excited',
+      result: 'Tank is sparkling. {{name}} is swimming laps to celebrate.'
+    },
+    {
+      id: 'fish_grew', petTypes: ['fish'],
+      title: '{{name}} seems bigger',
+      desc: 'Definitely grown since last week. Impressive.',
+      action: 'Measure',
+      cost: 0,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: '{{name}} has grown 2mm. That\'s significant when you\'re a fish.'
+    },
+    {
+      id: 'fish_water', petTypes: ['fish'],
+      title: 'Water quality issue for {{name}}',
+      desc: 'The pH is off. {{name}} is sluggish.',
+      action: 'Buy treatment',
+      cost: 10,
+      triggerState: 'sick',
+      resultState: 'happy',
+      result: 'Water balanced. {{name}} is swimming normally again.'
+    },
+    {
+      id: 'fish_sync', petTypes: ['fish'],
+      title: '{{name}} is doing synchronized swimming',
+      desc: 'With its own reflection. Strangely graceful.',
+      action: 'Watch',
+      cost: 0,
+      triggerState: 'dancing',
+      resultState: 'happy',
+      result: '{{name}} finished the routine. Stuck the ending. Nobody clapped.'
+    },
+    {
+      id: 'fish_treasure', petTypes: ['fish'],
+      title: '{{name}} uncovered treasure',
+      desc: 'Dug up something shiny from the gravel. It\'s a coin.',
+      action: 'Retrieve',
+      cost: -5,
+      triggerState: 'excited',
+      resultState: 'dancing',
+      result: 'Not sure how that got in there. +$5.'
+    }
+  ];
+
+  // -- Event generation: called on each render. Uses houseEventLastRoll
+  //    timestamp to decide whether to roll for new events.
+  function generateHouseEvents() {
+    if (!state) return;
+    var now = Date.now();
+    var lastRoll = state.houseEventLastRoll || 0;
+    var elapsed = now - lastRoll;
+
+    // Minimum 30 minutes between rolls
+    if (elapsed < 30 * 60 * 1000) return;
+
+    var events = (state.houseEvents || []).slice();
+    var history = (state.houseEventHistory || []).slice();
+
+    // Cap active events at 3
+    if (events.length >= 3) return;
+
+    var hours = elapsed / (60 * 60 * 1000);
+    var roll = Math.random();
+    var count = 0;
+
+    if (hours >= 12) {
+      count = roll < 0.3 ? 2 : 1;
+    } else if (hours >= 4) {
+      count = roll < 0.15 ? 2 : (roll < 0.55 ? 1 : 0);
+    } else if (hours >= 1) {
+      count = roll < 0.05 ? 2 : (roll < 0.35 ? 1 : 0);
+    } else {
+      count = roll < 0.25 ? 1 : 0;
+    }
+
+    if (count === 0) {
+      _saveEventState(events, now, history);
+      return;
+    }
+
+    var types = (state.housePetTypes || []);
+    var names = (state.housePetNames || []);
+    var petCount = types.length;
+
+    var eligible = [];
+    for (var e = 0; e < HOUSE_EVENT_POOL.length; e++) {
+      var tmpl = HOUSE_EVENT_POOL[e];
+      if (history.indexOf(tmpl.id) >= 0) continue;
+      var alreadyActive = false;
+      for (var a = 0; a < events.length; a++) {
+        if (events[a].templateId === tmpl.id) { alreadyActive = true; break; }
+      }
+      if (alreadyActive) continue;
+
+      if (tmpl.household) {
+        if (petCount > 0) eligible.push({ tmpl: tmpl, petIndex: -1 });
+      } else if (tmpl.petTypes === null) {
+        for (var p = 0; p < petCount; p++) {
+          if (types[p]) eligible.push({ tmpl: tmpl, petIndex: p });
+        }
+      } else {
+        for (var p2 = 0; p2 < petCount; p2++) {
+          if (tmpl.petTypes.indexOf(types[p2]) >= 0) {
+            eligible.push({ tmpl: tmpl, petIndex: p2 });
+          }
+        }
+      }
+    }
+
+    if (eligible.length === 0) {
+      _saveEventState(events, now, history);
+      return;
+    }
+
+    for (var s = eligible.length - 1; s > 0; s--) {
+      var j = Math.floor(Math.random() * (s + 1));
+      var tmp = eligible[s]; eligible[s] = eligible[j]; eligible[j] = tmp;
+    }
+
+    var toGenerate = Math.min(count, eligible.length, 3 - events.length);
+    for (var g = 0; g < toGenerate; g++) {
+      var pick = eligible[g];
+      var petName = pick.petIndex >= 0 ? (names[pick.petIndex] || 'the pet') : '';
+      var petType = pick.petIndex >= 0 ? (types[pick.petIndex] || 'cat') : '';
+
+      events.push({
+        templateId: pick.tmpl.id,
+        petIndex: pick.petIndex,
+        petType: petType,
+        title: pick.tmpl.title.replace(/\{\{name\}\}/g, petName),
+        desc: pick.tmpl.desc.replace(/\{\{name\}\}/g, petName),
+        action: pick.tmpl.action,
+        cost: pick.tmpl.cost,
+        triggerState: pick.tmpl.triggerState,
+        resultState: pick.tmpl.resultState,
+        result: pick.tmpl.result.replace(/\{\{name\}\}/g, petName),
+        household: pick.tmpl.household || false,
+        createdAt: now
+      });
+    }
+
+    _saveEventState(events, now, history);
+  }
+
+  function _saveEventState(events, lastRoll, history) {
+    if (history.length > 20) history = history.slice(history.length - 20);
+    state.houseEvents = events;
+    state.houseEventLastRoll = lastRoll;
+    state.houseEventHistory = history;
+    try {
+      var patch = {};
+      patch[STATE_KEY] = state;
+      chrome.storage.local.set(patch);
+    } catch (e) {}
+  }
+
+  function completeHouseEvent(eventIndex) {
+    if (!state) return;
+    var events = (state.houseEvents || []).slice();
+    if (eventIndex < 0 || eventIndex >= events.length) return;
+    var ev = events[eventIndex];
+
+    var coins = state.coins || 0;
+    if (ev.cost > 0 && coins < ev.cost) {
+      var card = document.querySelector('[data-event-index="' + eventIndex + '"]');
+      if (card) {
+        var btn = card.querySelector('.event-card-btn');
+        if (btn) {
+          btn.textContent = 'NOT ENOUGH MONEY';
+          btn.disabled = true;
+          setTimeout(function() {
+            btn.textContent = ev.action;
+            btn.disabled = false;
+          }, 1500);
+        }
+      }
+      return;
+    }
+
+    state.coins = coins - ev.cost;
+    events.splice(eventIndex, 1);
+    var history = (state.houseEventHistory || []).slice();
+    history.push(ev.templateId);
+    _saveEventState(events, state.houseEventLastRoll || Date.now(), history);
+    _showEventResult(ev);
+    render();
+  }
+
+  function _showEventResult(ev) {
+    var container = document.getElementById('houseEventCards');
+    if (!container) return;
+    var resultEl = document.createElement('div');
+    resultEl.className = 'event-result';
+    resultEl.textContent = ev.result;
+    container.insertBefore(resultEl, container.firstChild);
+    setTimeout(function() {
+      resultEl.style.transition = 'opacity 0.5s';
+      resultEl.style.opacity = '0';
+      setTimeout(function() { resultEl.remove(); }, 500);
+    }, 8000);
+  }
+
+  function renderHouseEvents() {
+    var panel = document.getElementById('houseEventsPanel');
+    var container = document.getElementById('houseEventCards');
+    if (!panel || !container) return;
+
+    generateHouseEvents();
+
+    var events = (state && state.houseEvents) || [];
+    var now = Date.now();
+    var maxAge = 24 * 60 * 60 * 1000;
+    var active = [];
+    var changed = false;
+    for (var i = 0; i < events.length; i++) {
+      if (now - events[i].createdAt < maxAge) {
+        active.push(events[i]);
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) {
+      _saveEventState(active, state.houseEventLastRoll || now, state.houseEventHistory || []);
+      events = active;
+    }
+
+    var results = container.querySelectorAll('.event-result');
+    var oldCards = container.querySelectorAll('.event-card');
+    for (var r = 0; r < oldCards.length; r++) oldCards[r].remove();
+
+    if (events.length === 0 && results.length === 0) {
+      var types = (state && state.housePetTypes) || [];
+      if (types.length === 0) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = '';
+      var emptyEl = container.querySelector('.house-events-empty');
+      if (!emptyEl) {
+        emptyEl = document.createElement('div');
+        emptyEl.className = 'house-events-empty';
+        emptyEl.textContent = 'Nothing happening right now. Check back later.';
+        container.appendChild(emptyEl);
+      }
+      return;
+    }
+
+    panel.style.display = '';
+    var emptyMsg = container.querySelector('.house-events-empty');
+    if (emptyMsg) emptyMsg.remove();
+
+    for (var e = 0; e < events.length; e++) {
+      var ev = events[e];
+      var card = document.createElement('div');
+      card.className = 'event-card';
+      card.setAttribute('data-event-index', e);
+
+      var header = document.createElement('div');
+      header.className = 'event-card-header';
+
+      var icon = document.createElement('canvas');
+      icon.className = 'event-card-icon';
+      icon.style.cssText = 'image-rendering:pixelated;width:24px;height:24px;';
+      if (ev.petIndex >= 0 && ev.petType) {
+        drawPetSprite(icon, ev.petType, ev.triggerState, 3);
+      } else {
+        var firstType = (state.housePetTypes || [])[0];
+        if (firstType) drawPetSprite(icon, firstType, ev.triggerState, 3);
+      }
+
+      var titleEl = document.createElement('div');
+      titleEl.className = 'event-card-title';
+      titleEl.textContent = ev.title;
+
+      header.appendChild(icon);
+      header.appendChild(titleEl);
+
+      var desc = document.createElement('div');
+      desc.className = 'event-card-desc';
+      desc.textContent = ev.desc;
+
+      var footer = document.createElement('div');
+      footer.className = 'event-card-footer';
+
+      var costEl = document.createElement('div');
+      costEl.className = 'event-card-cost';
+      if (ev.cost > 0) {
+        costEl.classList.add('cost');
+        costEl.textContent = '-$' + ev.cost;
+      } else if (ev.cost < 0) {
+        costEl.classList.add('reward');
+        costEl.textContent = '+$' + Math.abs(ev.cost);
+      } else {
+        costEl.classList.add('free');
+        costEl.textContent = 'FREE';
+      }
+
+      var btn = document.createElement('button');
+      btn.className = 'event-card-btn';
+      btn.textContent = ev.action;
+
+      var coins = (state && state.coins) || 0;
+      if (ev.cost > 0 && coins < ev.cost) {
+        btn.disabled = true;
+        btn.title = 'Not enough money';
+      }
+
+      (function(idx) {
+        btn.addEventListener('click', function() {
+          completeHouseEvent(idx);
+        });
+      })(e);
+
+      footer.appendChild(costEl);
+      footer.appendChild(btn);
+
+      card.appendChild(header);
+      card.appendChild(desc);
+      card.appendChild(footer);
+      container.appendChild(card);
+    }
+  }
+
+  function getEventOverrideMood(petIndex) {
+    var events = (state && state.houseEvents) || [];
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (ev.household || ev.petIndex === petIndex) {
+        return ev.triggerState;
+      }
+    }
+    return null;
   }
 
   // =========================================================================
@@ -1525,24 +2498,35 @@
     });
   }
 
-  // Build the pet feed using type-specific pools and pet names
+  // Build the pet feed using type-specific pools and pet names.
+  // Notes prefixed with EATING_PREFIX are eating notes — strip the prefix
+  // before display but remember which pets are currently eating so the
+  // sprite renderer can show the eating state.
+  var _currentlyEating = {};  // { petIndex: true/false } — set each render
+
   function buildPetFeed(count, sheet) {
     if (count <= 0) return '';
+    _currentlyEating = {};
     var lines = [];
     for (var i = 0; i < count; i++) {
       var pool = petPoolFor(i);
       var note = pickNoteFor(pool, 'pet:' + i);
       var name = petDisplayName(i);
-      if (count > 1) {
-        lines.push('<strong>' + name + ':</strong> ' + note);
+
+      // Detect and strip eating prefix
+      if (note && note.charAt(0) === EATING_PREFIX) {
+        note = note.substring(1);
+        _currentlyEating[i] = true;
       } else {
-        lines.push('<strong>' + name + ':</strong> ' + note);
+        _currentlyEating[i] = false;
       }
+
+      lines.push('<strong>' + name + ':</strong> ' + note);
     }
     return lines.join('<br>');
   }
 
-  // Render pixel sprites inline next to the pet note area
+  // Render pixel sprites inline next to the pet note area — with bowl + tooltip
   function renderPetSprites(count, sheet) {
     // Find or create the sprite container
     var petRow = $('petNote');
@@ -1557,29 +2541,59 @@
     if (count <= 0) return;
 
     var wb = (sheet && typeof sheet.wellbeing === 'number') ? sheet.wellbeing : 70;
-    var mood = petMoodFromWellbeing(wb);
+    var condition = (sheet && sheet.condition) || null;
 
     var row = document.createElement('div');
     row.id = 'petSpriteRow';
-    row.style.cssText = 'display:flex;gap:8px;margin-top:6px;align-items:center;';
+    row.style.cssText = 'display:flex;gap:14px;margin-top:8px;align-items:flex-end;';
 
     for (var i = 0; i < count; i++) {
       var types = (state && state.housePetTypes) || [];
       var petType = types[i];
       if (!petType) continue;
 
-      var wrap = document.createElement('div');
-      wrap.style.cssText = 'text-align:center;';
+      // Per-pet mood from condition -- each pet type reacts differently
+      var mood = petMoodFromCondition(condition, wb, petType);
 
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'text-align:center;position:relative;cursor:default;';
+
+      // Pet sprite canvas -- priority: eating note > active event > condition mood
+      var eventMood = getEventOverrideMood(i);
+      var spriteMood = (_currentlyEating[i]) ? 'eating' : (eventMood || mood);
       var cv = document.createElement('canvas');
       cv.style.cssText = 'image-rendering:pixelated;width:32px;height:32px;display:block;margin:0 auto;';
-      drawPetSprite(cv, petType, mood, 4);
+      drawPetSprite(cv, petType, spriteMood, 4);
 
+      // Bowl sprite canvas (smaller, below the pet)
+      var bowlState = petBowlState(i);
+      var bowlCv = document.createElement('canvas');
+      bowlCv.style.cssText = 'image-rendering:pixelated;width:24px;height:24px;display:block;margin:2px auto 0;';
+      drawPetSprite(bowlCv, petType, bowlState, 3);
+
+      // Pet name label
       var lbl = document.createElement('div');
       lbl.style.cssText = 'font-size:8px;color:#5a5a7e;margin-top:2px;font-family:monospace;letter-spacing:0.5px;';
       lbl.textContent = petDisplayName(i);
 
+      // Tooltip element (hidden until hover)
+      var tip = document.createElement('div');
+      tip.className = 'pet-tooltip';
+      tip.style.cssText = 'display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);'
+        + 'background:#1a1a2e;color:#c0c0d8;padding:6px 10px;border-radius:4px;font-size:10px;'
+        + 'font-family:monospace;white-space:nowrap;z-index:100;pointer-events:none;'
+        + 'border:1px solid #2a2a4e;max-width:260px;white-space:normal;line-height:1.4;';
+      tip.textContent = petTooltipText(spriteMood, petType, i);
+
+      // Tooltip hover logic
+      (function(tipEl, wrapEl) {
+        wrapEl.addEventListener('mouseenter', function() { tipEl.style.display = 'block'; });
+        wrapEl.addEventListener('mouseleave', function() { tipEl.style.display = 'none'; });
+      })(tip, wrap);
+
+      wrap.appendChild(tip);
       wrap.appendChild(cv);
+      wrap.appendChild(bowlCv);
       wrap.appendChild(lbl);
       row.appendChild(wrap);
     }
@@ -1696,6 +2710,11 @@
 
     var cv = $('conditionValue');
     if (cv) cv.textContent = sheet.condition;
+
+    // -----------------------------------------------------------------
+    // HOUSEHOLD EVENTS
+    // -----------------------------------------------------------------
+    renderHouseEvents();
 
     // -----------------------------------------------------------------
     // VITAL SIGNS — populate the security-monitor panel. One row per

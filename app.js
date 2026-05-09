@@ -785,6 +785,14 @@ try {
     housePetTypes: [],               // ['cat', 'dog', ...] — chosen pet species
     housePetNames: [],               // ['Mochi', 'Kiwi', ...] — player-chosen names
     housePetPickerShown: [],         // [true, true] — tracks which pet slots have shown the picker
+    // v3.23.150: Pet care / tamagotchi system
+    petFullness: [],                 // [100, 100] — per-pet fullness 0-100, drains daily
+    petLastFed: 0,                   // timestamp of last feeding
+    petFoodCost: 5,                  // money cost per feeding (scales with progression)
+    // v3.23.152: Household events system
+    houseEvents: [],                 // active event objects in the house
+    houseEventLastRoll: 0,           // timestamp of last event generation roll
+    houseEventHistory: [],           // IDs of recently completed events (prevents repeats)
     // v3.23.118: Daily quest system
     _morningRedirectDate: '',           // 'YYYY-MM-DD' — prevents morning banner from firing twice
     questDate: '',              // 'YYYY-MM-DD' — date quests were generated

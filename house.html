@@ -178,6 +178,117 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* HOUSEHOLD EVENTS                                                   */
+  /* Small cards that appear when visiting the house — care tasks,      */
+  /* surprises, things the pet needs. Some cost money, some earn it.    */
+  /* ------------------------------------------------------------------ */
+  .house-events {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .house-events-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--ink-dim);
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .house-events-empty {
+    font-size: 11px;
+    color: var(--ink-dim);
+    font-style: italic;
+    opacity: 0.6;
+  }
+  .event-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    transition: border-color 0.2s;
+  }
+  .event-card:hover {
+    border-color: var(--accent);
+  }
+  .event-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .event-card-icon {
+    image-rendering: pixelated;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+  .event-card-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    line-height: 1.4;
+  }
+  .event-card-desc {
+    font-size: 11px;
+    color: var(--ink-dim);
+    font-style: italic;
+    line-height: 1.5;
+    margin-bottom: 10px;
+    padding-left: 32px;
+  }
+  .event-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 32px;
+  }
+  .event-card-cost {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    letter-spacing: 0.5px;
+  }
+  .event-card-cost.cost { color: var(--danger); }
+  .event-card-cost.reward { color: var(--accent2); }
+  .event-card-cost.free { color: var(--ink-dim); }
+  .event-card-btn {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .event-card-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .event-card-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .event-result {
+    background: rgba(169,194,139,0.08);
+    border: 1px solid var(--accent2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--accent2);
+    font-style: italic;
+    animation: eventFadeIn 0.3s ease;
+  }
+  @keyframes eventFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ------------------------------------------------------------------ */
   /* VITAL SIGNS                                                        */
   /* A small readout panel styled to look like an unloved janitor's-     */
   /* cupboard security monitor. Monospaced, faintly green, locked to    */
@@ -550,6 +661,15 @@
       <div class="condition" title="Overall Condition summary &mdash; a single-line verdict on the household's state, derived from the Household WB scalar further down.">
         <div class="condition-label" title="&lsquo;CONDITION&rsquo; is the administrative header for the household's one-line status summary.">CONDITION</div>
         <div class="condition-value" id="conditionValue" title="Human-readable verdict on the household. Changes with the Household WB scalar: &lsquo;Settling in&rsquo; at low tenure, &lsquo;Comfortable&rsquo; when things are warm, &lsquo;Fraying&rsquo; as things deteriorate.">Settling in.</div>
+      </div>
+
+      <!-- HOUSEHOLD EVENTS
+           Care tasks, surprises, and small moments that appear when you
+           visit the house. Some cost money, some earn it. Populated by
+           house-window.js from the event generation system. -->
+      <div class="house-events" id="houseEventsPanel">
+        <div class="house-events-label">HOUSEHOLD EVENTS</div>
+        <div id="houseEventCards"></div>
       </div>
 
       <!-- VITAL SIGNS PANEL
