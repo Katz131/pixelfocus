@@ -812,6 +812,8 @@ try {
     friendChallenge: null,
     friendChallengeHistory: [],
     friendChallengeWins: 0,
+    // v3.23.169: Morse code messaging
+    morseInbox: [],
     friendChallengeLosses: 0,
     friendChallengeTies: 0,
     sleepDurMin: 480,               // sleep duration in minutes (default 8h)
@@ -12209,10 +12211,10 @@ try {
   function maybeMorningRedirect() {
     try {
       var today = todayStr();
-      // Only fire once per calendar day
+      // Only fire once per calendar day — this is the ONLY guard.
+      // _morningRedirectDate is set to today's date string once we show
+      // the greeting, so if it already matches today we've shown it.
       if (state._morningRedirectDate === today) return;
-      // Only fire if it's actually a new day (not just a reload)
-      if (state.lastActiveDate === today && state._morningRedirectDate) return;
       state._morningRedirectDate = today;
       save();
 
@@ -13346,9 +13348,43 @@ try {
           var friends = state.friends || {};
           var keys = Object.keys(friends).filter(function(k) { return friends[k].status === 'accepted'; });
           if (!friendsList) return;
+          // v3.23.171: Show/hide morse telegraph banner based on friend count
+          var _morseBanner = document.getElementById('morseTelegraphBanner');
+          if (_morseBanner) _morseBanner.style.display = keys.length > 0 ? 'block' : 'none';
           if (keys.length === 0) {
             friendsList.innerHTML = '<div style="font-size:11px;color:var(--text-dim);font-style:italic;">No friends yet. Share your Profile ID!</div>';
             return;
+          }
+          // v3.23.171: Populate morse friend picker
+          if (_morseBanner) {
+            var _mfp = document.getElementById('morseFriendPicker');
+            if (_mfp) {
+              var _mfpHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#998a40;margin-bottom:6px;">SELECT RECIPIENT:</div>';
+              _mfpHtml += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+              keys.forEach(function(fid) {
+                var f = friends[fid];
+                _mfpHtml += '<button class="btn btn-small morse-pick-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#ffd700;color:#ffd700;font-size:8px;padding:4px 10px;background:rgba(255,215,0,0.06);border-radius:6px;cursor:pointer;">' + escHtml(f.displayName || fid) + '</button>';
+              });
+              _mfpHtml += '</div>';
+              _mfp.innerHTML = _mfpHtml;
+            }
+            // Toggle picker on banner click
+            _morseBanner.onclick = function(e) {
+              if (e.target.classList.contains('morse-pick-btn')) return;
+              var picker = document.getElementById('morseFriendPicker');
+              if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+            };
+            // Wire picker buttons
+            _morseBanner.querySelectorAll('.morse-pick-btn').forEach(function(btn) {
+              btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var fid = btn.getAttribute('data-fid');
+                var fname = btn.getAttribute('data-fname');
+                MorseMessenger.open(fid, fname, state.profileId, function(targetId, msg) {
+                  if (typeof ProfileSync !== 'undefined') ProfileSync.sendInboxMessage(targetId, msg);
+                });
+              });
+            });
           }
           var html = '';
           keys.forEach(function(fid) {
@@ -13363,6 +13399,7 @@ try {
             html += '<button class="btn btn-small friend-remove-btn" data-fid="' + escHtml(fid) + '" style="border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 6px;">REMOVE</button>';
             var challengeDisabled = state.friendChallenge ? ' opacity:0.4;pointer-events:none;' : '';
             html += '<button class="btn btn-small friend-challenge-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#ffa500;color:#ffa500;font-size:7px;padding:2px 6px;margin-right:4px;' + challengeDisabled + '" title="Send challenge">\u2694 CHALLENGE</button>';
+            html += '<button class="btn btn-small friend-morse-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#ffd700;color:#ffd700;font-size:7px;padding:2px 6px;margin-right:4px;" title="Send morse code message">\u00b7\u2014\u00b7 MORSE</button>';
             html += '</div>';
             if (hasTaskAccess) {
               // Show per-project permission checkboxes
@@ -13430,6 +13467,25 @@ try {
               renderFriends();
               notify('Revoked task access for ' + name, '#ff9f43');
               _retrySocialWrite(); // v3.23.78: retry on failure
+            });
+          });
+
+          // Morse message button handlers
+          friendsList.querySelectorAll('.friend-morse-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid || !state.profileId) return;
+              if (typeof MorseMessenger !== 'undefined') {
+                MorseMessenger.open(fid, fname, state.profileId, function(targetId, msgObj) {
+                  msgObj.fromName = state.displayName || 'A weaver';
+                  window.ProfileSync.sendInboxMessage(targetId, msgObj).then(function() {
+                    try { notify('Morse message transmitted to ' + fname, '#ffd700'); } catch(_) {}
+                  }).catch(function() {
+                    try { notify('Transmission failed. Try again.', '#ff4444'); } catch(_) {}
+                  });
+                });
+              }
             });
           });
 
@@ -13904,6 +13960,23 @@ try {
                     saveState();
                     try { renderChallengeUI(); } catch(_){}
                   }
+                } else if (msg.type === 'morse_message') {
+                  // v3.23.169: Morse code message from a friend
+                  if (typeof MorseMessenger !== 'undefined') {
+                    try { MorseMessenger.showIncoming(msg.fromName || msg.fromId || 'Unknown', msg.morseText || ''); } catch(_) {}
+                  }
+                  // Store in morse inbox for later viewing
+                  if (!state.morseInbox) state.morseInbox = [];
+                  state.morseInbox.push({
+                    fromId: msg.fromId,
+                    fromName: msg.fromName || msg.fromId,
+                    morseText: msg.morseText || '',
+                    receivedAt: new Date().toISOString()
+                  });
+                  // Keep only last 50 messages
+                  if (state.morseInbox.length > 50) state.morseInbox = state.morseInbox.slice(-50);
+                  save();
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                 } else if (msg.type === 'challenge_result') {
                   // Opponent sent us their final result
                   if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {

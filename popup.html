@@ -955,6 +955,20 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ff9f43;margin-bottom:4px;letter-spacing:1px;">PENDING REQUESTS</div>
       <div id="friendRequestsList"></div>
     </div>
+    <!-- v3.23.171: Prominent Morse Telegraph entry point -->
+    <div id="morseTelegraphBanner" style="display:none;margin-bottom:10px;background:linear-gradient(135deg,#0a1a0a,#1a0a00);border:2px solid #ffd700;border-radius:8px;padding:10px 12px;cursor:pointer;transition:transform 0.1s;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:22px;line-height:1;">&#x1F4E1;</div>
+          <div>
+            <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffd700;letter-spacing:1px;">MORSE TELEGRAPH</div>
+            <div style="font-size:10px;color:#8a7030;margin-top:2px;">Send coded messages to friends</div>
+          </div>
+        </div>
+        <div style="font-family:'Press Start 2P',monospace;font-size:16px;color:#ffd700;">&#x00b7;&#x2014;&#x00b7;</div>
+      </div>
+      <div id="morseFriendPicker" style="display:none;margin-top:8px;border-top:1px solid #332a00;padding-top:8px;"></div>
+    </div>
     <!-- Accepted friends + permissions -->
     <div id="friendsListSection">
       <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px;">FRIENDS</div>
@@ -1619,6 +1633,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 <script src="firebase-sync.js"></script>
 <script src="market-engine.js"></script>
 <script src="market-events.js"></script>
+<script src="morse-messenger.js"></script>
 <script src="app.js"></script>
 <!-- AI texts moved to house page only (house-dispatch.js) -->
 </body>
