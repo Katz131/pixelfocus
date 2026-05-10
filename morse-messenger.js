@@ -230,7 +230,7 @@ var MorseMessenger = (function() {
     if (tk) tk.classList.remove('morse-key-dit', 'morse-key-dah');
     if (kb) { kb.style.width = '0%'; kb.className = 'morse-key-bar'; }
     if (ks) { ks.textContent = '▩'; ks.style.color = '#222'; ks.style.fontSize = '28px'; }
-    if (ksu) { ksu.textContent = 'HOLD TO KEY'; ksu.style.color = '#222'; }
+    if (ksu) { ksu.textContent = 'HOLD TO KEY'; ksu.style.color = '#3a6a3a'; }
 
     if (el < DAH_MS) {
       if (_cursor && _cursor.dot) { _cursor = _cursor.dot; _path += '.'; _render(); _startGapTimer(); } else { _blip(220, 40); _startGapTimer(); }
@@ -446,18 +446,32 @@ var MorseMessenger = (function() {
 
     var styles = document.createElement('style');
     styles.textContent = [
-      '.morse-key{width:100%;max-width:600px;height:80px;border-radius:14px;border:3px solid #222;',
-      'background:linear-gradient(180deg,#151515,#080808);cursor:pointer;display:flex;align-items:center;',
+      '.morse-key{width:100%;max-width:600px;height:80px;border-radius:16px;',
+      'border:2px solid #4a8a4a;border-bottom:5px solid #2a5a2a;',
+      'background:linear-gradient(180deg,#1a3a1a,#0d1f0d);',
+      'cursor:pointer;display:flex;align-items:center;',
       'justify-content:center;flex-direction:column;gap:4px;position:relative;overflow:hidden;touch-action:none;',
-      '-webkit-user-select:none;user-select:none;}',
-      '.morse-key-dit{border-color:#00ff88 !important;background:linear-gradient(180deg,#0a2a0a,#041404) !important;}',
-      '.morse-key-dah{border-color:#ffa500 !important;background:linear-gradient(180deg,#2a1a0a,#140a04) !important;}',
+      '-webkit-user-select:none;user-select:none;',
+      'box-shadow:0 6px 0 #0a150a,0 8px 16px rgba(0,0,0,0.5),inset 0 1px 0 rgba(111,196,111,0.15);',
+      'transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);}',
+      '.morse-key:hover{border-color:#6fc46f;border-bottom-color:#3a7a3a;',
+      'background:linear-gradient(180deg,#1f4a1f,#112811);',
+      'box-shadow:0 6px 0 #0a150a,0 8px 20px rgba(0,255,136,0.15),inset 0 1px 0 rgba(111,196,111,0.25);',
+      'transform:translateY(-1px);}',
+      '.morse-key:hover #morseKsym{color:#6fc46f !important;}',
+      '.morse-key:hover #morseKsub{color:#4a8a4a !important;}',
+      '.morse-key:active{border-bottom-width:2px;',
+      'box-shadow:0 1px 0 #0a150a,0 2px 8px rgba(0,0,0,0.5),inset 0 2px 4px rgba(0,0,0,0.3);',
+      'transform:translateY(3px);}',
+      '.morse-key-dit{border-color:#00ff88 !important;border-bottom-color:#00aa55 !important;',
+      'background:linear-gradient(180deg,#0a2a0a,#041404) !important;',
+      'box-shadow:0 6px 0 #031003,0 8px 16px rgba(0,255,136,0.2),inset 0 1px 0 rgba(0,255,136,0.2) !important;}',
+      '.morse-key-dah{border-color:#ffa500 !important;border-bottom-color:#cc8400 !important;',
+      'background:linear-gradient(180deg,#2a1a0a,#140a04) !important;',
+      'box-shadow:0 6px 0 #0a0600,0 8px 16px rgba(255,165,0,0.2),inset 0 1px 0 rgba(255,165,0,0.2) !important;}',
       '.morse-key-bar{position:absolute;left:0;bottom:0;height:5px;background:#222;width:0%;pointer-events:none;}',
       '.morse-bar-dit{background:#00ff88 !important;}',
-      '.morse-bar-dah{background:#ffa500 !important;}',
-      '.morse-key:hover{border-color:#444 !important;background:linear-gradient(180deg,#1a1a1a,#0e0e0e) !important;}',
-      '.morse-key:hover .morse-key-hint{color:#555 !important;}',
-      '.morse-key:active{transform:scale(0.98);}'
+      '.morse-bar-dah{background:#ffa500 !important;}'
     ].join('');
     document.head.appendChild(styles);
 
@@ -486,8 +500,8 @@ var MorseMessenger = (function() {
     // Telegraph key
     html += '<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:8px;width:100%;max-width:680px;">';
     html += '<div class="morse-key" id="morseKey">';
-    html += '<div id="morseKsym" style="font-family:\'Press Start 2P\',monospace;font-size:28px;color:#222;pointer-events:none;z-index:1;">▩</div>';
-    html += '<div id="morseKsub" style="font-size:9px;color:#222;pointer-events:none;z-index:1;">HOLD TO KEY</div>';
+    html += '<div id="morseKsym" style="font-family:\'Press Start 2P\',monospace;font-size:28px;color:#3a6a3a;pointer-events:none;z-index:1;">▩</div>';
+    html += '<div id="morseKsub" style="font-size:9px;color:#3a6a3a;letter-spacing:2px;pointer-events:none;z-index:1;">HOLD TO KEY</div>';
     html += '<div class="morse-key-bar" id="morseKbar"></div>';
     html += '</div>';
     html += '<div style="text-align:center;margin-top:5px;font-size:8px;color:#333;">tap &lt;200ms = <span style="color:#00ff88;">dit ·</span>    hold &gt;200ms = <span style="color:#ffa500;">dah —</span></div>';

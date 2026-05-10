@@ -8345,14 +8345,21 @@ try {
       handle.style.cssText = 'color:#886666;cursor:grab;font-size:12px;padding:0 2px;user-select:none;';
       row.appendChild(handle);
 
-      var doneBtn = document.createElement('button');
-      doneBtn.type = 'button';
-      doneBtn.textContent = '\u25A1';
+      var doneBtn = document.createElement('div');
       doneBtn.title = (p.recurrence && p.recurrence !== 'none')
         ? 'Mark this recurring task done for today. It will reappear on the next scheduled day.'
         : 'Mark this priority task done. It will be removed from the list.';
-      doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
-      doneBtn.addEventListener('click', function() { completePriority(p.id); });
+      doneBtn.style.cssText = 'width:18px;height:18px;min-width:18px;border:2px solid #4a8a4a;border-radius:3px;cursor:pointer;transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);display:flex;align-items:center;justify-content:center;background:transparent;';
+      doneBtn.addEventListener('mouseenter', function() { doneBtn.style.borderColor = '#6fc46f'; doneBtn.style.background = 'rgba(42,90,42,0.3)'; doneBtn.style.transform = 'scale(1.15)'; doneBtn.style.boxShadow = '0 0 8px rgba(111,196,111,0.4)'; });
+      doneBtn.addEventListener('mouseleave', function() { doneBtn.style.borderColor = '#4a8a4a'; doneBtn.style.background = 'transparent'; doneBtn.style.transform = 'scale(1)'; doneBtn.style.boxShadow = 'none'; });
+      doneBtn.addEventListener('mousedown', function() { doneBtn.style.transform = 'scale(0.85)'; });
+      doneBtn.addEventListener('mouseup', function() { doneBtn.style.transform = 'scale(1.15)'; });
+      doneBtn.addEventListener('click', function() {
+        doneBtn.style.background = '#2a5a2a';
+        doneBtn.innerHTML = '<span style="color:#b8ffb8;font-size:11px;font-weight:bold;">&#10003;</span>';
+        doneBtn.style.transform = 'scale(1.3)';
+        setTimeout(function() { completePriority(p.id); }, 200);
+      });
       row.appendChild(doneBtn);
 
       var txt = document.createElement('div');
