@@ -788,7 +788,7 @@ try {
     // v3.23.150: Pet care / tamagotchi system
     petFullness: [],                 // [100, 100] — per-pet fullness 0-100, drains daily
     petLastFed: 0,                   // timestamp of last feeding
-    petFoodCost: 5,                  // money cost per feeding (scales with progression)
+    petFoodCost: 50,                 // flat money cost per feeding
     // v3.23.152: Household events system
     houseEvents: [],                 // active event objects in the house
     houseEventLastRoll: 0,           // timestamp of last event generation roll
@@ -808,6 +808,12 @@ try {
     questsAmbitiousCompleted: 0,// ambitious quests completed lifetime
     questDoubleTextile: false,  // if true, next session awards 2x textiles
     _questTilesLit: 0,          // number of tiles lit for current quest (for detecting new ones)
+    // v3.23.166: Friend challenge system
+    friendChallenge: null,
+    friendChallengeHistory: [],
+    friendChallengeWins: 0,
+    friendChallengeLosses: 0,
+    friendChallengeTies: 0,
     sleepDurMin: 480,               // sleep duration in minutes (default 8h)
     coldTurkeyNagSites: [],         // domains that trigger a CT reminder every 10 min
     coldTurkeyLastSiteNagAt: 0,     // timestamp of last site-nag (prevent spamming)
@@ -1787,6 +1793,9 @@ try {
         console.warn('[DayRollover] Financial summary error:', _dailyFinErr);
       }
 
+      // v3.23.167: Drain pet fullness on daily rollover
+      try { drainPetFullness(); } catch(_) {}
+
       // v3.21.59: Archive yesterday's focus minutes into focusHistory
       // v3.22.94: Also archive whatever dailySessionLog holds (even if date
       // doesn't match lastActiveDate — covers edge cases like multi-day gaps).
@@ -2594,6 +2603,55 @@ try {
       state.houseFeedLog.push({ type: type, msg: msg, amount: amount || 0, ts: now });
     }
     if (state.houseFeedLog.length > 30) state.houseFeedLog = state.houseFeedLog.slice(-30);
+  }
+
+    // v3.23.167: Pet feeding system — flat cost, fills all bowls
+  var PET_FOOD_COST = 50;  // $50 per feeding, does not scale
+  function feedAllPets() {
+    if (!state) return;
+    var types = state.housePetTypes || [];
+    var count = types.filter(function(t) { return !!t; }).length;
+    if (count <= 0) { notify('No pets to feed.', '#ff6b6b'); return; }
+
+    // Check if already full
+    var fullness = state.petFullness || [];
+    var allFull = true;
+    for (var i = 0; i < count; i++) {
+      if ((fullness[i] || 0) < 100) { allFull = false; break; }
+    }
+    if (allFull) { notify('Bowls are already full!', '#ffd700'); return; }
+
+    // Check funds
+    if ((state.coins || 0) < PET_FOOD_COST) {
+      notify('Not enough $ to feed pets. Need $' + PET_FOOD_COST + '.', '#ff6b6b');
+      return;
+    }
+
+    state.coins -= PET_FOOD_COST;
+    state.petLastFed = Date.now();
+    var newFullness = [];
+    for (var j = 0; j < count; j++) newFullness[j] = 100;
+    state.petFullness = newFullness;
+    saveState();
+    notify('Bowls filled! -$' + PET_FOOD_COST, '#7fa862');
+    try { logHouseFeed('payroll', 'Pet food: -$' + PET_FOOD_COST, -PET_FOOD_COST); } catch(_) {}
+    renderAll();
+  }
+
+  // v3.23.167: Daily pet fullness drain — called during daily rollover
+  // Each pet loses 50 fullness per day. If not fed for 2+ days, bowls go empty.
+  function drainPetFullness() {
+    if (!state) return;
+    var types = state.housePetTypes || [];
+    var count = types.filter(function(t) { return !!t; }).length;
+    if (count <= 0) return;
+    var fullness = state.petFullness || [];
+    var newFullness = [];
+    for (var i = 0; i < count; i++) {
+      var f = fullness[i] || 0;
+      newFullness[i] = Math.max(0, f - 50);
+    }
+    state.petFullness = newFullness;
   }
 
   function awardCoins(amount, reason) {
@@ -7383,7 +7441,7 @@ try {
       }
       // v3.23.84: Market yield multiplier — applies market conditions to
       // focus session money. The multiplier was computed by MarketEngine at
-      // session start and stays between 0.3x and 2.5x. Default 1.0x if the
+      // session start and stays between 0.5x and 2.5x. Default 1.0x if the
       // market system hasn't been unlocked yet.
       var marketYield = state.marketYieldMultiplier || 1.0;
       state.lastMarketYield = marketYield;  // persist for yield display
@@ -7645,6 +7703,8 @@ try {
     try { checkTrackerStageUnlocks(); } catch (_) {}
     // v3.23.119: Check daily quest progress after session completion
     try { checkQuestCompletion(); } catch (_) {}
+    // v3.23.166: Update challenge on session complete
+    try { _updateChallengeOnSessionComplete(Math.round((state.sessionDurationSec || 600) / 60)); } catch (_) {}
     // v3.21.18: Auto-sync profile to Firestore after every completed session
     try {
       if (typeof window.ProfileSync !== 'undefined' && window.ProfileSync) {
@@ -7992,6 +8052,7 @@ try {
     // just like regular task completions.
     state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
     logDailyTaskCompletion(completedText);
+    try { _updateChallengeOnTaskComplete(); } catch (_) {}
     if (!state.dustPixels) state.dustPixels = [];
     var palette = state.unlockedColors || ['#00ff88'];
     var dustColor = palette[Math.floor(Math.random() * palette.length)];
@@ -8550,6 +8611,7 @@ try {
     if (task.sourceType !== 'priority' && task.sourceType !== 'project') {
       state.tasksCompletedLifetime = (state.tasksCompletedLifetime || 0) + 1;
       logDailyTaskCompletion(completedText);
+      try { _updateChallengeOnTaskComplete(); } catch (_) {}
       if (!state.dustPixels) state.dustPixels = [];
       var palette = state.unlockedColors || ['#00ff88'];
       var dustColor = palette[Math.floor(Math.random() * palette.length)];
@@ -10596,19 +10658,33 @@ try {
               } else {
                 _lines += '<br><span style="color:' + _profitColor + ';">-$' + Math.abs(_profit).toFixed(1) + ' per unit loss</span>';
               }
-              // v3.23.137: Actionable tips when yield is poor
-              if (_yld < 1.0) {
+              // v3.23.167: Narrative framing for market conditions
+              if (_yld < 0.7) {
+                // Severe downturn — loom-voice story context, not dry tips
+                var _downturnLines = [
+                  'The looms run, but the warehouses are full. Buyers have stopped returning calls. The market remembers what it was, and cannot accept what it has become.',
+                  'A cold wind through the trade district. The merchants who once fought for your textiles now pass your stall without slowing. The loom hums on, indifferent.',
+                  'The price board has not moved in hours. Somewhere a factory is closing. Yours is not — but the silence in the order book is hard to distinguish from surrender.',
+                  'Demand has dried to a trickle. The loom weaves beautifully — that was never the problem. The problem is that no one is buying beautiful things right now.',
+                  'The market is in a downturn. Your textiles sit on shelves gathering dust. The loom does not understand economics. It only knows how to weave.',
+                  'A recession. The word is everywhere now. Your costs have not changed but the world\x27s willingness to pay for what you make has cratered quietly, like snow settling.'
+                ];
+                var _downIdx = Math.floor(Math.random() * _downturnLines.length);
+                _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,107,107,0.08);border-left:2px solid #ff6b6b;border-radius:3px;font-size:10px;color:#cc9988;text-align:left;font-style:italic;line-height:1.5;">';
+                _lines += _downturnLines[_downIdx];
+                _lines += '</div>';
+                console.log('[Market] Yield is ' + _yld.toFixed(2) + 'x — severe downturn. Demand: ' + _demand + '%, Margin: ' + _margin + '%, Price: $' + _price.toFixed(0));
+              } else if (_yld < 1.0) {
+                // Mild downturn — still show actionable tips
                 var _tips = [];
-                if (_demand < 35) _tips.push('Low demand (' + _demand + '%) — try lowering your price to attract more buyers');
-                if (_margin < 15 && _demand >= 35) _tips.push('Thin margins — invest in factory upgrades to cut production costs');
-                if (_profit < 0) _tips.push('Selling below cost! Drop price for volume or upgrade factories to lower costs');
-                if (_yld < 0.5 && _tips.length === 0) _tips.push('Yield is very low — experiment with different price points on the market slider');
-                if (_tips.length > 0) {
-                  _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,107,107,0.1);border-left:2px solid #ff6b6b;border-radius:3px;font-size:10px;color:#ffaa88;text-align:left;">';
-                  _lines += '<span style="color:#ff6b6b;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">TIP</span><br>';
-                  _lines += _tips[0];
-                  _lines += '</div>';
-                }
+                if (_demand < 35) _tips.push('Demand is soft (' + _demand + '%) — consider lowering your price to attract more buyers');
+                if (_margin < 15 && _demand >= 35) _tips.push('Thin margins — factory upgrades can cut production costs');
+                if (_profit < 0) _tips.push('Selling below cost. Adjust price or invest in efficiency upgrades');
+                if (_tips.length === 0) _tips.push('The market is sluggish — experiment with different price points on the slider');
+                _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,170,100,0.1);border-left:2px solid #ff9966;border-radius:3px;font-size:10px;color:#ffaa88;text-align:left;">';
+                _lines += '<span style="color:#ff9966;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">TIP</span><br>';
+                _lines += _tips[0];
+                _lines += '</div>';
               } else if (_yld >= 1.5) {
                 _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(0,255,136,0.1);border-left:2px solid #00ff88;border-radius:3px;font-size:10px;color:#88ffbb;text-align:left;">';
                 _lines += '<span style="color:#00ff88;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">NICE</span><br>';
@@ -10937,6 +11013,393 @@ try {
     'deadline_focus_45': function() { return new Date().getHours() < 21; },
     'deadline_focus_90': function() { return new Date().getHours() < 21; }
   };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // v3.23.166: FRIEND CHALLENGE SYSTEM
+  // ═══════════════════════════════════════════════════════════════════════
+
+  var CHALLENGE_POOL = [
+    { id: 'focus_minutes',    label: 'Focus Minutes',       unit: 'min',      tier: 'standard', desc: 'Log the most focus minutes' },
+    { id: 'session_count',    label: 'Sessions Completed',  unit: 'sessions', tier: 'low',      desc: 'Complete the most focus sessions' },
+    { id: 'best_combo',       label: 'Best Combo',          unit: 'x',        tier: 'high',     desc: 'Reach the highest combo multiplier' },
+    { id: 'quest_completions',label: 'Quests Completed',    unit: 'quests',   tier: 'high',     desc: 'Complete the most daily quests' },
+    { id: 'textiles_woven',   label: 'Textiles Woven',      unit: 'textiles', tier: 'standard', desc: 'Weave the most textiles' },
+    { id: 'tasks_completed',  label: 'Tasks Completed',     unit: 'tasks',    tier: 'low',      desc: 'Complete the most tasks' },
+    { id: 'total_xp',         label: 'XP Earned',           unit: 'XP',       tier: 'standard', desc: 'Earn the most XP' },
+    { id: 'focus_marathon',   label: 'Longest Session',     unit: 'min',      tier: 'high',     desc: 'Complete the longest single focus session' }
+  ];
+
+  var CHALLENGE_REWARDS = {
+    low:      { coins: 400,  xp: 80 },
+    standard: { coins: 700,  xp: 120 },
+    high:     { coins: 1200, xp: 200 }
+  };
+
+  var CHALLENGE_LOSER_PENALTY = 350;
+  var CHALLENGE_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+  function _getChallengeProgress(challengeType) {
+    var ch = state.friendChallenge;
+    if (!ch) return 0;
+    var tracking = ch.tracking || {};
+    return tracking[challengeType] || 0;
+  }
+
+  function _initChallengeTracking() {
+    if (!state.friendChallenge) return;
+    if (!state.friendChallenge.tracking) state.friendChallenge.tracking = {};
+    // Reset tracking counters at challenge start
+    var t = state.friendChallenge.tracking;
+    var type = state.friendChallenge.type;
+    if (typeof t[type] !== 'number') t[type] = 0;
+  }
+
+  function _updateChallengeOnSessionComplete(sessionMinutes) {
+    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    var ch = state.friendChallenge;
+    if (!ch.tracking) ch.tracking = {};
+    var type = ch.type;
+    if (type === 'focus_minutes') {
+      ch.tracking[type] = (ch.tracking[type] || 0) + (sessionMinutes || 0);
+    } else if (type === 'session_count') {
+      ch.tracking[type] = (ch.tracking[type] || 0) + 1;
+    } else if (type === 'best_combo') {
+      var currentCombo = state.comboMultiplier || 1;
+      ch.tracking[type] = Math.max(ch.tracking[type] || 0, currentCombo);
+    } else if (type === 'focus_marathon') {
+      ch.tracking[type] = Math.max(ch.tracking[type] || 0, sessionMinutes || 0);
+    } else if (type === 'total_xp') {
+      // XP tracking done via separate increment
+    } else if (type === 'textiles_woven') {
+      ch.tracking[type] = state.textilesWoven || 0;
+    }
+    _syncChallengeProgress();
+    saveState();
+  }
+
+  function _updateChallengeOnTaskComplete() {
+    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    var ch = state.friendChallenge;
+    if (!ch.tracking) ch.tracking = {};
+    if (ch.type === 'tasks_completed') {
+      ch.tracking[ch.type] = (ch.tracking[ch.type] || 0) + 1;
+    }
+    _syncChallengeProgress();
+    saveState();
+  }
+
+  function _updateChallengeOnQuestComplete() {
+    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    var ch = state.friendChallenge;
+    if (!ch.tracking) ch.tracking = {};
+    if (ch.type === 'quest_completions') {
+      ch.tracking[ch.type] = (ch.tracking[ch.type] || 0) + 1;
+    }
+    _syncChallengeProgress();
+    saveState();
+  }
+
+  function _syncChallengeProgress() {
+    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    var ch = state.friendChallenge;
+    var myProgress = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+    // Send progress update to opponent via inbox
+    try {
+      if (state.profileId && ch.opponentId) {
+        var msgId = state.profileId + '_challenge_progress_' + Date.now();
+        var inboxPath = 'artifacts/' + ch.opponentId + '/inbox/' + msgId;
+        var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+        fetch(url, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({fields:{
+            type:{stringValue:'challenge_progress'},
+            fromId:{stringValue:state.profileId},
+            fromName:{stringValue:state.displayName || state.profileId},
+            challengeType:{stringValue:ch.type},
+            progress:{integerValue:String(myProgress)},
+            ts:{integerValue:String(Date.now())}
+          }})
+        }).catch(function(){});
+      }
+    } catch(_){}
+  }
+
+  function _checkChallengeExpiry() {
+    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    var ch = state.friendChallenge;
+    if (Date.now() >= ch.endsAt) {
+      _resolveChallenge();
+    }
+  }
+
+  function _resolveChallenge() {
+    var ch = state.friendChallenge;
+    if (!ch) return;
+    var myProgress = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+    var theirProgress = ch.opponentProgress || 0;
+    var pool = CHALLENGE_POOL.filter(function(c){return c.id === ch.type;})[0];
+    var tier = pool ? pool.tier : 'standard';
+    var reward = CHALLENGE_REWARDS[tier];
+    var result = 'tie';
+    if (myProgress > theirProgress) {
+      result = 'win';
+      awardCoins(reward.coins, 'Challenge won vs ' + (ch.opponentName || 'friend'));
+      if (reward.xp) { state.xp = (state.xp || 0) + reward.xp; }
+      state.friendChallengeWins = (state.friendChallengeWins || 0) + 1;
+    } else if (myProgress < theirProgress) {
+      result = 'loss';
+      state.coins = Math.max(0, (state.coins || 0) - CHALLENGE_LOSER_PENALTY);
+      state.friendChallengeLosses = (state.friendChallengeLosses || 0) + 1;
+    } else {
+      state.friendChallengeTies = (state.friendChallengeTies || 0) + 1;
+    }
+
+    // Record in history
+    var entry = {
+      type: ch.type,
+      opponentId: ch.opponentId,
+      opponentName: ch.opponentName || ch.opponentId,
+      myScore: myProgress,
+      theirScore: theirProgress,
+      result: result,
+      endedAt: Date.now()
+    };
+    if (!state.friendChallengeHistory) state.friendChallengeHistory = [];
+    state.friendChallengeHistory.unshift(entry);
+    if (state.friendChallengeHistory.length > 20) state.friendChallengeHistory = state.friendChallengeHistory.slice(0, 20);
+
+    // Send result to opponent
+    try {
+      if (state.profileId && ch.opponentId) {
+        var msgId = state.profileId + '_challenge_result_' + Date.now();
+        var inboxPath = 'artifacts/' + ch.opponentId + '/inbox/' + msgId;
+        var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+        fetch(url, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({fields:{
+            type:{stringValue:'challenge_result'},
+            fromId:{stringValue:state.profileId},
+            fromName:{stringValue:state.displayName || state.profileId},
+            challengeType:{stringValue:ch.type},
+            myScore:{integerValue:String(myProgress)},
+            result:{stringValue:result === 'win' ? 'loss' : (result === 'loss' ? 'win' : 'tie')},
+            ts:{integerValue:String(Date.now())}
+          }})
+        }).catch(function(){});
+      }
+    } catch(_){}
+
+    // Show result notification
+    var resultText = result === 'win' ? 'YOU WON +$' + reward.coins + ' +' + reward.xp + 'XP!' :
+                     result === 'loss' ? 'YOU LOST -$' + CHALLENGE_LOSER_PENALTY :
+                     'TIE - No change';
+    try { showToast(resultText, result === 'win' ? 'success' : (result === 'loss' ? 'error' : 'info')); } catch(_){}
+
+    state.friendChallenge = null;
+    saveState();
+    try { renderChallengeUI(); } catch(_){}
+  }
+
+  function sendChallenge(friendId, friendName) {
+    if (state.friendChallenge) {
+      showToast('You already have an active challenge!', 'error');
+      return;
+    }
+    // Pick random challenge type
+    var pick = CHALLENGE_POOL[Math.floor(Math.random() * CHALLENGE_POOL.length)];
+    var endsAt = Date.now() + CHALLENGE_DURATION_MS;
+
+    // Send invite via inbox
+    try {
+      var msgId = state.profileId + '_challenge_invite_' + Date.now();
+      var inboxPath = 'artifacts/' + friendId + '/inbox/' + msgId;
+      var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+      fetch(url, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({fields:{
+          type:{stringValue:'challenge_invite'},
+          fromId:{stringValue:state.profileId},
+          fromName:{stringValue:state.displayName || state.profileId},
+          challengeType:{stringValue:pick.id},
+          challengeLabel:{stringValue:pick.label},
+          challengeDesc:{stringValue:pick.desc},
+          challengeTier:{stringValue:pick.tier},
+          endsAt:{integerValue:String(endsAt)},
+          ts:{integerValue:String(Date.now())}
+        }})
+      }).then(function() {
+        state.friendChallenge = {
+          type: pick.id,
+          label: pick.label,
+          desc: pick.desc,
+          tier: pick.tier,
+          opponentId: friendId,
+          opponentName: friendName || friendId,
+          opponentProgress: 0,
+          startedAt: Date.now(),
+          endsAt: endsAt,
+          status: 'pending',
+          tracking: {}
+        };
+        _initChallengeTracking();
+        saveState();
+        showToast('Challenge sent to ' + (friendName || friendId) + '!', 'success');
+        try { renderChallengeUI(); } catch(_){}
+      }).catch(function() {
+        showToast('Failed to send challenge', 'error');
+      });
+    } catch(_) {
+      showToast('Failed to send challenge', 'error');
+    }
+  }
+
+  function acceptChallenge(fromId, fromName, challengeType, challengeLabel, challengeDesc, challengeTier, endsAt) {
+    if (state.friendChallenge) {
+      showToast('You already have an active challenge!', 'error');
+      return;
+    }
+    state.friendChallenge = {
+      type: challengeType,
+      label: challengeLabel,
+      desc: challengeDesc,
+      tier: challengeTier,
+      opponentId: fromId,
+      opponentName: fromName || fromId,
+      opponentProgress: 0,
+      startedAt: Date.now(),
+      endsAt: parseInt(endsAt) || (Date.now() + CHALLENGE_DURATION_MS),
+      status: 'active',
+      tracking: {}
+    };
+    _initChallengeTracking();
+    saveState();
+
+    // Notify sender that challenge was accepted
+    try {
+      var msgId = state.profileId + '_challenge_accept_' + Date.now();
+      var inboxPath = 'artifacts/' + fromId + '/inbox/' + msgId;
+      var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+      fetch(url, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({fields:{
+          type:{stringValue:'challenge_accept'},
+          fromId:{stringValue:state.profileId},
+          fromName:{stringValue:state.displayName || state.profileId},
+          challengeType:{stringValue:challengeType},
+          ts:{integerValue:String(Date.now())}
+        }})
+      }).catch(function(){});
+    } catch(_){}
+
+    showToast('Challenge accepted! Game on!', 'success');
+    try { renderChallengeUI(); } catch(_){}
+  }
+
+  function declineChallenge(fromId) {
+    try {
+      var msgId = state.profileId + '_challenge_decline_' + Date.now();
+      var inboxPath = 'artifacts/' + fromId + '/inbox/' + msgId;
+      var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+      fetch(url, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({fields:{
+          type:{stringValue:'challenge_decline'},
+          fromId:{stringValue:state.profileId},
+          fromName:{stringValue:state.displayName || state.profileId},
+          ts:{integerValue:String(Date.now())}
+        }})
+      }).catch(function(){});
+    } catch(_){}
+    showToast('Challenge declined', 'info');
+  }
+
+  function renderChallengeUI() {
+    var activeCard = document.getElementById('challengeActiveCard');
+    var statsDiv = document.getElementById('challengeStats');
+    var histList = document.getElementById('challengeHistoryList');
+    var panel = document.getElementById('challengePanel');
+    if (!panel) return;
+    panel.style.display = '';
+
+    // Stats line
+    if (statsDiv) {
+      var w = state.friendChallengeWins || 0;
+      var l = state.friendChallengeLosses || 0;
+      var t = state.friendChallengeTies || 0;
+      statsDiv.innerHTML = '<span style="color:#00ff88;">' + w + 'W</span> / <span style="color:#ff4444;">' + l + 'L</span> / <span style="color:#888;">' + t + 'T</span>';
+    }
+
+    // Active challenge card
+    if (activeCard) {
+      var ch = state.friendChallenge;
+      if (ch && (ch.status === 'active' || ch.status === 'pending')) {
+        var myProg = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+        var theirProg = ch.opponentProgress || 0;
+        var pool = CHALLENGE_POOL.filter(function(c){return c.id === ch.type;})[0];
+        var unit = pool ? pool.unit : '';
+        var remaining = Math.max(0, ch.endsAt - Date.now());
+        var hrs = Math.floor(remaining / 3600000);
+        var mins = Math.floor((remaining % 3600000) / 60000);
+        var timeStr = hrs + 'h ' + mins + 'm';
+        var myBarW = myProg > 0 || theirProg > 0 ? Math.min(100, Math.round((myProg / Math.max(myProg, theirProg, 1)) * 100)) : 0;
+        var theirBarW = myProg > 0 || theirProg > 0 ? Math.min(100, Math.round((theirProg / Math.max(myProg, theirProg, 1)) * 100)) : 0;
+        var statusLabel = ch.status === 'pending' ? '<span style="color:#ffa500;font-size:7px;">WAITING FOR RESPONSE...</span>' : '';
+
+        activeCard.innerHTML = '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #4ecdc4;border-radius:8px;padding:10px;margin-bottom:8px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+            '<span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4ecdc4;">' + escHtml(ch.label || ch.type) + '</span>' +
+            '<span style="font-size:9px;color:#ffa500;">' + timeStr + ' left</span>' +
+          '</div>' +
+          statusLabel +
+          '<div style="font-size:9px;color:var(--text-dim);margin-bottom:8px;">' + escHtml(ch.desc || '') + '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+            '<div style="flex:1;">' +
+              '<div style="font-size:8px;color:#00ff88;margin-bottom:2px;">YOU: ' + myProg + ' ' + unit + '</div>' +
+              '<div style="background:#333;border-radius:3px;height:6px;overflow:hidden;"><div style="background:#00ff88;height:100%;width:' + myBarW + '%;border-radius:3px;transition:width 0.3s;"></div></div>' +
+            '</div>' +
+            '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#ff4444;">VS</div>' +
+            '<div style="flex:1;">' +
+              '<div style="font-size:8px;color:#ff6b6b;margin-bottom:2px;text-align:right;">' + escHtml(ch.opponentName || '???') + ': ' + theirProg + ' ' + unit + '</div>' +
+              '<div style="background:#333;border-radius:3px;height:6px;overflow:hidden;"><div style="background:#ff6b6b;height:100%;width:' + theirBarW + '%;border-radius:3px;float:right;transition:width 0.3s;"></div></div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="text-align:center;margin-top:4px;">' +
+            '<span style="font-size:8px;color:' + (myProg > theirProg ? '#00ff88' : (myProg < theirProg ? '#ff4444' : '#888')) + ';">' +
+              (myProg > theirProg ? 'YOU\'RE WINNING!' : (myProg < theirProg ? 'CATCH UP!' : 'TIED!')) +
+            '</span>' +
+          '</div>' +
+        '</div>';
+      } else {
+        activeCard.innerHTML = '<div style="font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;padding:8px;">No active challenge. Send one to a friend!</div>';
+      }
+    }
+
+    // History
+    if (histList) {
+      var hist = state.friendChallengeHistory || [];
+      if (hist.length === 0) {
+        histList.innerHTML = '<div style="font-size:9px;color:var(--text-dim);font-style:italic;">No challenge history yet.</div>';
+      } else {
+        var hHtml = '';
+        hist.slice(0, 10).forEach(function(h) {
+          var rColor = h.result === 'win' ? '#00ff88' : (h.result === 'loss' ? '#ff4444' : '#888');
+          var rLabel = h.result === 'win' ? 'WON' : (h.result === 'loss' ? 'LOST' : 'TIE');
+          var pool = CHALLENGE_POOL.filter(function(c){return c.id === h.type;})[0];
+          var label = pool ? pool.label : h.type;
+          hHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">' +
+            '<span style="font-size:8px;color:var(--text-dim);">' + escHtml(label) + ' vs ' + escHtml(h.opponentName || '???') + '</span>' +
+            '<span style="font-size:8px;color:' + rColor + ';font-family:\'Press Start 2P\',monospace;">' + rLabel + ' (' + h.myScore + '-' + h.theirScore + ')</span>' +
+          '</div>';
+        });
+        histList.innerHTML = hHtml;
+      }
+    }
+  }
 
   function _questTodayStr() {
     var d = new Date(), mm = d.getMonth()+1, dd = d.getDate();
@@ -11279,6 +11742,7 @@ try {
       state._questTilesLit = quest.tiles ? quest.tiles.length : 0;
       // v3.23.136: Increment lifetime quest counters (for badges)
       state.questsCompletedLifetime = (state.questsCompletedLifetime || 0) + 1;
+      try { _updateChallengeOnQuestComplete(); } catch (_) {}
       if (state.questChosen === 'steady') {
         state.questsSteadyCompleted = (state.questsSteadyCompleted || 0) + 1;
       } else if (state.questChosen === 'ambitious') {
@@ -12897,6 +13361,8 @@ try {
             html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
             html += profileLink(fid, avatarThumb(f.avatarURL) + '<span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#5aadff;">' + escHtml(f.displayName || fid) + '</span>');
             html += '<button class="btn btn-small friend-remove-btn" data-fid="' + escHtml(fid) + '" style="border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 6px;">REMOVE</button>';
+            var challengeDisabled = state.friendChallenge ? ' opacity:0.4;pointer-events:none;' : '';
+            html += '<button class="btn btn-small friend-challenge-btn" data-fid="' + escHtml(fid) + '" data-fname="' + escHtml(f.displayName || fid) + '" style="border-color:#ffa500;color:#ffa500;font-size:7px;padding:2px 6px;margin-right:4px;' + challengeDisabled + '" title="Send challenge">\u2694 CHALLENGE</button>';
             html += '</div>';
             if (hasTaskAccess) {
               // Show per-project permission checkboxes
@@ -13013,6 +13479,16 @@ try {
             });
           });
 
+          // v3.23.166: Challenge button handler
+          friendsList.querySelectorAll('.friend-challenge-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              sendChallenge(fid, fname);
+            });
+          });
+
           // v3.23.155: Inline task send handler (full access mode)
           friendsList.querySelectorAll('.friend-task-send-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
@@ -13061,6 +13537,16 @@ try {
                 var sendBtn = friendsList.querySelector('.friend-task-send-btn[data-fid="' + fid + '"]');
                 if (sendBtn) sendBtn.click();
               }
+            });
+          });
+
+          // v3.23.166: Challenge button handler
+          friendsList.querySelectorAll('.friend-challenge-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var fid = btn.getAttribute('data-fid');
+              var fname = btn.getAttribute('data-fname');
+              if (!fid) return;
+              sendChallenge(fid, fname);
             });
           });
 
@@ -13372,6 +13858,58 @@ try {
                   acceptNotices.push(msg);
                 } else if (msg.type === 'access_granted') {
                   accessGrantNotices.push(msg);
+                } else if (msg.type === 'challenge_invite') {
+                  // v3.23.166: Friend challenge invite
+                  if (state.friendChallenge) {
+                    // Already in a challenge, auto-decline
+                    try { declineChallenge(msg.fromId); } catch(_){}
+                  } else {
+                    var invDiv = document.getElementById('challengeInvites');
+                    if (invDiv) {
+                      var tier = msg.challengeTier || 'standard';
+                      var reward = CHALLENGE_REWARDS[tier] || CHALLENGE_REWARDS.standard;
+                      invDiv.innerHTML += '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #ffa500;border-radius:8px;padding:10px;margin-bottom:6px;">' +
+                        '<div style="font-family:' + "'" + 'Press Start 2P' + "'" + ',monospace;font-size:8px;color:#ffa500;margin-bottom:4px;">CHALLENGE INVITE</div>' +
+                        '<div style="font-size:10px;color:var(--text);margin-bottom:4px;">' + escHtml(msg.fromName || msg.fromId) + ' challenges you!</div>' +
+                        '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">' + escHtml(msg.challengeLabel || msg.challengeType) + ': ' + escHtml(msg.challengeDesc || '') + '</div>' +
+                        '<div style="font-size:9px;color:#00ff88;margin-bottom:6px;">Reward: +$' + reward.coins + ' +' + reward.xp + 'XP | Penalty: -$' + CHALLENGE_LOSER_PENALTY + '</div>' +
+                        '<div style="display:flex;gap:6px;">' +
+                          '<button class="btn btn-small" onclick="acceptChallenge(\x27' + escHtml(msg.fromId) + '\x27,\x27' + escHtml(msg.fromName || msg.fromId) + '\x27,\x27' + escHtml(msg.challengeType) + '\x27,\x27' + escHtml(msg.challengeLabel || '') + '\x27,\x27' + escHtml(msg.challengeDesc || '') + '\x27,\x27' + escHtml(tier) + '\x27,' + (msg.endsAt || 0) + ');this.parentNode.parentNode.remove();" style="border-color:#00ff88;color:#00ff88;font-size:8px;padding:3px 8px;">ACCEPT</button>' +
+                          '<button class="btn btn-small" onclick="declineChallenge(\x27' + escHtml(msg.fromId) + '\x27);this.parentNode.parentNode.remove();" style="border-color:#ff4444;color:#ff4444;font-size:8px;padding:3px 8px;">DECLINE</button>' +
+                        '</div>' +
+                      '</div>';
+                    }
+                  }
+                } else if (msg.type === 'challenge_accept') {
+                  // Opponent accepted our challenge - activate it
+                  if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
+                    state.friendChallenge.status = 'active';
+                    _initChallengeTracking();
+                    saveState();
+                    try { showToast(escHtml(msg.fromName || msg.fromId) + ' accepted your challenge!', 'success'); } catch(_){}
+                    try { renderChallengeUI(); } catch(_){}
+                  }
+                } else if (msg.type === 'challenge_decline') {
+                  // Opponent declined our challenge
+                  if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
+                    state.friendChallenge = null;
+                    saveState();
+                    try { showToast(escHtml(msg.fromName || msg.fromId) + ' declined the challenge.', 'info'); } catch(_){}
+                    try { renderChallengeUI(); } catch(_){}
+                  }
+                } else if (msg.type === 'challenge_progress') {
+                  // Update opponent progress
+                  if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
+                    state.friendChallenge.opponentProgress = parseInt(msg.progress) || 0;
+                    saveState();
+                    try { renderChallengeUI(); } catch(_){}
+                  }
+                } else if (msg.type === 'challenge_result') {
+                  // Opponent sent us their final result
+                  if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
+                    state.friendChallenge.opponentProgress = parseInt(msg.myScore) || 0;
+                    _resolveChallenge();
+                  }
                 }
               });
 
@@ -13457,6 +13995,14 @@ try {
         function startInboxPolling() {
           setTimeout(pollInbox, 1000);
           setInterval(pollInbox, 30000);
+          // v3.23.166: Initialize challenge UI and periodic checks
+          setTimeout(function() {
+            try { renderChallengeUI(); } catch(_){}
+          }, 1500);
+          setInterval(function() {
+            try { _checkChallengeExpiry(); } catch(_){}
+            try { _syncChallengeProgress(); } catch(_){}
+          }, 60000);
         }
         try {
           if (state.profileId && window.ProfileSync && window.ProfileSync.getSocialData) {
@@ -15718,7 +16264,7 @@ try {
               loomsSaved: {integerValue: String((state.savedArtworks && state.savedArtworks.length) || 0)},
               loomsSold: {integerValue: String(state.loomsSold || 0)},
               livesLost: {integerValue: String(livesLost)},
-              avatarDataURL: {stringValue: avatarDataURL},
+                            avatarDataURL: {stringValue: avatarDataURL},
               dailyTaskLog: _toFV(taskLog),
               dailySessionLog: _toFV(sessionLog),
               updatedAt: {stringValue: new Date().toISOString()},
@@ -15750,7 +16296,7 @@ try { console.log('[TodoOfTheLoom] v' + chrome.runtime.getManifest().version + '
 
 // v3.23.132: One-shot quest check moved INSIDE the IIFE (was inaccessible here)
 
-// GUARD 4: Show version in UI — always visible, no hiding
+// GUARD 4: Show version in UI - always visible, no hiding
 try {
   var _vLabel = document.getElementById('versionLabel');
   if (!_vLabel) {

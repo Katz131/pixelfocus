@@ -88,8 +88,8 @@ var MarketEngine = (function() {
     // Bureau ops bonus (temporary)
     var bureauMult = 1 + bureauBonus;
 
-    // Natural demand fluctuation (sine wave, like Paperclips)
-    var noise = Math.sin(tick * 0.07) * 0.08 + Math.cos(tick * 0.13) * 0.05;
+    // Natural demand fluctuation — gentle, slow ripple (not jitter)
+    var noise = Math.sin(tick * 0.005) * 0.06 + Math.cos(tick * 0.0012) * 0.04;
 
     var demand = priceFactor
               * marketingMult
@@ -134,10 +134,10 @@ var MarketEngine = (function() {
     var dyeMult    = 1 + (1 - dHealth) * 2;
     var threadMult = 1 + (1 - gHealth) * 2;
 
-    // Oscillation on top of depletion-adjusted costs
-    var fiber  = oscillate(FIBER_BASE * fiberMult, tick, 0.05, 0.11, 1.2, 0.7);
-    var dyeC   = oscillate(DYE_BASE * dyeMult, tick, 0.08, 0.06, 1.5, 1.0);
-    var thread = oscillate(THREAD_BASE * threadMult, tick, 0.03, 0.14, 0.8, 0.5);
+    // Oscillation on top of depletion-adjusted costs — slow cycles (~30-90 min)
+    var fiber  = oscillate(FIBER_BASE * fiberMult, tick, 0.004, 0.0012, 1.2, 0.7);
+    var dyeC   = oscillate(DYE_BASE * dyeMult, tick, 0.003, 0.0008, 1.5, 1.0);
+    var thread = oscillate(THREAD_BASE * threadMult, tick, 0.005, 0.0015, 0.8, 0.5);
 
     var total = Math.round((fiber + dyeC + thread) * 10) / 10;
 
@@ -170,22 +170,18 @@ var MarketEngine = (function() {
     // Margin: how much profit per unit at current price vs costs
     var margin = (costs.total > 0) ? (price - costs.total) / price : 0;
 
-    // v3.23.117: Shifting sweet spot.
-    // The "ideal price" drifts over time via slow sine waves so the
-    // player can't just park the slider in one place forever.
-    // When your price is near the ideal, you get a resonance bonus.
-    // When you're far from it, you pay a penalty — but the ideal
-    // moves, so yesterday's perfect price is tomorrow's bad call.
+    // v3.23.167: Shifting sweet spot — SLOW cycles for strategic pricing.
+    // The ideal price drifts over HOURS, not minutes. If you find a good
+    // price point, it stays good long enough to run several sessions at
+    // that yield. The market feels like trends, not a slot machine.
     //
-    // The ideal price oscillates between ~$4 and ~$26 over different
-    // overlapping cycles (short ~2min, medium ~7min, long ~20min).
-    // Upgrades (marketing, lobbying, market share) widen the "good zone"
-    // so higher-level players have more forgiveness.
+    // Cycles: ~2 hours (main drift), ~45 min (secondary), ~6 hours (trend).
+    // Amplitude is moderate so the sweet spot moves but doesn't whiplash.
     var tick = state.marketTick || 0;
     var idealPrice = 15
-      + Math.sin(tick * 0.009) * 8       // slow drift (~11 min cycle)
-      + Math.sin(tick * 0.025) * 3       // medium wobble (~4 min)
-      + Math.cos(tick * 0.004) * 5;      // very slow trend (~26 min)
+      + Math.sin(tick * 0.0009) * 7      // main drift (~116 min cycle)
+      + Math.sin(tick * 0.0023) * 2.5    // secondary wobble (~45 min)
+      + Math.cos(tick * 0.0003) * 4;     // very slow trend (~5.8 hour)
     idealPrice = clamp(Math.round(idealPrice * 10) / 10, 3, 28);
 
     // How far off is the player? Normalized 0-1 where 0 = perfect
@@ -206,7 +202,11 @@ var MarketEngine = (function() {
     marginFactor = clamp(marginFactor, 0.3, 2.0);
 
     var yieldMult = demand * marginFactor * resonance;
-    yieldMult = clamp(yieldMult, 0.3, 2.5);
+    // v3.23.167: Raised floor from 0.3x to 0.50x — at 0.3x a 20-min
+    // session with 2x combo earned ~$7, which is economically meaningless
+    // when nothing in the game costs less than $1,000. 0.50x keeps bad
+    // markets punishing without making sessions feel pointless.
+    yieldMult = clamp(yieldMult, 0.5, 2.5);
 
     // Round to 2 decimal places
     yieldMult = Math.round(yieldMult * 100) / 100;
@@ -216,6 +216,7 @@ var MarketEngine = (function() {
     state.marketCosts = costs;
     state.marketDemandPct = demandPct;
     state.marketMarginPct = Math.round(margin * 100);
+
 
     return {
       yieldMultiplier: yieldMult,

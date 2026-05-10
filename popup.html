@@ -140,29 +140,68 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   position: relative;
   overflow: hidden;
 }
-/* Shimmer sweep on hover */
+/* Shimmer sweep on hover — visible white streak */
 #houseBtn::after, #galleryBtn::after, #factoryBtn::after, #brokerageBtn::after, #ratiocinatoryBtn::after, #badgesBtn::after {
   content: '';
   position: absolute;
   top: 0; left: -100%; width: 60%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-  transition: left 0.4s ease;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  transition: left 0.5s ease;
   pointer-events: none;
 }
-/* Hover: glow + scale up + shimmer sweep */
-#houseBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(212,168,87,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe08a; }
-#galleryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,107,157,0.45), 0 4px 14px rgba(0,0,0,0.4); border-color: #ff8fbf; }
-#factoryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,215,0,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe44d; }
-#brokerageBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(78,205,196,0.55), 0 4px 14px rgba(0,0,0,0.4); border-color: #7eeee6; }
-#ratiocinatoryBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(157,142,255,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #bdb2ff; }
-#badgesBtn:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(255,215,0,0.5), 0 4px 14px rgba(0,0,0,0.4); border-color: #ffe44d; }
+/* Hover: big glow + scale + background brighten + text brighten */
+#houseBtn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 0 28px rgba(212,168,87,0.7), 0 0 60px rgba(212,168,87,0.25), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #ffe08a;
+  background: linear-gradient(135deg,#242818,#343828) !important;
+}
+#galleryBtn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 0 28px rgba(255,107,157,0.65), 0 0 60px rgba(255,107,157,0.2), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #ff8fbf;
+  background: linear-gradient(135deg,#251a30,#3a2a52) !important;
+}
+#factoryBtn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 0 28px rgba(255,215,0,0.7), 0 0 60px rgba(255,215,0,0.25), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #ffe44d;
+  background: linear-gradient(135deg,#362a14,#4a3818) !important;
+}
+#brokerageBtn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 0 28px rgba(78,205,196,0.7), 0 0 60px rgba(78,205,196,0.25), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #7eeee6;
+  background: linear-gradient(135deg,#0e2428,#183838) !important;
+}
+#ratiocinatoryBtn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 0 28px rgba(157,142,255,0.65), 0 0 60px rgba(157,142,255,0.2), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #bdb2ff;
+  background: linear-gradient(135deg,#221840,#341e60) !important;
+}
+#badgesBtn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 0 28px rgba(255,215,0,0.7), 0 0 60px rgba(255,215,0,0.25), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #ffe44d;
+  background: linear-gradient(135deg,#2a2014,#3a2a14) !important;
+}
+/* Hover text glow — make the label pop */
+#houseBtn:hover span { text-shadow: 0 0 8px rgba(212,168,87,0.8); }
+#galleryBtn:hover span { text-shadow: 0 0 8px rgba(255,107,157,0.8); }
+#factoryBtn:hover span { text-shadow: 0 0 8px rgba(255,215,0,0.8); }
+#brokerageBtn:hover span { text-shadow: 0 0 8px rgba(78,205,196,0.8); }
+#ratiocinatoryBtn:hover span { text-shadow: 0 0 8px rgba(157,142,255,0.8); }
+#badgesBtn:hover span { text-shadow: 0 0 8px rgba(255,215,0,0.8); }
+/* Shimmer sweep on hover */
 #houseBtn:hover::after, #galleryBtn:hover::after, #factoryBtn:hover::after, #brokerageBtn:hover::after, #ratiocinatoryBtn:hover::after, #badgesBtn:hover::after {
   left: 120%;
 }
 /* Active (mouse-down): press in + squish */
 #houseBtn:active, #galleryBtn:active, #factoryBtn:active, #brokerageBtn:active, #ratiocinatoryBtn:active, #badgesBtn:active {
-  transform: scale(0.94);
+  transform: scale(0.94) translateY(1px);
   transition-duration: 0.06s;
+  box-shadow: 0 0 12px rgba(255,255,255,0.15), 0 2px 6px rgba(0,0,0,0.5);
 }
 /* Release bounce is handled by the 0.15s cubic-bezier on the base transition */
 
@@ -923,7 +962,17 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
         <div style="font-size:11px;color:var(--text-dim);font-style:italic;">No friends yet. Share your Profile ID!</div>
       </div>
     </div>
-    <!-- Access requests (separate from friend requests) -->
+    <!-- v3.23.166: Friend Challenge System -->
+    <div id="challengePanel" style="display:none;margin-top:10px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffa500;letter-spacing:1px;">&#x2694; CHALLENGES</span>
+        <span id="challengeStats" style="font-family:'Press Start 2P',monospace;font-size:7px;"></span>
+      </div>
+      <div id="challengeActiveCard"></div>
+      <div id="challengeInvites"></div>
+      <div id="challengeHistoryList" style="margin-top:6px;"></div>
+    </div>
+        <!-- Access requests (separate from friend requests) -->
     <div id="accessRequestsSection" style="display:none;margin-top:8px;">
       <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4ecdc4;margin-bottom:4px;letter-spacing:1px;">TASK ACCESS REQUESTS</div>
       <div id="accessRequestsList"></div>

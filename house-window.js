@@ -2770,6 +2770,95 @@
 
     // Insert after the pet note
     parent.appendChild(row);
+
+    // v3.23.167: Feed button — fills all bowls for $50
+    var oldFeedBtn = document.getElementById('petFeedBtn');
+    if (oldFeedBtn) oldFeedBtn.remove();
+
+    var anyEmpty = false;
+    for (var fi = 0; fi < count; fi++) {
+      if (petBowlState(fi) === 'bowl_empty') { anyEmpty = true; break; }
+    }
+
+    var feedRow = document.createElement('div');
+    feedRow.id = 'petFeedBtn';
+    feedRow.style.cssText = 'margin-top:6px;text-align:center;';
+
+    var feedBtn = document.createElement('button');
+    feedBtn.style.cssText = 'font-family:monospace;font-size:9px;padding:4px 12px;border-radius:4px;cursor:pointer;'
+      + 'border:1px solid ' + (anyEmpty ? '#7fa862' : '#3a3a5e') + ';'
+      + 'background:' + (anyEmpty ? 'rgba(127,168,98,0.15)' : 'rgba(40,40,60,0.3)') + ';'
+      + 'color:' + (anyEmpty ? '#7fa862' : '#5a5a7e') + ';'
+      + 'letter-spacing:0.5px;transition:all 0.2s;';
+    // Bowl status text with time estimate
+    var bowlLabel = 'FILL BOWLS — $50';
+    var bowlTitle = 'Spend $50 to fill all pet bowls';
+    if (!anyEmpty) {
+      // Estimate hours until bowls drain (50 fullness lost per daily rollover)
+      // Fullness is currently 100 after feeding, drains 50/day → empty in ~2 days
+      var minFullness = 100;
+      var fullnessArr = state.petFullness || [];
+      for (var fi2 = 0; fi2 < count; fi2++) {
+        var fv = fullnessArr[fi2] || 0;
+        if (fv < minFullness) minFullness = fv;
+      }
+      var daysLeft = Math.ceil(minFullness / 50);
+      bowlLabel = 'BOWLS FULL — ~' + daysLeft + 'd left';
+      bowlTitle = 'Bowls will need refilling in about ' + daysLeft + ' day' + (daysLeft !== 1 ? 's' : '');
+    }
+    feedBtn.textContent = bowlLabel;
+    feedBtn.disabled = !anyEmpty;
+    feedBtn.title = bowlTitle;
+
+    if (anyEmpty) {
+      feedBtn.onmouseenter = function() {
+        feedBtn.style.background = 'rgba(127,168,98,0.3)';
+        feedBtn.style.transform = 'scale(1.05)';
+      };
+      feedBtn.onmouseleave = function() {
+        feedBtn.style.background = 'rgba(127,168,98,0.15)';
+        feedBtn.style.transform = 'scale(1)';
+      };
+      feedBtn.onclick = function() {
+        // Feed directly via chrome.storage (app.js is in a different page context)
+        var PET_FOOD_COST = 50;
+        if (!state || (state.coins || 0) < PET_FOOD_COST) {
+          feedBtn.textContent = 'NEED $' + PET_FOOD_COST;
+          feedBtn.style.color = '#ff6b6b';
+          feedBtn.style.borderColor = '#ff6b6b';
+          setTimeout(function() {
+            feedBtn.textContent = 'FILL BOWLS — $' + PET_FOOD_COST;
+            feedBtn.style.color = '#7fa862';
+            feedBtn.style.borderColor = '#7fa862';
+          }, 1500);
+          return;
+        }
+        state.coins -= PET_FOOD_COST;
+        state.petLastFed = Date.now();
+        var types = state.housePetTypes || [];
+        var petCount = types.filter(function(t) { return !!t; }).length;
+        var newFullness = [];
+        for (var k = 0; k < petCount; k++) newFullness[k] = 100;
+        state.petFullness = newFullness;
+        // Log to house feed
+        if (!Array.isArray(state.houseFeedLog)) state.houseFeedLog = [];
+        state.houseFeedLog.push({ type: 'payroll', msg: 'Pet food: -$' + PET_FOOD_COST, amount: -PET_FOOD_COST, ts: Date.now() });
+        // Save to chrome.storage
+        var patch = {};
+        patch[STATE_KEY] = state;
+        chrome.storage.local.set(patch, function() {
+          // Re-render after save
+          render();
+        });
+        // Immediate visual feedback
+        feedBtn.textContent = 'FED!';
+        feedBtn.style.color = '#00ff88';
+        feedBtn.style.borderColor = '#00ff88';
+      };
+    }
+
+    feedRow.appendChild(feedBtn);
+    parent.appendChild(feedRow);
   }
 
     var MOOD_LINES = {
@@ -3074,29 +3163,12 @@
   // the main tracker (popup.html) exactly as the toolbar icon used to.
   // -------------------------------------------------------------------------
   function go(path) {
-    // Let the dispatch module tear down its pending timer (and, in
-    // future, push any confession line to the message log) BEFORE we
-    // hand control off to the background router.
     try {
-      if (window.HouseDispatch && typeof window.HouseDispatch.onLeave === 'function') {
-        window.HouseDispatch.onLeave();
-      }
-    } catch (e) { /* ignore */ }
-
-    try {
-      chrome.runtime.sendMessage({ type: 'pf-open', path: path });
-    } catch (e) {
-      // If the router is unavailable for any reason, fall back to a plain
-      // navigation in the current tab. This never runs in practice but
-      // keeps the window robust on cold start.
       window.location.href = path;
-    }
+    } catch (_) { window.location.href = path; }
   }
 
   function wireNav() {
-    var toPopup = $('toPopupBtn');
-    if (toPopup) toPopup.addEventListener('click', function () { go('popup.html'); });
-
     var toLoom = $('toLoomBtn');
     if (toLoom) toLoom.addEventListener('click', function () { go('gallery.html'); });
 
@@ -3107,20 +3179,16 @@
     if (begin) begin.addEventListener('click', function () { go('popup.html'); });
 
     var begin2 = $('beginWorkBtn2');
+    var begin2 = $('beginWorkBtn2');
     if (begin2) begin2.addEventListener('click', function () { go('factory.html'); });
-
   }
 
-  // -------------------------------------------------------------------------
-  // Boot — fetch the state once, wire up nav, and subscribe to storage
-  // changes so the rap sheet updates in real time if the player is also
-  // playing in another window. The subscription is purely a re-read.
-  // -------------------------------------------------------------------------
   function boot() {
     wireNav();
     try {
       chrome.storage.local.get(STATE_KEY, function (result) {
-        state = (result && result[STATE_KEY]) || {};        render();
+        state = (result && result[STATE_KEY]) || {};
+        render();
       });
       chrome.storage.onChanged.addListener(function (changes, area) {
         if (area !== 'local') return;
@@ -3129,16 +3197,9 @@
         render();
       });
     } catch (e) {
-      // No chrome.storage available (unlikely in production). Render a
-      // cold-start rap sheet from an empty state.
       state = {};
       render();
     }
-
-    // Each household member has its own staggered rotation timer,
-    // started from render() via ensureMemberTimers(). No global seed
-    // bump here — we explicitly want family members to change activity
-    // at DIFFERENT times, not all on the same tick.
   }
 
   if (document.readyState === 'loading') {
