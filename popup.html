@@ -336,6 +336,8 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
       </div>
     </div>
     <div id="celebLevel" style="font-size:13px;color:var(--text-dim);margin-top:16px;opacity:0;transition:opacity 0.5s;"></div>
+    <!-- v3.23.162: Combo burst callout -->
+    <div id="celebCombo" style="margin-top:12px;opacity:0;transition:opacity 0.5s;font-family:'Press Start 2P',monospace;font-size:14px;color:#ff6b00;"></div>
     <!-- v3.23.117: Market multiplier & cost info -->
     <div id="celebMarketInfo" style="margin-top:14px;opacity:0;transition:opacity 0.5s;font-family:'Courier New',monospace;font-size:10px;color:var(--text-dim);line-height:1.7;"></div>
   </div>
@@ -587,6 +589,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
         <span class="combo-label">COMBO</span>
         <span class="combo-mult" id="comboMultiplier" title="Current XP multiplier from your combo streak. Higher combos = bigger payouts.">1.0x</span>
       </div>
+      <span id="comboPayPreview" style="font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;margin-left:4px;white-space:nowrap;" title="Money you will earn from this combo burst on your next completed session."></span>
       <span id="comboTimer" style="font-family:'Press Start 2P',monospace;font-size:7px;color:var(--accent2);opacity:0.7;margin-left:2px;white-space:nowrap;" title="Time remaining to start another session before your combo resets. Chain sessions within 20 minutes to keep building your combo."></span>
     </div>
   </div>

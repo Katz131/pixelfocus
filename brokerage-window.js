@@ -426,6 +426,7 @@
         '<div class="trade-row">' +
           (shares > 0 ? '<span class="holding-badge" title="Your current position: ' + shares + ' shares at an average purchase price of $' + fmt(holding.avgCost) + ' each">' + shares + ' SHARES (AVG $' + fmt(holding.avgCost) + ')</span>' : '') +
           '<input class="trade-input" type="number" min="1" value="1" id="qty_' + s.id + '" title="Number of shares to buy or sell">' +
+          '<span class="qty-presets"><button class="qty-preset-btn" data-val="1">x1</button><button class="qty-preset-btn" data-val="5">x5</button><button class="qty-preset-btn" data-val="10">x10</button><button class="qty-preset-btn" data-val="max" data-price="' + price + '">MAX</button></span>' +
           '<button class="trade-btn buy" data-id="' + s.id + '" data-type="stock" title="Buy shares at the current price using your brokerage cash">BUY</button>' +
           (shares > 0 ? '<button class="trade-btn sell" data-id="' + s.id + '" data-type="stock" title="Sell shares at the current market price back to cash">SELL</button>' : '') +
           '<span class="trade-info" title="Total cost for the selected quantity">Cost: $<span id="cost_' + s.id + '">' + fmt(price) + '</span></span>' +
@@ -485,6 +486,7 @@
         '<div class="trade-row">' +
           (shares > 0 ? '<span class="holding-badge" title="Your fund position">' + shares + ' SHARES (AVG $' + fmt(holding.avgCost) + ')</span>' : '') +
           '<input class="trade-input" type="number" min="1" value="1" id="qty_' + f.id + '" title="Number of fund shares to buy or sell">' +
+          '<span class="qty-presets"><button class="qty-preset-btn" data-val="1">x1</button><button class="qty-preset-btn" data-val="5">x5</button><button class="qty-preset-btn" data-val="10">x10</button><button class="qty-preset-btn" data-val="max" data-price="' + (price * (1 + f.fee)) + '">MAX</button></span>' +
           '<button class="trade-btn buy" data-id="' + f.id + '" data-type="fund" title="Buy fund shares (management fee of ' + (f.fee * 100).toFixed(1) + '% applies)">BUY</button>' +
           (shares > 0 ? '<button class="trade-btn sell" data-id="' + f.id + '" data-type="fund" title="Sell fund shares back to cash">SELL</button>' : '') +
           '<span class="trade-info" title="Total cost for the selected quantity">Cost: $<span id="cost_' + f.id + '">' + fmt(price) + '</span></span>' +
@@ -519,8 +521,43 @@
     var el = document.getElementById('bondsList');
     el.innerHTML = '';
 
+    // Available bonds to buy
+    var buyTitle = document.createElement('div');
+    buyTitle.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:var(--green);margin-bottom:12px;';
+    buyTitle.textContent = 'BUY NEW BONDS';
+    el.appendChild(buyTitle);
+
+    BONDS.forEach(function(bond) {
+      var card = document.createElement('div');
+      card.className = 'bond-card';
+      card.title = esc(bond.desc) + ' Guaranteed ' + (bond.rate * 100).toFixed(0) + '% return after ' + bond.sessions + ' focus sessions.';
+      card.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<div>' +
+            '<div class="rate">' + esc(bond.name) + '</div>' +
+            '<div class="maturity">' + esc(bond.desc) + '</div>' +
+            '<div style="margin-top:4px;font-family:\'Press Start 2P\',monospace;font-size:9px;color:var(--green);" title="Guaranteed return percentage when the bond matures">YIELD: ' + (bond.rate * 100).toFixed(0) + '%</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<input class="trade-input" type="number" min="10" value="100" step="50" id="bondAmt_' + bond.id + '" title="Amount of brokerage cash to invest in this bond">' +
+            '<button class="trade-btn buy buy-bond-btn" data-id="' + bond.id + '" title="Purchase this bond — matures after ' + bond.sessions + ' focus sessions for a ' + (bond.rate * 100).toFixed(0) + '% return">BUY</button>' +
+          '</div>' +
+        '</div>';
+      el.appendChild(card);
+    });
+
+    el.querySelectorAll('.buy-bond-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        buyBond(btn.dataset.id);
+      });
+    });
+
     // Active bonds
     if (b.activeBonds && b.activeBonds.length > 0) {
+      var hr = document.createElement('div');
+      hr.style.cssText = 'border-bottom:1px solid var(--border);margin:16px 0;';
+      el.appendChild(hr);
+
       var activeTitle = document.createElement('div');
       activeTitle.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:var(--accent3);margin-bottom:12px;';
       activeTitle.textContent = 'ACTIVE BONDS';
@@ -558,42 +595,8 @@
           collectBond(idx);
         });
       });
-
-      var hr = document.createElement('div');
-      hr.style.cssText = 'border-bottom:1px solid var(--border);margin:16px 0;';
-      el.appendChild(hr);
     }
 
-    // Available bonds to buy
-    var buyTitle = document.createElement('div');
-    buyTitle.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:var(--text-dim);margin-bottom:12px;';
-    buyTitle.textContent = 'BUY NEW BONDS';
-    el.appendChild(buyTitle);
-
-    BONDS.forEach(function(bond) {
-      var card = document.createElement('div');
-      card.className = 'bond-card';
-      card.title = esc(bond.desc) + ' Guaranteed ' + (bond.rate * 100).toFixed(0) + '% return after ' + bond.sessions + ' focus sessions.';
-      card.innerHTML =
-        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<div>' +
-            '<div class="rate">' + esc(bond.name) + '</div>' +
-            '<div class="maturity">' + esc(bond.desc) + '</div>' +
-            '<div style="margin-top:4px;font-family:\'Press Start 2P\',monospace;font-size:9px;color:var(--green);" title="Guaranteed return percentage when the bond matures">YIELD: ' + (bond.rate * 100).toFixed(0) + '%</div>' +
-          '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<input class="trade-input" type="number" min="10" value="100" step="50" id="bondAmt_' + bond.id + '" title="Amount of brokerage cash to invest in this bond">' +
-            '<button class="trade-btn buy buy-bond-btn" data-id="' + bond.id + '" title="Purchase this bond — matures after ' + bond.sessions + ' focus sessions for a ' + (bond.rate * 100).toFixed(0) + '% return">BUY</button>' +
-          '</div>' +
-        '</div>';
-      el.appendChild(card);
-    });
-
-    el.querySelectorAll('.buy-bond-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        buyBond(btn.dataset.id);
-      });
-    });
   }
 
   function renderCrypto() {
@@ -629,6 +632,7 @@
         '<div class="trade-row">' +
           (coins > 0 ? '<span class="holding-badge" title="Your crypto position">' + fmt(coins) + ' HELD (AVG $' + fmt(holding.avgCost) + ')</span>' : '') +
           '<input class="trade-input" type="number" min="1" value="10" id="qty_' + c.id + '" title="Number of tokens to buy or sell">' +
+          '<span class="qty-presets"><button class="qty-preset-btn" data-val="1">x1</button><button class="qty-preset-btn" data-val="5">x5</button><button class="qty-preset-btn" data-val="10">x10</button><button class="qty-preset-btn" data-val="max" data-price="' + price + '">MAX</button></span>' +
           '<button class="trade-btn buy" data-id="' + c.id + '" data-type="crypto" title="Buy crypto at the current price">BUY</button>' +
           (coins > 0 ? '<button class="trade-btn sell" data-id="' + c.id + '" data-type="crypto" title="Sell back to brokerage cash">SELL</button>' : '') +
           '<span class="trade-info" title="Total cost for the selected quantity">Cost: $<span id="cost_' + c.id + '">' + fmt(10 * price) + '</span></span>' +
@@ -669,7 +673,7 @@
     var hasHoldings = false;
 
     var table = '<table class="portfolio-table"><thead><tr>' +
-      '<th>ASSET</th><th>SHARES</th><th>AVG COST</th><th>PRICE</th><th>VALUE</th><th>P/L</th>' +
+      '<th>ASSET</th><th>SHARES</th><th>AVG COST</th><th>PRICE</th><th>VALUE</th><th>P/L</th><th>SELL</th>' +
       '</tr></thead><tbody>';
 
     allAssets.forEach(function(a) {
@@ -688,7 +692,7 @@
         '<td>$' + fmt(price) + '</td>' +
         '<td style="color:var(--gold);">$' + fmt(value) + '</td>' +
         '<td style="color:' + (pl >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + (pl >= 0 ? '+' : '') + fmt(pl) + ' (' + fmtPct(plPct) + ')</td>' +
-        '</tr>';
+        '<td style="white-space:nowrap;"><input type="number" min="1" value="1" class="trade-input pf-sell-qty" data-id="' + a.id + '" style="width:40px;font-size:8px;padding:2px 3px;"><button class="trade-btn sell pf-sell-btn" data-id="' + a.id + '" style="font-size:7px;padding:3px 6px;margin-left:4px;">SELL</button></td></tr>';
     });
 
     table += '</tbody></table>';
@@ -722,6 +726,19 @@
       '<br><span style="font-size:9px;color:' + (totalPL >= 0 ? 'var(--green)' : 'var(--red)') + ';">All-time P/L: ' + (totalPL >= 0 ? '+' : '') + fmt(totalPL) + '</span>' +
       '<br><span style="font-size:8px;color:var(--text-dim);">Trades: ' + (b.tradesCount || 0) + '</span>';
     el.appendChild(summary);
+
+    // Wire portfolio sell buttons
+    el.querySelectorAll('.pf-sell-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var assetId = btn.getAttribute('data-id');
+        var qtyInput = btn.parentNode.querySelector('.pf-sell-qty');
+        var qty = parseInt(qtyInput ? qtyInput.value : 1) || 1;
+        var aType = 'stock';
+        CRYPTOS.forEach(function(c) { if (c.id === assetId) aType = 'crypto'; });
+        FUNDS.forEach(function(f) { if (f.id === assetId) aType = 'fund'; });
+        sellAsset(assetId, aType, qty);
+      });
+    });
   }
 
   // ===== Trade actions =====
@@ -776,10 +793,10 @@
     save(function() { renderAll(); });
   }
 
-  function sellAsset(id, type) {
+  function sellAsset(id, type, _overrideQty) {
     var b = getB();
     var qtyEl = document.getElementById('qty_' + id);
-    var qty = parseInt(qtyEl ? qtyEl.value : 1) || 1;
+    var qty = typeof _overrideQty === 'number' ? _overrideQty : (parseInt(qtyEl ? qtyEl.value : 1) || 1);
 
     var h = b.portfolio[id];
     if (!h || h.shares < qty) {
@@ -1236,7 +1253,30 @@
     }
   }
 
+
+  // Wire quantity preset buttons
+  function wirePresets() {
+    document.querySelectorAll('.qty-preset-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var b = getB();
+        var row = btn.closest('.trade-row');
+        var input = row ? row.querySelector('.trade-input') : null;
+        if (!input) return;
+        var val = btn.getAttribute('data-val');
+        if (val === 'max') {
+          var p = parseFloat(btn.getAttribute('data-price')) || 1;
+          input.value = Math.max(1, Math.floor(b.cash / p));
+        } else {
+          input.value = parseInt(val);
+        }
+        input.dispatchEvent(new Event('input'));
+        SFX.click();
+      };
+    });
+  }
+
   function renderAll() {
+    var _scrollY = window.scrollY || document.documentElement.scrollTop || 0;
     var steps = [
       ['WalletBar', renderWalletBar],
       ['Stocks', renderStocks],
@@ -1258,6 +1298,8 @@
           '</div>');
       }
     }
+    wirePresets();
+    requestAnimationFrame(function() { window.scrollTo(0, _scrollY); });
   }
 
   // ===== Init =====

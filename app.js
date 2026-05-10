@@ -4322,6 +4322,15 @@ try {
       comboEl.style.display = 'flex';
       $('comboCount').textContent = state.combo;
       $('comboMultiplier').textContent = getComboMultiplier(state.combo).toFixed(1) + 'x';
+      // v3.23.162: Show combo $ preview
+      var _comboPreviewEl = $('comboPayPreview');
+      if (_comboPreviewEl) {
+        var _cpay = getComboCoinPayout(state.combo);
+        var _cmktL = state.marketingLevel || 0;
+        if (_cmktL > 0) _cpay = Math.round(_cpay * [1, 1.25, 1.6, 2.0, 2.5, 3.0][Math.min(_cmktL, 5)]);
+        _comboPreviewEl.textContent = _cpay > 0 ? '+$' + _cpay : '';
+        _comboPreviewEl.style.display = _cpay > 0 ? 'inline' : 'none';
+      }
       // Animate combo fire
       comboEl.classList.toggle('hot', state.combo >= 4);
       comboEl.classList.toggle('fire', state.combo >= 5);
@@ -7530,7 +7539,7 @@ try {
       state.challengeAcceptedAt = 0;
       state.challengeSessionPaused = false;
       // v3.23.21: Snapshot state BEFORE rewards for celebration deltas
-      var _celebSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1, mktYield: state.marketYieldMultiplier || 1.0, mktPrice: state.marketPrice || 12, mktCosts: state.marketCosts ? JSON.parse(JSON.stringify(state.marketCosts)) : null, mktMargin: state.marketMarginPct || 0, mktDemand: state.marketDemandPct || 50 };
+      var _celebSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1, combo: state.combo || 0, mktYield: state.marketYieldMultiplier || 1.0, mktPrice: state.marketPrice || 12, mktCosts: state.marketCosts ? JSON.parse(JSON.stringify(state.marketCosts)) : null, mktMargin: state.marketMarginPct || 0, mktDemand: state.marketDemandPct || 50 };
       awardSessionReward(reward);
       if (challengeBonus) {
         setTimeout(function() {
@@ -10537,6 +10546,27 @@ try {
               celebLevelEl.style.color = '#ffd700';
               _celebChord([523, 659, 784, 1047], 0.8, 0.1, 0.1);
             }
+            // v3.23.162: Combo burst callout in celebration
+            var _celebComboEl = $('celebCombo');
+            if (_celebComboEl) {
+              var _curCombo = state.combo || 0;
+              if (_curCombo >= 2) {
+                var _comboMult = getComboMultiplier(_curCombo);
+                var _comboPay = getComboCoinPayout(_curCombo);
+                var _mktLvl = state.marketingLevel || 0;
+                if (_mktLvl > 0) _comboPay = Math.round(_comboPay * [1, 1.25, 1.6, 2.0, 2.5, 3.0][Math.min(_mktLvl, 5)]);
+                var _mktYieldC = state.marketYieldMultiplier || 1.0;
+                _comboPay = Math.round(_comboPay * _mktYieldC);
+                _celebComboEl.innerHTML = '\uD83D\uDD25 ' + _curCombo + 'x COMBO'
+                  + '<span style="display:block;font-size:10px;color:#ffb64c;margin-top:4px;">'
+                  + _comboMult.toFixed(1) + 'x XP'
+                  + (_comboPay > 0 ? ' \u00B7 +$' + _comboPay + ' burst' : '')
+                  + '</span>';
+                _celebComboEl.style.opacity = '1';
+              } else {
+                _celebComboEl.style.display = 'none';
+              }
+            }
             // v3.23.121: Post-session P&L scorecard — show the consequences of pricing decisions
             var _mktInfoEl = $('celebMarketInfo');
             if (_mktInfoEl && snapshot.mktYield) {
@@ -11674,6 +11704,15 @@ try {
         overlay.style.opacity = '0';
         setTimeout(function() { overlay.style.display = 'none'; if (particles) particles.innerHTML = ''; }, 400);
         overlay.onclick = null;
+        // v3.23.165: Show quest overlay after welcome back is dismissed
+        setTimeout(function() {
+          try {
+            if ((!state.questChosen && state.questSteady) || state._questOverlayPending) {
+              state._questOverlayPending = false;
+              showQuestOverlay();
+            }
+          } catch (_) {}
+        }, 500);
       }
     };
   }
@@ -12172,6 +12211,43 @@ try {
           }
         }
       });
+
+      // v3.23.165: Midnight rollover check — fires when tab regains focus
+      // or every 60s. Fixes quest not appearing if tab left open overnight.
+      function _checkMidnightRollover() {
+        try {
+          var today = todayStr();
+          if (state.lastActiveDate && state.lastActiveDate !== today) {
+            console.log('[MidnightRollover] Day changed: ' + state.lastActiveDate + ' -> ' + today);
+            checkDayRollover();
+            try { generateDailyQuests(); } catch (_) {}
+            try { renderQuestUI(); } catch (_) {}
+            try { render(); } catch (_) {}
+            // Show quest overlay after a short delay for render
+            setTimeout(function() {
+              try {
+                if (!state.questChosen && state.questSteady) {
+                  var wbOverlay = $('welcomeBackOverlay');
+                  if (!wbOverlay || wbOverlay.style.display === 'none' || wbOverlay.style.display === '') {
+                    showQuestOverlay();
+                  } else {
+                    state._questOverlayPending = true;
+                  }
+                }
+              } catch (_) {}
+            }, 500);
+          }
+        } catch (e) { console.warn('[MidnightRollover] error:', e); }
+      }
+
+      // Check on visibility change (user returns to tab)
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) return;
+        _checkMidnightRollover();
+      });
+
+      // Periodic check every 60s as backup
+      setInterval(function() { _checkMidnightRollover(); }, 60000);
 
       // Add task
       var addTaskBtn = $('addTaskBtn');
@@ -15538,7 +15614,19 @@ try {
   // v3.23.119: Morning redirect — scroll to tasks + offer to start session
   setTimeout(function() { try { maybeMorningRedirect(); } catch (_) {} }, 2800);
   // v3.23.121: Show daily quest choice overlay if quest not yet chosen
-  setTimeout(function() { try { if (!state.questChosen && state.questSteady) showQuestOverlay(); } catch (_) {} }, 3200);
+  setTimeout(function() {
+    try {
+      if (!state.questChosen && state.questSteady) {
+        // v3.23.165: Don't show quest overlay if welcome back is still visible
+        var _wbOv = $('welcomeBackOverlay');
+        if (_wbOv && _wbOv.style.display !== 'none' && _wbOv.style.display !== '') {
+          state._questOverlayPending = true;
+        } else {
+          showQuestOverlay();
+        }
+      }
+    } catch (_) {}
+  }, 3200);
 
   if (!state.mirrorMode) {
     setTimeout(function() {
