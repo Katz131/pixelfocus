@@ -80,7 +80,11 @@ jobs:
                    block-alert.html \
                    brokerage.html brokerage-window.js \
                    market-engine.js market-events.js \
-                   morning-checkin.html morning-checkin-window.js; do
+                   morning-checkin.html morning-checkin-window.js \
+                   app-main.js tutorial-data.js tutorial-ui.js \
+                   morse-messenger.js morse-preview.html \
+                   pet-sprites.html pet-sprites-window.js \
+                   btn-sounds.js; do
             if [ -f "$f" ]; then
               cp "$f" "$STAGING/$f"
               echo "  + $f"
