@@ -317,6 +317,35 @@
     { id: 'quest_ambitious_25', cat: 'quests', name: 'Ambitious Regular', icon: '🚀', desc: '25 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 25} },
     { id: 'quest_ambitious_50', cat: 'quests', name: 'Ambitious Veteran', icon: '⚡', desc: '50 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 50} },
     { id: 'quest_ambitious_100', cat: 'quests', name: 'Ambitious Legend', icon: '🔥', desc: '100 ambitious quests completed.', req: {"type": "questsAmbitious", "count": 100} },
+    // v3.23.240: Morse code badges
+    { id: 'morse_first', cat: 'morse', name: 'First Transmission', icon: '📡', desc: 'Send your first morse code message to a friend.', req: {"type": "morseSent", "count": 1} },
+    { id: 'morse_5', cat: 'morse', name: 'Dot Dash Dot', icon: '·−·', desc: 'Send 5 morse code messages to friends.', req: {"type": "morseSent", "count": 5} },
+    { id: 'morse_10', cat: 'morse', name: 'Radio Operator', icon: '📻', desc: 'Send 10 morse code messages to friends.', req: {"type": "morseSent", "count": 10} },
+    { id: 'morse_25', cat: 'morse', name: 'Telegraph Regular', icon: '⚡', desc: 'Send 25 morse code messages to friends.', req: {"type": "morseSent", "count": 25} },
+    { id: 'morse_50', cat: 'morse', name: 'Wire Wizard', icon: '🔌', desc: 'Send 50 morse code messages to friends.', req: {"type": "morseSent", "count": 50} },
+    { id: 'morse_100', cat: 'morse', name: 'Century Operator', icon: '📡', desc: 'Send 100 morse code messages to friends.', req: {"type": "morseSent", "count": 100} },
+    { id: 'morse_250', cat: 'morse', name: 'Signal Corps', icon: '🛰️', desc: 'Send 250 morse code messages to friends.', req: {"type": "morseSent", "count": 250} },
+    { id: 'morse_500', cat: 'morse', name: 'Global Telegraph', icon: '🌐', desc: 'Send 500 morse code messages to friends.', req: {"type": "morseSent", "count": 500} },
+    { id: 'morse_1000', cat: 'morse', name: 'Thousand Signals', icon: '⚙️', desc: 'Send 1,000 morse code messages to friends.', req: {"type": "morseSent", "count": 1000} },
+    { id: 'morse_recv_1', cat: 'morse', name: 'First Telegram', icon: '📬', desc: 'Receive your first morse code telegram from a friend.', req: {"type": "morseRecv", "count": 1} },
+    { id: 'morse_recv_5', cat: 'morse', name: 'Mailbox Full', icon: '📨', desc: 'Receive 5 morse code telegrams from friends.', req: {"type": "morseRecv", "count": 5} },
+    { id: 'morse_recv_10', cat: 'morse', name: 'Popular Frequency', icon: '📥', desc: 'Receive 10 morse code telegrams from friends.', req: {"type": "morseRecv", "count": 10} },
+    { id: 'morse_recv_25', cat: 'morse', name: 'Telegraph Office', icon: '📮', desc: 'Receive 25 morse code telegrams from friends.', req: {"type": "morseRecv", "count": 25} },
+    { id: 'morse_recv_50', cat: 'morse', name: 'Post Master', icon: '🏤', desc: 'Receive 50 morse code telegrams from friends.', req: {"type": "morseRecv", "count": 50} },
+    { id: 'morse_recv_100', cat: 'morse', name: 'Signal Station', icon: '📯', desc: 'Receive 100 morse code telegrams from friends.', req: {"type": "morseRecv", "count": 100} },
+    { id: 'morse_famous_sos', cat: 'morse', name: 'Mayday Mayday', icon: '🆘', desc: 'Send "SOS" in morse code. The universal distress signal, adopted internationally in 1906 because its pattern (···−−−···) is unmistakable.', req: {"type": "famousSos", "count": 1} },
+    { id: 'morse_famous_hello', cat: 'morse', name: 'First Contact', icon: '👋', desc: 'Send "HELLO" in morse code. The simplest greeting — and every telegrapher\'s first word.', req: {"type": "famousHello", "count": 1} },
+    { id: 'morse_famous_cqd', cat: 'morse', name: 'CQD', icon: '🚢', desc: 'Send "CQD" in morse code. The original distress call used before SOS — famously transmitted by the Titanic in 1912.', req: {"type": "famousCqd", "count": 1} },
+    { id: 'morse_famous_whgw', cat: 'morse', name: 'What Hath God Wrought', icon: '⚡', desc: 'Send "WHAT HATH GOD WROUGHT" in morse code. The very first telegraph message, sent by Samuel Morse on May 24, 1844 from Washington to Baltimore.', req: {"type": "famousWhgw", "count": 1} },
+    { id: 'morse_famous_watson', cat: 'morse', name: 'Come Here Watson', icon: '📞', desc: 'Send "COME HERE I WANT TO SEE YOU" in morse code. Alexander Graham Bell\'s first telephone call to his assistant Thomas Watson, March 10, 1876.', req: {"type": "famousWatson", "count": 1} },
+    { id: 'morse_famous_togo', cat: 'morse', name: 'The Enemy Is In Sight', icon: '⚔️', desc: 'Send "THE ENEMY IS IN SIGHT" in morse code. Admiral Togo\'s flag signal at the Battle of Tsushima, 1905 — the decisive naval battle of the Russo-Japanese War.', req: {"type": "famousTogo", "count": 1} },
+    { id: 'morse_famous_moon', cat: 'morse', name: 'One Small Step', icon: '🌙', desc: 'Send "A SMALL STEP FOR MAN" in morse code. Neil Armstrong\'s words as he stepped onto the lunar surface, July 20, 1969.', req: {"type": "famousMoon", "count": 1} },
+    { id: 'morse_famous_stop', cat: 'morse', name: 'Full Stop', icon: '🛑', desc: 'Send "STOP" in morse code. The classic telegram punctuation — telegrams charged by the word, so STOP replaced periods.', req: {"type": "famousStop", "count": 1} },
+    { id: 'morse_famous_stein', cat: 'morse', name: 'What Is The Answer', icon: '❓', desc: 'Send "WHAT IS THE ANSWER" in morse code. Gertrude Stein\'s last words (1946). When no one answered, she asked: "In that case, what is the question?"', req: {"type": "famousStein", "count": 1} },
+    { id: 'morse_famous_3', cat: 'morse', name: 'Telegraph Historian', icon: '📜', desc: 'Send 3 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 3} },
+    { id: 'morse_famous_5', cat: 'morse', name: 'Signal Historian', icon: '🎖️', desc: 'Send 5 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 5} },
+    { id: 'morse_famous_7', cat: 'morse', name: 'Morse Scholar', icon: '🏛️', desc: 'Send 7 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 7} },
+    { id: 'morse_famous_all', cat: 'morse', name: 'Master Telegrapher', icon: '👑', desc: 'Send all 9 famous historical messages in morse code. You\'ve tapped out every piece of telegraph history.', req: {"type": "famousCount", "count": 9} },
   ];
 
   var CAT_LABELS = {
@@ -325,6 +354,7 @@
     social:   { title: '👥 SOCIAL',   cls: 'social' },
     mastery:  { title: '⚔️ MASTERY', cls: 'mastery' },
     quests:   { title: '⚔️ QUESTS',  cls: 'quests' },
+    morse:    { title: '📡 MORSE',   cls: 'morse' },
     creative: { title: '🎨 CREATIVE', cls: 'creative' },
     business: { title: '💼 BUSINESS', cls: 'business' }
   };
@@ -387,6 +417,11 @@
     var questsCompleted = state.questsCompletedLifetime || 0;
     var questStreak = state.questStreak || 0;
     var questsAmbitious = state.questsAmbitiousCompleted || 0;
+    // v3.23.240: Morse code badge tracking
+    var morseSent = state.morseSentCount || 0;
+    var morseRecv = state.morseReceivedCount || 0;
+    var morseFamous = state.morseFamousSent || [];
+    var famousCount = morseFamous.length;
 
     ALL_BADGES.forEach(function(b) {
       if (earned.indexOf(b.id) !== -1) return;
@@ -421,6 +456,18 @@
         case 'questsCompleted':   met = questsCompleted >= r.count; break;
         case 'questStreak':       met = questStreak >= r.count; break;
         case 'questsAmbitious':   met = questsAmbitious >= r.count; break;
+        case 'morseSent':         met = morseSent >= r.count; break;
+        case 'morseRecv':         met = morseRecv >= r.count; break;
+        case 'famousCount':       met = famousCount >= r.count; break;
+        case 'famousSos':         met = morseFamous.indexOf('sos') !== -1; break;
+        case 'famousHello':       met = morseFamous.indexOf('hello') !== -1; break;
+        case 'famousCqd':         met = morseFamous.indexOf('cqd') !== -1; break;
+        case 'famousWhgw':        met = morseFamous.indexOf('whgw') !== -1; break;
+        case 'famousWatson':      met = morseFamous.indexOf('watson') !== -1; break;
+        case 'famousTogo':        met = morseFamous.indexOf('togo') !== -1; break;
+        case 'famousMoon':        met = morseFamous.indexOf('moon') !== -1; break;
+        case 'famousStop':        met = morseFamous.indexOf('stop') !== -1; break;
+        case 'famousStein':       met = morseFamous.indexOf('stein') !== -1; break;
       }
 
       if (met) {
@@ -480,6 +527,10 @@
     var hasFullProfile = hasProfilePic && hasDisplayName;
     var loomSalesCount = galleryCount;
     var loomSalesCoins = st.coinsFromLoomSales || 0;
+    var morseSent = st.morseSentCount || 0;
+    var morseRecv = st.morseReceivedCount || 0;
+    var morseFamous = st.morseFamousSent || [];
+    var famousCount = morseFamous.length;
 
     var map = {
       bedtimeTotal: bedtimeTotal, bedtimeStreak: bedtimeStreakBest,
@@ -494,7 +545,17 @@
       stocksOwned: stocksOwned, marketEvents: marketEvents,
       loomSales: loomSalesCount, loomSalesCoins: loomSalesCoins,
       questsCompleted: questsCompleted, questStreak: questStreak,
-      questsAmbitious: questsAmbitious
+      questsAmbitious: questsAmbitious,
+      morseSent: morseSent, morseRecv: morseRecv, famousCount: famousCount,
+      famousSos: morseFamous.indexOf('sos') !== -1 ? 1 : 0,
+      famousHello: morseFamous.indexOf('hello') !== -1 ? 1 : 0,
+      famousCqd: morseFamous.indexOf('cqd') !== -1 ? 1 : 0,
+      famousWhgw: morseFamous.indexOf('whgw') !== -1 ? 1 : 0,
+      famousWatson: morseFamous.indexOf('watson') !== -1 ? 1 : 0,
+      famousTogo: morseFamous.indexOf('togo') !== -1 ? 1 : 0,
+      famousMoon: morseFamous.indexOf('moon') !== -1 ? 1 : 0,
+      famousStop: morseFamous.indexOf('stop') !== -1 ? 1 : 0,
+      famousStein: morseFamous.indexOf('stein') !== -1 ? 1 : 0
     };
     return map[reqType] || 0;
   }
@@ -510,7 +571,10 @@
     brokerageUnlocked: '', stocksBought: 'trades', stocksOwned: 'stocks owned',
     marketEvents: 'events', loomSales: 'sales', loomSalesCoins: '$ from sales',
     questsCompleted: 'quests', questStreak: 'day quest streak',
-    questsAmbitious: 'ambitious quests'
+    questsAmbitious: 'ambitious quests',
+    morseSent: 'sent', morseRecv: 'received', famousCount: 'famous messages',
+    famousSos: '', famousHello: '', famousCqd: '', famousWhgw: '',
+    famousWatson: '', famousTogo: '', famousMoon: '', famousStop: '', famousStein: ''
   };
 
   // ===== Render =====
@@ -535,7 +599,7 @@
     }
 
     // Group by category
-    var cats = ['sleep', 'focus', 'social', 'mastery', 'quests', 'creative', 'business'];
+    var cats = ['sleep', 'focus', 'social', 'mastery', 'quests', 'morse', 'creative', 'business'];
     cats.forEach(function(cat) {
       var badges = ALL_BADGES.filter(function(b) { return b.cat === cat; });
       if (badges.length === 0) return;

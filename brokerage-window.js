@@ -552,41 +552,127 @@
       });
     });
 
-    // Active bonds
+    // Active bonds — individual collapsible display
     if (b.activeBonds && b.activeBonds.length > 0) {
       var hr = document.createElement('div');
       hr.style.cssText = 'border-bottom:1px solid var(--border);margin:16px 0;';
       el.appendChild(hr);
 
-      var activeTitle = document.createElement('div');
-      activeTitle.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:var(--accent3);margin-bottom:12px;';
-      activeTitle.textContent = 'ACTIVE BONDS';
-      el.appendChild(activeTitle);
-
+      // Separate matured vs in-progress
+      var matured = [];
+      var inProgress = [];
       b.activeBonds.forEach(function(bond, idx) {
         var progress = Math.min(bond.sessionsElapsed || 0, bond.sessionsNeeded);
-        var pct = Math.round((progress / bond.sessionsNeeded) * 100);
-        var mature = progress >= bond.sessionsNeeded;
-        var card = document.createElement('div');
-        card.className = 'bond-card';
-        card.title = mature ? 'This bond has matured! Click COLLECT to receive your principal plus interest.' : 'Bond in progress — ' + progress + ' of ' + bond.sessionsNeeded + ' focus sessions completed. ' + (bond.sessionsNeeded - progress) + ' sessions remaining.';
-        card.innerHTML =
-          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-            '<div>' +
-              '<div class="rate">' + esc(bond.name) + '</div>' +
-              '<div class="maturity">' + (mature ? 'MATURED — Ready to collect!' : progress + '/' + bond.sessionsNeeded + ' sessions (' + pct + '%)') + '</div>' +
-            '</div>' +
-            '<div style="text-align:right;">' +
-              '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:var(--gold);" title="Principal amount invested">$' + fmt(bond.amount) + '</div>' +
-              '<div style="font-size:10px;color:var(--green);" title="Interest earned when the bond matures">+$' + fmt(bond.amount * bond.rate) + ' on maturity</div>' +
-            '</div>' +
-          '</div>' +
-          '<div style="height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;" title="Maturity progress — each focus session advances the bond">' +
-            '<div style="height:100%;background:' + (mature ? 'var(--green)' : 'var(--gold)') + ';width:' + pct + '%;border-radius:2px;transition:width 0.3s;"></div>' +
-          '</div>' +
-          (mature ? '<div style="text-align:center;margin-top:8px;"><button class="trade-btn buy collect-bond-btn" data-idx="' + idx + '" title="Collect your principal plus ' + (bond.rate * 100).toFixed(0) + '% interest">COLLECT $' + fmt(bond.amount * (1 + bond.rate)) + '</button></div>' : '');
-        el.appendChild(card);
+        if (progress >= bond.sessionsNeeded) {
+          matured.push({ bond: bond, idx: idx });
+        } else {
+          inProgress.push({ bond: bond, idx: idx, progress: progress });
+        }
       });
+
+      // Matured bonds — always visible, need attention
+      if (matured.length > 0) {
+        var mLabel = document.createElement('div');
+        mLabel.style.cssText = 'font-size:9px;color:var(--green);font-weight:bold;margin-bottom:4px;font-family:"Press Start 2P",monospace;';
+        mLabel.textContent = 'MATURED — READY TO COLLECT (' + matured.length + ')';
+        el.appendChild(mLabel);
+
+        // Collect All button when multiple matured
+        if (matured.length > 1) {
+          var collectAllBtn = document.createElement('button');
+          collectAllBtn.className = 'trade-btn buy';
+          collectAllBtn.style.cssText = 'padding:5px 14px;font-size:8px;margin-bottom:6px;width:100%;';
+          var totalPayout = 0;
+          matured.forEach(function(m) { totalPayout += m.bond.amount * (1 + m.bond.rate); });
+          collectAllBtn.textContent = 'COLLECT ALL — $' + fmt(totalPayout);
+          collectAllBtn.title = 'Collect all ' + matured.length + ' matured bonds at once.';
+          collectAllBtn.addEventListener('click', function() {
+            // Collect from highest index first to avoid index shifting
+            var sorted = matured.slice().sort(function(a, b) { return b.idx - a.idx; });
+            sorted.forEach(function(m) { collectBond(m.idx); });
+          });
+          el.appendChild(collectAllBtn);
+        }
+
+        matured.forEach(function(m) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:3px;background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:6px;';
+          row.title = 'This bond has matured! Invested $' + fmt(m.bond.amount) + ', return $' + fmt(m.bond.amount * (1 + m.bond.rate)) + '.';
+          row.innerHTML =
+            '<div style="flex:1;min-width:0;">' +
+              '<span style="font-size:10px;color:var(--text);">' + esc(m.bond.name) + '</span>' +
+              '<span style="font-size:9px;color:var(--gold);margin-left:8px;">$' + fmt(m.bond.amount) + '</span>' +
+              '<span style="font-size:9px;color:var(--green);margin-left:4px;">+$' + fmt(m.bond.amount * m.bond.rate) + '</span>' +
+            '</div>' +
+            '<button class="trade-btn buy collect-bond-btn" data-idx="' + m.idx + '" style="padding:4px 10px;font-size:8px;" title="Collect $' + fmt(m.bond.amount * (1 + m.bond.rate)) + '">COLLECT</button>';
+          el.appendChild(row);
+        });
+      }
+
+      // In-progress bonds — collapsible, individual rows
+      if (inProgress.length > 0) {
+        var totalInvested = 0;
+        var totalReturn = 0;
+        inProgress.forEach(function(ip) {
+          totalInvested += ip.bond.amount;
+          totalReturn += ip.bond.amount * ip.bond.rate;
+        });
+
+        var ipHeader = document.createElement('div');
+        ipHeader.style.cssText = 'display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;margin-top:8px;user-select:none;';
+        ipHeader.title = 'Click to expand/collapse individual bond details.';
+
+        var ipLabel = document.createElement('div');
+        ipLabel.style.cssText = 'font-size:9px;color:var(--accent3);font-family:"Press Start 2P",monospace;';
+        ipLabel.textContent = 'IN PROGRESS (' + inProgress.length + ')';
+
+        var ipSummary = document.createElement('div');
+        ipSummary.style.cssText = 'font-size:9px;color:var(--text-dim);';
+        ipSummary.textContent = '$' + fmt(totalInvested) + ' invested · +$' + fmt(totalReturn) + ' on maturity';
+
+        var ipToggle = document.createElement('span');
+        ipToggle.style.cssText = 'font-size:10px;color:var(--accent3);margin-left:8px;transition:transform 0.2s;';
+        ipToggle.textContent = '▸';
+
+        var ipLeft = document.createElement('div');
+        ipLeft.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        ipLeft.appendChild(ipLabel);
+        ipLeft.appendChild(ipToggle);
+
+        ipHeader.appendChild(ipLeft);
+        ipHeader.appendChild(ipSummary);
+        el.appendChild(ipHeader);
+
+        var ipBody = document.createElement('div');
+        ipBody.style.cssText = 'display:none;';
+
+        inProgress.forEach(function(ip) {
+          var pct = Math.round((ip.progress / ip.bond.sessionsNeeded) * 100);
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;margin-bottom:2px;background:var(--surface);border:1px solid var(--border);border-radius:5px;';
+          row.title = esc(ip.bond.name) + ' — $' + fmt(ip.bond.amount) + ' invested, earns $' + fmt(ip.bond.amount * ip.bond.rate) + ' interest. ' + ip.progress + '/' + ip.bond.sessionsNeeded + ' sessions. Each bond progresses independently.';
+          row.innerHTML =
+            '<div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;">' +
+              '<span style="font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(ip.bond.name) + '</span>' +
+              '<span style="font-size:9px;color:var(--gold);white-space:nowrap;">$' + fmt(ip.bond.amount) + '</span>' +
+            '</div>' +
+            '<div style="width:60px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;">' +
+              '<div style="height:100%;background:var(--gold);width:' + pct + '%;border-radius:2px;"></div>' +
+            '</div>' +
+            '<span style="font-size:8px;color:var(--text-dim);white-space:nowrap;min-width:50px;text-align:right;">' + ip.progress + '/' + ip.bond.sessionsNeeded + '</span>';
+          ipBody.appendChild(row);
+        });
+
+        el.appendChild(ipBody);
+
+        // Toggle expand/collapse
+        var expanded = false;
+        ipHeader.addEventListener('click', function() {
+          expanded = !expanded;
+          ipBody.style.display = expanded ? 'block' : 'none';
+          ipToggle.textContent = expanded ? '▾' : '▸';
+        });
+      }
 
       // Wire collect buttons
       el.querySelectorAll('.collect-bond-btn').forEach(function(btn) {
@@ -1340,13 +1426,15 @@
   document.getElementById('depositBtn').addEventListener('click', deposit);
   document.getElementById('withdrawBtn').addEventListener('click', withdraw);
 
-  // Back button
-  document.getElementById('backBtn').addEventListener('click', function() {
+  // Back buttons (top + bottom)
+  function _closeTab() {
     try {
       chrome.tabs.getCurrent(function(tab) {
         if (tab && tab.id) chrome.tabs.remove(tab.id);
       });
     } catch(_) { window.close(); }
-  });
+  }
+  document.getElementById('backBtn').addEventListener('click', _closeTab);
+  document.getElementById('backBtnTop').addEventListener('click', _closeTab);
 
 })();

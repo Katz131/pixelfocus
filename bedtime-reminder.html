@@ -53,8 +53,9 @@
   .actions { padding:16px 24px 20px; display:flex; gap:10px; }
   .btn { flex:1; padding:14px 10px; border-radius:8px; font-family:'Press Start 2P',monospace;
          font-size:10px; cursor:pointer; border:2px solid; transition:all 0.15s ease; letter-spacing:0.5px; }
-  .btn:hover { transform:scale(1.03); }
-  .btn:active { transform:scale(0.97); }
+  .btn { border-bottom:3px solid rgba(0,0,0,0.3); }
+  .btn:hover { transform:scale(1.06) translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.3); border-bottom-width:4px; }
+  .btn:active { transform:scale(0.95) translateY(1px); box-shadow:0 1px 2px rgba(0,0,0,0.2); border-bottom-width:2px; }
   .btn-yes { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff;
              border-color:var(--accent); box-shadow:0 0 16px rgba(107,107,255,0.3); }
   .btn-no { background:transparent; border-color:var(--text-dim); color:var(--text-dim); }
@@ -120,5 +121,6 @@
 </div>
 
 <script src="bedtime-window.js"></script>
+<script src="btn-sounds.js"></script>
 </body>
 </html>

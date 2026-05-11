@@ -11,6 +11,8 @@
 
 (function() {
   'use strict';
+  // Allow tutorial preview access (bypass lockout)
+  if (window.location.search.indexOf('tutorial=1') !== -1) return;
   try {
     chrome.storage.local.get('pixelFocusState', function(result) {
       var state = result.pixelFocusState || {};

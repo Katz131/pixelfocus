@@ -91,9 +91,20 @@ body {
   cursor: pointer;
   margin-top: 16px;
   letter-spacing: 1px;
+  border-bottom: 3px solid rgba(0,0,0,0.3);
+  transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease, border-bottom-width 0.1s ease, background 0.15s;
+  position: relative;
 }
 .dismiss-btn:hover {
   background: rgba(90, 173, 255, 0.15);
+  transform: scale(1.06) translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  border-bottom-width: 4px;
+}
+.dismiss-btn:active {
+  transform: scale(0.95) translateY(1px);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  border-bottom-width: 2px;
 }
 .pulse {
   animation: pulse 1.5s ease-in-out infinite;
@@ -210,5 +221,6 @@ body {
   setTimeout(function() { window.close(); }, 5 * 60 * 1000);
 })();
 </script>
+<script src="btn-sounds.js"></script>
 </body>
 </html>

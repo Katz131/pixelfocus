@@ -1415,10 +1415,26 @@
     }
     // Look up mood from per-pet-type condition map
     var typeMap = PET_CONDITION_MAP[petType];
-    if (typeMap && typeMap[condition]) return typeMap[condition];
-    // Fallback for unknown pet types — default to dog behaviour
-    var dogMap = PET_CONDITION_MAP.dog;
-    return (dogMap && dogMap[condition]) || 'happy';
+    var condMood = (typeMap && typeMap[condition]) ? typeMap[condition] : null;
+    if (!condMood) {
+      var dogMap = PET_CONDITION_MAP.dog;
+      condMood = (dogMap && dogMap[condition]) || 'happy';
+    }
+    // v3.23.221: Wellbeing override — if the player is active and doing well,
+    // don't let a permanent dark-phase condition lock the pet into sadness.
+    // Covers ALL negative moods (sad, scared, angry, sick, sleeping) so the
+    // pet isn't perpetually miserable once you progress past the research lab.
+    if (typeof wb === 'number' && wb >= 55) {
+      if (condMood === 'sad' || condMood === 'scared' || condMood === 'angry' || condMood === 'sick') {
+        return 'working';  // not fully happy, but not whimpering/crying
+      }
+    }
+    if (typeof wb === 'number' && wb >= 70) {
+      if (condMood === 'sleeping') {
+        return 'working';  // high wellbeing shouldn't leave pet withdrawn
+      }
+    }
+    return condMood;
   }
 
   // Get the condition-specific reason label for this pet
@@ -3169,6 +3185,9 @@
   }
 
   function wireNav() {
+    var toPopup = $('toPopupBtn');
+    if (toPopup) toPopup.addEventListener('click', function () { go('popup.html'); });
+
     var toLoom = $('toLoomBtn');
     if (toLoom) toLoom.addEventListener('click', function () { go('gallery.html'); });
 

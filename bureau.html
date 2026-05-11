@@ -83,8 +83,12 @@
     padding: 6px 12px;
     border-radius: 6px;
     cursor: pointer;
+    border-bottom: 3px solid rgba(0,0,0,0.3);
+    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease, border-bottom-width 0.1s ease;
+    position: relative;
   }
-  .nav-btn:hover { border-color: var(--accent); }
+  .nav-btn:hover { border-color: var(--accent); transform: scale(1.06) translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-bottom-width: 4px; }
+  .nav-btn:active { transform: scale(0.95) translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,0.2); border-bottom-width: 2px; }
   .nav-btn.gold { color: var(--gold); border-color: var(--gold); }
   .nav-btn.gold:hover { background: rgba(255,215,0,0.08); }
   .nav-btn.lav  { color: var(--bureau); border-color: var(--bureau-dim); }
@@ -400,5 +404,6 @@
 <script src="personnel.js"></script>
 <script src="bureau.js"></script>
 <script src="bureau-window.js"></script>
+<script src="btn-sounds.js"></script>
 </body>
 </html>

@@ -251,18 +251,17 @@ var MorseMessenger = (function() {
   function _doBk() {
     _clearGapTimer();
     if (_path.length > 0) {
-      // Undo entire current letter attempt in one click
+      // Undo current in-progress letter attempt
       _path = '';
       _cursor = TREE;
     } else if (_currentWord.length > 0) {
-      // Remove last locked letter and restore it as editable path
-      var lastCode = _currentWord.pop();
-      _path = lastCode;
-      _cursor = safeNode(TREE, lastCode) || TREE;
+      // Delete last locked letter outright (single click = gone)
+      _currentWord.pop();
     } else if (_morseWords.length > 0) {
+      // Pull back last completed word, drop its last letter
       _currentWord = _morseWords.pop();
-      var lastCode2 = _currentWord.pop();
-      if (lastCode2) { _path = lastCode2; _cursor = safeNode(TREE, lastCode2) || TREE; }
+      if (_currentWord.length > 0) _currentWord.pop();
+      // If that emptied the word, leave _currentWord as empty array
     }
     _render();
   }
@@ -276,12 +275,28 @@ var MorseMessenger = (function() {
     var morseStr = _morseWords.map(function(w) { return w.join(' '); }).join(' / ');
     var decoded = decode(morseStr);
 
+    // v3.23.240: Detect famous morse code messages for badge tracking
+    var _famousMessages = {
+      'SOS': 'sos',
+      'HELLO': 'hello',
+      'CQD': 'cqd',
+      'WHAT HATH GOD WROUGHT': 'whgw',
+      'COME HERE I WANT TO SEE YOU': 'watson',
+      'THE ENEMY IS IN SIGHT': 'togo',
+      'A SMALL STEP FOR MAN': 'moon',
+      'WHAT IS THE ANSWER': 'stein',
+      'STOP': 'stop'
+    };
+    var _decodedUp = decoded.toUpperCase().trim();
+    var _famousId = _famousMessages[_decodedUp] || null;
+
     if (_sendFn) {
       _sendFn(_targetId, {
         type: 'morse_message',
         fromId: _profileId,
         fromName: '',
         morseText: morseStr,
+        famousId: _famousId,
         createdAt: new Date().toISOString()
       });
     }
@@ -302,7 +317,7 @@ var MorseMessenger = (function() {
       '<div style="font-family:monospace;font-size:11px;color:#666;margin-bottom:6px;">decodes to:</div>' +
       '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#00ff88;margin-bottom:30px;">' + _escHtml(decoded) + '</div>' +
       '<div style="font-size:10px;color:#4ecdc4;margin-bottom:20px;">Sent to ' + _escHtml(_targetName) + '</div>' +
-      '<button id="morseCloseBtn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;font-family:\'Press Start 2P\',monospace;font-size:9px;padding:10px 20px;border-radius:6px;cursor:pointer;">CLOSE</button>' +
+      '<button id="morseCloseBtn" style="font-family:\'Press Start 2P\',monospace;font-size:9px;padding:10px 20px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">CLOSE</button>' +
       '</div>';
     var closeBtn = document.getElementById('morseCloseBtn');
     if (closeBtn) closeBtn.onclick = close;
@@ -471,16 +486,18 @@ var MorseMessenger = (function() {
       'box-shadow:0 6px 0 #0a0600,0 8px 16px rgba(255,165,0,0.2),inset 0 1px 0 rgba(255,165,0,0.2) !important;}',
       '.morse-key-bar{position:absolute;left:0;bottom:0;height:5px;background:#222;width:0%;pointer-events:none;}',
       '.morse-bar-dit{background:#00ff88 !important;}',
-      '.morse-bar-dah{background:#ffa500 !important;}'
+      '.morse-bar-dah{background:#ffa500 !important;}',
+      '#morseBackBtn:hover,#morseBtBtn:hover,#morseDelBtn:hover,#morseArBtn:hover,#morseCloseBtn:hover,#morseIncClose:hover,#morseTutBtn:hover{transform:translateY(-2px);filter:brightness(1.2);}',
+      '#morseBackBtn:active,#morseBtBtn:active,#morseDelBtn:active,#morseArBtn:active,#morseCloseBtn:active,#morseIncClose:active,#morseTutBtn:active{border-bottom-width:2px;transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,0.5),0 2px 6px rgba(0,0,0,0.3),inset 0 2px 4px rgba(0,0,0,0.3) !important;}'
     ].join('');
     document.head.appendChild(styles);
 
     var html = '';
     // Header
     html += '<div style="width:100%;max-width:680px;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-    html += '<button id="morseBackBtn" style="background:none;border:none;color:#666;font-size:18px;cursor:pointer;padding:4px 8px;">←</button>';
+    html += '<button id="morseBackBtn" style="font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px 14px;border-radius:8px;cursor:pointer;border:2px solid #ff5a5a;border-bottom:4px solid #aa2a2a;background:linear-gradient(180deg,#3a1515,#1f0a0a);color:#ff5a5a;box-shadow:0 4px 0 #0a0505,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,90,90,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u2190 BACK</button>';
     html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#00ff88;">MORSE TO ' + _escHtml(friendName).toUpperCase() + '</div>';
-    html += '<div style="width:30px;"></div>';
+    html += '<button id="morseTutBtn" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 10px;border-radius:8px;cursor:pointer;border:2px solid rgba(78,205,196,0.5);border-bottom:4px solid rgba(78,205,196,0.3);background:linear-gradient(180deg,rgba(78,205,196,0.12),rgba(78,205,196,0.04));color:#4ecdc4;box-shadow:0 3px 0 rgba(78,205,196,0.15),0 4px 10px rgba(0,0,0,0.3),inset 0 1px 0 rgba(78,205,196,0.1);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);letter-spacing:1px;">&#127891; HELP</button>';
     html += '</div>';
 
     // Tree
@@ -509,9 +526,9 @@ var MorseMessenger = (function() {
 
     // Controls
     html += '<div style="display:flex;gap:8px;margin-bottom:6px;width:100%;max-width:600px;">';
-    html += '<button id="morseBtBtn" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:6px;cursor:pointer;border:1px solid #5aadff;background:rgba(90,173,255,0.08);color:#5aadff;">▮ BT BREAK</button>';
-    html += '<button id="morseDelBtn" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:6px;cursor:pointer;border:1px solid #ff4444;background:rgba(255,68,68,0.06);color:#ff4444;">⌫ UNDO</button>';
-    html += '<button id="morseArBtn" style="flex:2;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:6px;cursor:pointer;border:2px solid #00ff88;background:linear-gradient(135deg,rgba(0,255,136,0.1),rgba(78,205,196,0.06));color:#00ff88;">·—· AR TRANSMIT</button>';
+    html += '<button id="morseBtBtn" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid #5aadff;border-bottom:4px solid #2a6aaa;background:linear-gradient(180deg,#0a1a2a,#050d15);color:#5aadff;box-shadow:0 4px 0 #030a10,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(90,173,255,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u25AE BT BREAK</button>';
+    html += '<button id="morseDelBtn" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid #ff4444;border-bottom:4px solid #aa1a1a;background:linear-gradient(180deg,#2a0a0a,#150505);color:#ff4444;box-shadow:0 4px 0 #0a0303,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,68,68,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u232B UNDO</button>';
+    html += '<button id="morseArBtn" style="flex:2;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u00b7\u2014\u00b7 AR TRANSMIT</button>';
     html += '</div>';
 
     // Message display
@@ -529,6 +546,7 @@ var MorseMessenger = (function() {
     // Wire key
     var key = document.getElementById('morseKey');
     if (key) {
+      key.addEventListener('mouseenter', function() { _blip(330, 25); });
       key.addEventListener('mousedown', function(e) { e.preventDefault(); _onDown(); });
       key.addEventListener('mouseup', function(e) { e.preventDefault(); _onUp(); });
       key.addEventListener('mouseleave', function() { if (_keyDown) _onUp(); });
@@ -537,15 +555,23 @@ var MorseMessenger = (function() {
       key.addEventListener('touchcancel', function() { if (_keyDown) _onUp(); });
     }
 
-    // Wire buttons
-    var backBtn = document.getElementById('morseBackBtn');
-    if (backBtn) backBtn.onclick = close;
-    var btBtn = document.getElementById('morseBtBtn');
-    if (btBtn) btBtn.onclick = _doBT;
-    var delBtn = document.getElementById('morseDelBtn');
-    if (delBtn) delBtn.onclick = _doBk;
-    var arBtn = document.getElementById('morseArBtn');
-    if (arBtn) arBtn.onclick = _doAR;
+    // Wire buttons with hover/click sounds
+    function _wireBtn(id, handler) {
+      var btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('mouseenter', function() { _blip(660, 20); });
+      btn.addEventListener('click', function() { _blip(880, 40); if (handler) handler(); });
+    }
+    _wireBtn('morseBackBtn', close);
+    _wireBtn('morseBtBtn', _doBT);
+    _wireBtn('morseDelBtn', _doBk);
+    _wireBtn('morseArBtn', _doAR);
+    _wireBtn('morseTutBtn', function() {
+      // Open the tutorial catalog and jump to morse-telegraph category
+      if (typeof window._openTutorialCatalog === 'function') {
+        window._openTutorialCatalog('morse-telegraph');
+      }
+    });
 
     // Keyboard
     _keyHandler = function(e) {
@@ -584,7 +610,7 @@ var MorseMessenger = (function() {
     box.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#00ff88;margin-bottom:12px;">INCOMING MORSE FROM ' + _escHtml(fromName).toUpperCase() + '</div>';
     box.innerHTML += '<div style="font-size:14px;color:#ffd700;letter-spacing:3px;margin-bottom:12px;word-break:break-all;">' + _escHtml(morseText) + '</div>';
     box.innerHTML += '<div id="morseDecodeOut" style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#00ff88;min-height:24px;letter-spacing:2px;"></div>';
-    box.innerHTML += '<button id="morseIncClose" style="margin-top:16px;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px 20px;border-radius:6px;cursor:pointer;border:1px solid #00ff88;background:rgba(0,255,136,0.08);color:#00ff88;">DISMISS</button>';
+    box.innerHTML += '<button id="morseIncClose" style="margin-top:16px;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px 20px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">DISMISS</button>';
     ov.appendChild(box);
     document.body.appendChild(ov);
 

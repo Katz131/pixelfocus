@@ -1441,9 +1441,9 @@
     // The bonus is real. The cost is real. It is a choice, and the
     // game intentionally does not warn the player it is a choice.
     //
-    // One-time purchase. Gated behind the Second Location upgrade so
-    // the player has at least two physical sites between which a
-    // bridge would be meaningful.
+    // One-time purchase. Gated behind secondLocation 3 AND the
+    // Incinerator so the player has experienced house events, pets,
+    // and personnel before losing access.
     // ================================================================
     {
       id: 'landBridgeLevel',
@@ -1454,7 +1454,7 @@
         'Passive income trickle: +5% (permanent).',
         'Crossings between the Factory and the Master Loom are now expeditious.'
       ],
-      costs: [75000],
+      costs: [2500000],
       milestones: [
         'The Land Bridge has been certified. A small brown envelope has been slid under the door of your house by a person you did not see. The envelope is not for you to open.'
       ]
@@ -1630,14 +1630,18 @@
           || (Array.isArray(s.dustPixels) && s.dustPixels.length >= 30);
     },
 
-    // --- v3.20.0 Stage 5: Land Bridge. Late-game. Gated behind the
-    //     Second Location upgrade so the player has two physical sites
-    //     for a bridge to span. The card's prose mentions the income
-    //     bonus but not the fact that the bridge closes the route to
-    //     the house — that part has to be discovered. ---
+    // --- v3.23.194 Land Bridge. TRUE late-game. The bridge permanently
+    //     closes the foot route to the house, which is the single
+    //     biggest narrative fork in the game. The player must have
+    //     reached the distribution center (secondLocation 3) AND
+    //     commissioned the Incinerator so they've had full exposure
+    //     to house events, the pet system, and personnel before losing
+    //     access. The card's prose mentions the income bonus but not
+    //     the fact that the bridge closes the route — that part has
+    //     to be discovered. ---
     landBridgeLevel: function(s) {
-      return (s.secondLocationLevel || 0) >= 1
-          || (s.lifetimeCoins || 0) >= 60000;
+      return (s.secondLocationLevel || 0) >= 3
+          && !!s.incineratorUnlocked;
     },
 
     // ================================================================
@@ -1891,8 +1895,19 @@
       if (state.freshUpgrades && state.freshUpgrades[u.id]) delete state.freshUpgrades[u.id];
       return true;
     }
-    // Sticky: once seen, always shown.
-    if (state.seenUpgrades && state.seenUpgrades[u.id]) return true;
+    // Sticky: once seen, always shown — EXCEPT the Land Bridge,
+    // which was re-gated in v3.23.194 and must re-check its gate
+    // so existing saves don't show it prematurely.
+    if (state.seenUpgrades && state.seenUpgrades[u.id]) {
+      if (u.id === 'landBridgeLevel') {
+        var lbGate = UNLOCK_GATES[u.id];
+        if (lbGate) {
+          try { if (!lbGate(state)) { delete state.seenUpgrades[u.id]; return false; } }
+          catch (_) { return false; }
+        }
+      }
+      return true;
+    }
     // No gate defined? Starter card — visible from the start. Starter
     // cards are NOT marked fresh on first load (they've always been
     // there as far as the player is concerned).
@@ -2913,3 +2928,4 @@
   });
 
 })();
+
