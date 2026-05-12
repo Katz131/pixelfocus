@@ -390,6 +390,43 @@ window.TUTORIAL_CATEGORIES = [
   ]},
 
   // ══════════════════════════════════════════════════════════════
+  // EMPLOYEES.HTML — SUB-TUTORIALS (shown on personnel page)
+  // ══════════════════════════════════════════════════════════════
+  { id: 'employees-overview', name: 'Personnel Overview', icon: '👷', gate: 'employees', page: 'employees', salt: 'cat-emp-overview', items: [
+    { id: 'emp-hero', label: 'Headcount Display', desc: 'The big number at the top of the page shows your total employee count. This is every named employee on your personnel roster — it grows as you upgrade Hire Employees in the Factory. The label above reads "Headcount On The Books" and the number updates live if you purchase new hires while this page is open.' },
+    { id: 'emp-sub', label: 'Subtitle Description', desc: 'The italic text below the headcount gives you a status summary. When you have no employees, it tells you to buy the Hire Employees upgrade in the Factory. Once you have a roster, it shows your current upgrade level and a note about how the standing office manages things without asking you.' },
+    { id: 'emp-chips', label: 'Pool Breakdown Chips', desc: 'Three colored chips below the headcount: RECENT (pink, hired in the last 14 days), ESTABLISHED (teal, on the books for 14+ days), and FLAGGED (gold, employees marked as dissident or under stress). These count the full roster regardless of any search or filter you have active.' },
+  ]},
+  { id: 'employees-search', name: 'Search and Filters', icon: '🔍', gate: 'employees', page: 'employees', salt: 'cat-emp-search', items: [
+    { id: 'emp-search', label: 'Search Bar', desc: 'Type any word to instantly filter the roster. Searches across name, role, region, and bio text — case-insensitive. Clearing the search box restores the full roster. Useful for finding a specific employee by name or tracking down everyone from a particular region.' },
+    { id: 'emp-filter-all', label: 'ALL Filter Button', desc: 'Click ALL to show every employee on the roster with no filtering. This is the default view when you first open the page. The button lights up teal when active.' },
+    { id: 'emp-filter-new', label: 'RECENT Filter Button', desc: 'Click RECENT to show only employees hired in the last 14 days. New hires appear here until they become established. Matches the pink Recent chip in the pool breakdown above.' },
+    { id: 'emp-filter-est', label: 'ESTABLISHED Filter Button', desc: 'Click ESTABLISHED to show only employees who have been on the books for 14 or more days. These are your veteran workers. Matches the teal Established chip in the pool breakdown.' },
+    { id: 'emp-filter-flag', label: 'FLAGGED Filter Button', desc: 'Click FLAGGED to show only employees who are currently flagged — either marked as dissidents (red border) or under stress (gold tag). Matches the gold Flagged chip in the pool breakdown. If no employees are flagged, this view will be empty.' },
+    { id: 'emp-sort', label: 'Sort Dropdown', desc: 'Change how employees are ordered. Options: Newest hired first (default), Oldest hired first, By name A–Z, and By role. The sort applies on top of whatever filter and search you have active.' },
+  ]},
+  { id: 'employees-cards', name: 'Employee Cards', icon: '🪪', gate: 'employees', page: 'employees', salt: 'cat-emp-cards', items: [
+    { id: 'emp-card', label: 'Card Layout', desc: 'Each employee gets a card showing their name (pixel font), role (uppercase), region (italic colored text), and a short bio separated by a dashed line. The card\'s left border color indicates their pool — pink for recent hires, teal for established workers, and gold for flagged employees.' },
+    { id: 'emp-name', label: 'Employee Name', desc: 'The name at the top of the card in pixel font. Names are generated from three pools: Wes Anderson eccentrics (quirky fictional names), Stranger-Than-Fiction mundanes (ordinary-sounding names), and regional migrants who arrive with their own backstory.' },
+    { id: 'emp-role', label: 'Role and Region', desc: 'Below the name you\'ll see the employee\'s role in uppercase letters (like LOOM TECHNICIAN or SHIFT SUPERVISOR) and their region of origin in colored italic text. Roles are assigned from a pool when the employee is hired.' },
+    { id: 'emp-bio', label: 'Employee Bio', desc: 'The text below the dashed line is a short bio — a sentence or two about the employee\'s background, quirks, or how they ended up at your factory. Migrant employees have especially detailed arrival stories tied to their region.' },
+    { id: 'emp-diss', label: 'Dissident Tag', desc: 'If an employee has been flagged as a dissident, a red DISSIDENT tag appears on their card and the entire card gets a red glow border. Dissidents are employees who have become problematic — they show up in the FLAGGED filter.' },
+    { id: 'emp-stress', label: 'Stress Tag', desc: 'Employees under stress show a gold stress tag on their card. Stress is a separate status from dissident — a stressed employee isn\'t necessarily a troublemaker, just someone going through a rough patch. They also appear in the FLAGGED filter.' },
+  ]},
+  { id: 'employees-nav', name: 'Personnel Navigation', icon: '🧭', gate: 'employees', page: 'employees', salt: 'cat-emp-nav', items: [
+    { id: 'emp-nav-factory', label: 'Back to Factory', desc: 'Click the FACTORY button in the top-left of the navigation bar to return to the Factory page. That\'s where you purchase the Hire Employees upgrade to grow your roster.' },
+    { id: 'emp-nav-house', label: 'House Button', desc: 'Click HOUSE to open The House — the page showing your household, spouse, children, pets, and their condition. Opens in a new tab.' },
+    { id: 'emp-nav-research', label: 'Research Lab Button', desc: 'Click RESEARCH to open the Research Lab where you can run experiments on employees. This button only appears once you\'ve unlocked the Research Lab via the Compliance Framework upgrade in the Factory.' },
+    { id: 'emp-nav-bureau', label: 'Bureau Button', desc: 'Click BUREAU to open The Bureau — the espionage annex where you relocate employees into spy posts. This button only appears once you\'ve activated your first Bureau agent.' },
+    { id: 'emp-nav-incinerator', label: 'Incinerator Button', desc: 'Click INCINERATOR to open the Incinerator — the late-game annex that converts employees into permanent passive income. This button only appears once you\'ve unlocked the Materials Incinerator.' },
+    { id: 'emp-nav-tracker', label: 'Back to To-Do List', desc: 'Click the gold TO-DO LIST button to return to the main extension popup with your timer, tasks, and all core features.' },
+    { id: 'emp-nav-tutorial', label: 'Tutorial Button', desc: 'Click the purple TUTORIAL button to open this tutorial walkthrough. You can revisit it anytime to review how any part of the Personnel page works.' },
+  ]},
+  { id: 'employees-empty', name: 'Empty Roster', icon: '📭', gate: null, page: 'employees', salt: 'cat-emp-empty', items: [
+    { id: 'emp-empty', label: 'No Personnel Message', desc: 'If your roster is empty (you haven\'t bought the Hire Employees upgrade yet, or your current filters match zero employees), a centered message explains what to do: purchase the first level of Hire Employees in the Factory. You won\'t get to choose who gets hired — the standing office handles that.' },
+  ]},
+
+  // ══════════════════════════════════════════════════════════════
   // POPUP.HTML — REMAINING GATED CATEGORIES
   // ══════════════════════════════════════════════════════════════
   { id: 'employees', name: 'Employees and Payroll', icon: '👷', gate: 'employees', page: 'popup', salt: 'cat-employees', items: [

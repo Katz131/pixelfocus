@@ -11207,6 +11207,20 @@ try {
   var CHALLENGE_LOSER_PENALTY = 350;
   var CHALLENGE_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
+  // v3.23.259: Inline toast used by challenge system
+  function showToast(msg, type) {
+    try {
+      var colors = { success:'#00ff88', error:'#ff4444', info:'#4ecdc4' };
+      var c = colors[type] || '#4ecdc4';
+      var t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:'+c+';border:1px solid '+c+';border-radius:6px;padding:8px 16px;font-size:10px;z-index:99999;opacity:0;transition:opacity 0.3s;pointer-events:none;';
+      document.body.appendChild(t);
+      setTimeout(function(){t.style.opacity='1';},10);
+      setTimeout(function(){t.style.opacity='0';setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},400);},2500);
+    } catch(_){}
+  }
+
   function _getChallengeProgress(challengeType) {
     var ch = state.friendChallenge;
     if (!ch) return 0;
@@ -11487,6 +11501,34 @@ try {
     showToast('Challenge declined', 'info');
   }
 
+  // v3.23.257: Withdraw/cancel an active or pending challenge
+  function withdrawChallenge() {
+    var ch = state.friendChallenge;
+    if (!ch) return;
+    // Notify opponent that we withdrew
+    try {
+      var msgId = state.profileId + '_challenge_decline_' + Date.now();
+      var inboxPath = 'artifacts/' + ch.opponentId + '/inbox/' + msgId;
+      var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+      fetch(url, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({fields:{
+          type:{stringValue:'challenge_decline'},
+          fromId:{stringValue:state.profileId},
+          fromName:{stringValue:state.displayName || state.profileId},
+          ts:{integerValue:String(Date.now())}
+        }})
+      }).catch(function(){});
+    } catch(_){}
+    // Clear local challenge state
+    state.friendChallenge = null;
+    saveState();
+    showToast('Challenge withdrawn. You can send a new one!', 'info');
+    try { renderChallengeUI(); } catch(_){}
+  }
+  window.withdrawChallenge = withdrawChallenge;
+
   function renderChallengeUI() {
     var activeCard = document.getElementById('challengeActiveCard');
     var statsDiv = document.getElementById('challengeStats');
@@ -11542,7 +11584,25 @@ try {
               (myProg > theirProg ? 'YOU\'RE WINNING!' : (myProg < theirProg ? 'CATCH UP!' : 'TIED!')) +
             '</span>' +
           '</div>' +
+          '<div id="challengeWithdrawRow" style="text-align:center;margin-top:6px;"></div>' +
         '</div>';
+        // Wire WITHDRAW button (CSP-safe, no inline onclick)
+        setTimeout(function() {
+          var wRow = document.getElementById('challengeWithdrawRow');
+          if (wRow) {
+            var wBtn = document.createElement('button');
+            wBtn.className = 'btn btn-small';
+            wBtn.style.cssText = 'border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 8px;cursor:pointer;opacity:0.6;transition:all 0.15s;';
+            wBtn.textContent = 'WITHDRAW CHALLENGE';
+            wBtn.title = 'Cancel this challenge and forfeit. You can then send a new one.';
+            wBtn.addEventListener('mouseenter', function() { wBtn.style.opacity = '1'; });
+            wBtn.addEventListener('mouseleave', function() { wBtn.style.opacity = '0.6'; });
+            wBtn.addEventListener('click', function() {
+              withdrawChallenge();
+            });
+            wRow.appendChild(wBtn);
+          }
+        }, 0);
       } else {
         activeCard.innerHTML = '<div style="font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;padding:8px;">No active challenge. Send one to a friend!</div>';
       }
@@ -13932,20 +13992,48 @@ try {
               var mon = ts.getMonth() + 1; var day = ts.getDate();
               timeStr = (mon < 10 ? '0' : '') + mon + '/' + (day < 10 ? '0' : '') + day + ' ' + timeStr;
             }
-            html += '<div style="background:linear-gradient(135deg,#0a1a0a,#0a0a1a);border:1px solid #1a3a2a;border-radius:6px;padding:8px 10px;margin-bottom:6px;">';
+            html += '<div style="background:linear-gradient(135deg,#0a1a0a,#0a0a1a);border:1px solid #1a3a2a;border-radius:6px;padding:8px 10px;margin-bottom:6px;overflow:visible;">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
             html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff88;">' + escHtml(msg.fromName || 'Unknown') + '</span>';
             html += '<div style="display:flex;align-items:center;gap:6px;">';
             if (timeStr) html += '<span style="font-size:8px;color:#555;">' + timeStr + '</span>';
-            html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:8px;color:#ff4444;background:none;border:1px solid #331111;border-radius:3px;padding:2px 6px;cursor:pointer;transition:opacity 0.15s;opacity:0.4;" title="Delete this telegram" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.4">&#x2716;</button>';
+            html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:9px;color:#ff4444;background:rgba(51,17,17,0.3);border:1px solid #441111;border-bottom:3px solid #331111;border-radius:6px;padding:4px 8px;cursor:pointer;transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #220808,0 3px 6px rgba(0,0,0,0.3);opacity:0.5;" title="Delete this telegram">&#x2716;</button>';
             html += '</div></div>';
             html += '<div class="morse-replay-btn" data-idx="' + mi + '" style="font-size:12px;color:#ffd700;letter-spacing:2px;word-break:break-all;margin-bottom:4px;cursor:pointer;" title="Click to replay">' + escHtml(msg.morseText || '') + '</div>';
             html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#00ff88;letter-spacing:1px;">' + escHtml(decoded) + '</div>';
             html += '</div>';
           }
           list.innerHTML = html;
+          // Duolingo-style hover/click effects helper
+          function _juiceBtn(btn, hoverColor, hoverBg) {
+            btn.addEventListener('mouseenter', function() {
+              btn.style.opacity = '1';
+              btn.style.transform = 'translateY(-2px) scale(1.05)';
+              btn.style.borderColor = hoverColor || '#ff6666';
+              if (hoverBg) btn.style.background = hoverBg;
+              btn.style.filter = 'brightness(1.2)';
+            });
+            btn.addEventListener('mouseleave', function() {
+              btn.style.opacity = '0.5';
+              btn.style.transform = '';
+              btn.style.borderColor = '';
+              btn.style.background = '';
+              btn.style.filter = '';
+            });
+            btn.addEventListener('mousedown', function() {
+              btn.style.transform = 'translateY(2px) scale(0.95)';
+              btn.style.borderBottomWidth = '1px';
+              btn.style.boxShadow = '0 1px 0 #110404,0 1px 3px rgba(0,0,0,0.3),inset 0 2px 4px rgba(0,0,0,0.3)';
+            });
+            btn.addEventListener('mouseup', function() {
+              btn.style.transform = 'translateY(-2px) scale(1.05)';
+              btn.style.borderBottomWidth = '3px';
+              btn.style.boxShadow = '';
+            });
+          }
           // Delete individual message
           list.querySelectorAll('.morse-inbox-delete-btn').forEach(function(btn) {
+            _juiceBtn(btn, '#ff6666', 'rgba(80,20,20,0.5)');
             btn.addEventListener('click', function(e) {
               e.stopPropagation();
               var idx = parseInt(btn.getAttribute('data-idx'), 10);
@@ -13959,7 +14047,6 @@ try {
           if (clearBtn) {
             clearBtn.onclick = function(e) {
               e.stopPropagation();
-              if (!confirm('Clear all morse telegrams?')) return;
               state.morseInbox = [];
               save();
               renderMorseInbox();
@@ -13967,6 +14054,15 @@ try {
           }
           // Replay a message
           list.querySelectorAll('.morse-replay-btn').forEach(function(btn) {
+            btn.style.cursor = 'pointer';
+            btn.addEventListener('mouseenter', function() {
+              btn.style.transform = 'scale(1.02)';
+              btn.style.filter = 'brightness(1.3)';
+            });
+            btn.addEventListener('mouseleave', function() {
+              btn.style.transform = '';
+              btn.style.filter = '';
+            });
             btn.addEventListener('click', function() {
               var i = parseInt(btn.getAttribute('data-idx'), 10);
               var m = (state.morseInbox || [])[i];
@@ -14234,7 +14330,9 @@ try {
                 } else if (msg.type === 'access_granted') {
                   accessGrantNotices.push(msg);
                 } else if (msg.type === 'challenge_invite') {
-                  // v3.23.166: Friend challenge invite
+                  // v3.23.257: Friend challenge invite — CSP-safe (no inline onclick)
+                  // Always delete from Firestore after processing so it doesn't re-deliver
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge) {
                     // Already in a challenge, auto-decline
                     try { declineChallenge(msg.fromId); } catch(_){}
@@ -14243,20 +14341,38 @@ try {
                     if (invDiv) {
                       var tier = msg.challengeTier || 'standard';
                       var reward = CHALLENGE_REWARDS[tier] || CHALLENGE_REWARDS.standard;
-                      invDiv.innerHTML += '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #ffa500;border-radius:8px;padding:10px;margin-bottom:6px;">' +
-                        '<div style="font-family:' + "'" + 'Press Start 2P' + "'" + ',monospace;font-size:8px;color:#ffa500;margin-bottom:4px;">CHALLENGE INVITE</div>' +
+                      var card = document.createElement('div');
+                      card.style.cssText = 'background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #ffa500;border-radius:8px;padding:10px;margin-bottom:6px;';
+                      card.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#ffa500;margin-bottom:4px;">CHALLENGE INVITE</div>' +
                         '<div style="font-size:10px;color:var(--text);margin-bottom:4px;">' + escHtml(msg.fromName || msg.fromId) + ' challenges you!</div>' +
                         '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">' + escHtml(msg.challengeLabel || msg.challengeType) + ': ' + escHtml(msg.challengeDesc || '') + '</div>' +
                         '<div style="font-size:9px;color:#00ff88;margin-bottom:6px;">Reward: +$' + reward.coins + ' +' + reward.xp + 'XP | Penalty: -$' + CHALLENGE_LOSER_PENALTY + '</div>' +
-                        '<div style="display:flex;gap:6px;">' +
-                          '<button class="btn btn-small" onclick="acceptChallenge(\x27' + escHtml(msg.fromId) + '\x27,\x27' + escHtml(msg.fromName || msg.fromId) + '\x27,\x27' + escHtml(msg.challengeType) + '\x27,\x27' + escHtml(msg.challengeLabel || '') + '\x27,\x27' + escHtml(msg.challengeDesc || '') + '\x27,\x27' + escHtml(tier) + '\x27,' + (msg.endsAt || 0) + ');this.parentNode.parentNode.remove();" style="border-color:#00ff88;color:#00ff88;font-size:8px;padding:3px 8px;">ACCEPT</button>' +
-                          '<button class="btn btn-small" onclick="declineChallenge(\x27' + escHtml(msg.fromId) + '\x27);this.parentNode.parentNode.remove();" style="border-color:#ff4444;color:#ff4444;font-size:8px;padding:3px 8px;">DECLINE</button>' +
-                        '</div>' +
-                      '</div>';
+                        '<div style="display:flex;gap:6px;"></div>';
+                      var btnRow = card.querySelector('div:last-child');
+                      var acceptBtn = document.createElement('button');
+                      acceptBtn.className = 'btn btn-small';
+                      acceptBtn.style.cssText = 'border-color:#00ff88;color:#00ff88;font-size:8px;padding:3px 8px;cursor:pointer;';
+                      acceptBtn.textContent = 'ACCEPT';
+                      acceptBtn.addEventListener('click', (function(m, t) { return function() {
+                        acceptChallenge(m.fromId, m.fromName || m.fromId, m.challengeType, m.challengeLabel || '', m.challengeDesc || '', t, m.endsAt || 0);
+                        card.remove();
+                      }; })(msg, tier));
+                      var declineBtn = document.createElement('button');
+                      declineBtn.className = 'btn btn-small';
+                      declineBtn.style.cssText = 'border-color:#ff4444;color:#ff4444;font-size:8px;padding:3px 8px;cursor:pointer;';
+                      declineBtn.textContent = 'DECLINE';
+                      declineBtn.addEventListener('click', (function(m) { return function() {
+                        declineChallenge(m.fromId);
+                        card.remove();
+                      }; })(msg));
+                      btnRow.appendChild(acceptBtn);
+                      btnRow.appendChild(declineBtn);
+                      invDiv.appendChild(card);
                     }
                   }
                 } else if (msg.type === 'challenge_accept') {
                   // Opponent accepted our challenge - activate it
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
                     state.friendChallenge.status = 'active';
                     _initChallengeTracking();
@@ -14266,6 +14382,7 @@ try {
                   }
                 } else if (msg.type === 'challenge_decline') {
                   // Opponent declined our challenge
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
                     state.friendChallenge = null;
                     saveState();
@@ -14274,32 +14391,41 @@ try {
                   }
                 } else if (msg.type === 'challenge_progress') {
                   // Update opponent progress
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
                     state.friendChallenge.opponentProgress = parseInt(msg.progress) || 0;
                     saveState();
                     try { renderChallengeUI(); } catch(_){}
                   }
                 } else if (msg.type === 'morse_message') {
-                  // v3.23.169: Morse code message from a friend
-                  if (typeof MorseMessenger !== 'undefined') {
-                    try { MorseMessenger.showIncoming(msg.fromName || msg.fromId || 'Unknown', msg.morseText || ''); } catch(_) {}
-                  }
-                  // Store in morse inbox for later viewing
-                  if (!state.morseInbox) state.morseInbox = [];
-                  state.morseReceivedCount = (state.morseReceivedCount || 0) + 1;
-                  state.morseInbox.push({
-                    fromId: msg.fromId,
-                    fromName: msg.fromName || msg.fromId,
-                    morseText: msg.morseText || '',
-                    receivedAt: new Date().toISOString()
-                  });
-                  // Keep only last 50 messages
-                  if (state.morseInbox.length > 50) state.morseInbox = state.morseInbox.slice(-50);
-                  save();
-                  try { renderMorseInbox(); } catch(_) {}
+                  // v3.23.257: Morse code message — dedup by Firestore doc ID
+                  // Delete from Firestore FIRST to prevent re-delivery on next poll
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
+                  if (!state.morseInbox) state.morseInbox = [];
+                  // Dedup: skip if we already have this exact message (same sender + same morse + same Firestore ID)
+                  var _isDupMorse = state.morseInbox.some(function(existing) {
+                    return existing._firestoreId === msg._id ||
+                      (existing.fromId === msg.fromId && existing.morseText === (msg.morseText || '') && existing.receivedAt && (Date.now() - new Date(existing.receivedAt).getTime()) < 120000);
+                  });
+                  if (!_isDupMorse) {
+                    if (typeof MorseMessenger !== 'undefined') {
+                      try { MorseMessenger.showIncoming(msg.fromName || msg.fromId || 'Unknown', msg.morseText || ''); } catch(_) {}
+                    }
+                    state.morseReceivedCount = (state.morseReceivedCount || 0) + 1;
+                    state.morseInbox.push({
+                      fromId: msg.fromId,
+                      fromName: msg.fromName || msg.fromId,
+                      morseText: msg.morseText || '',
+                      receivedAt: new Date().toISOString(),
+                      _firestoreId: msg._id
+                    });
+                    if (state.morseInbox.length > 50) state.morseInbox = state.morseInbox.slice(-50);
+                    save();
+                    try { renderMorseInbox(); } catch(_) {}
+                  }
                 } else if (msg.type === 'challenge_result') {
                   // Opponent sent us their final result
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
                     state.friendChallenge.opponentProgress = parseInt(msg.myScore) || 0;
                     _resolveChallenge();
@@ -16977,44 +17103,6 @@ try { console.log('[TodoOfTheLoom] v' + chrome.runtime.getManifest().version + '
 
   /* ── Search handler ─────────────────────────────────────────────── */
   var _searchTimer = null;
-  if (_searchInput) {
-    _searchInput.addEventListener('input', function() {
-      clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(function() {
-        _searchQuery = _searchInput.value;
-        _renderCatalog();
-      }, 150);
-    });
-  }
-
-  /* ── Event wiring ───────────────────────────────────────────────── */
-  console.log('[TUT-DEBUG] Wiring click listener to tutBtn:', _tutBtn.tagName, _tutBtn.id);
-  _tutBtn.addEventListener('click', function(e) {
-    console.log('[TUT-DEBUG] tutBtn CLICKED! event:', e.type, 'target:', e.target.id);
-    _openCatalog();
-  });
-  _catalogClose.addEventListener('click', _closeCatalog);
-
-  _overlay.addEventListener('click', function(e) {
-    if (e.target === _overlay || e.target === _backdrop) {
-      _closeCatalog();
-    }
-  });
-})();
-
-
-// GUARD 4: Show version in UI - always visible, no hiding
-try {
-  var _vLabel = document.getElementById('versionLabel');
-  if (!_vLabel) {
-    _vLabel = document.createElement('div');
-    _vLabel.id = 'versionLabel';
-    _vLabel.style.cssText = 'position:fixed;bottom:4px;right:8px;font-family:Courier New,monospace;font-size:8px;color:#2a2a3a;z-index:1;pointer-events:none;';
-    document.body.appendChild(_vLabel);
-  }
-  _vLabel.textContent = 'v' + chrome.runtime.getManifest().version;
-} catch(_) {}
-imer = null;
   if (_searchInput) {
     _searchInput.addEventListener('input', function() {
       clearTimeout(_searchTimer);

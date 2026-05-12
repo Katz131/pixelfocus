@@ -13932,19 +13932,48 @@ try {
               var mon = ts.getMonth() + 1; var day = ts.getDate();
               timeStr = (mon < 10 ? '0' : '') + mon + '/' + (day < 10 ? '0' : '') + day + ' ' + timeStr;
             }
-            html += '<div style="background:linear-gradient(135deg,#0a1a0a,#0a0a1a);border:1px solid #1a3a2a;border-radius:6px;padding:8px 10px;margin-bottom:6px;">';
+            html += '<div style="background:linear-gradient(135deg,#0a1a0a,#0a0a1a);border:1px solid #1a3a2a;border-radius:6px;padding:8px 10px;margin-bottom:6px;overflow:visible;">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
             html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff88;">' + escHtml(msg.fromName || 'Unknown') + '</span>';
             html += '<div style="display:flex;align-items:center;gap:6px;">';
             if (timeStr) html += '<span style="font-size:8px;color:#555;">' + timeStr + '</span>';
-            html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:8px;color:#ff4444;background:none;border:1px solid #331111;border-radius:3px;padding:2px 6px;cursor:pointer;transition:opacity 0.15s;opacity:0.4;" title="Delete this telegram" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.4">&#x2716;</button>';
+            html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:9px;color:#ff4444;background:rgba(51,17,17,0.3);border:1px solid #441111;border-bottom:3px solid #331111;border-radius:6px;padding:4px 8px;cursor:pointer;transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #220808,0 3px 6px rgba(0,0,0,0.3);opacity:0.5;" title="Delete this telegram">&#x2716;</button>';
             html += '</div></div>';
             html += '<div class="morse-replay-btn" data-idx="' + mi + '" style="font-size:12px;color:#ffd700;letter-spacing:2px;word-break:break-all;margin-bottom:4px;cursor:pointer;" title="Click to replay">' + escHtml(msg.morseText || '') + '</div>';
             html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#00ff88;letter-spacing:1px;">' + escHtml(decoded) + '</div>';
             html += '</div>';
           }
           list.innerHTML = html;
+          // Duolingo-style hover/click effects helper
+          function _juiceBtn(btn, hoverColor, hoverBg) {
+            btn.addEventListener('mouseenter', function() {
+              btn.style.opacity = '1';
+              btn.style.transform = 'translateY(-2px) scale(1.05)';
+              btn.style.borderColor = hoverColor || '#ff6666';
+              if (hoverBg) btn.style.background = hoverBg;
+              btn.style.filter = 'brightness(1.2)';
+            });
+            btn.addEventListener('mouseleave', function() {
+              btn.style.opacity = '0.5';
+              btn.style.transform = '';
+              btn.style.borderColor = '';
+              btn.style.background = '';
+              btn.style.filter = '';
+            });
+            btn.addEventListener('mousedown', function() {
+              btn.style.transform = 'translateY(2px) scale(0.95)';
+              btn.style.borderBottomWidth = '1px';
+              btn.style.boxShadow = '0 1px 0 #110404,0 1px 3px rgba(0,0,0,0.3),inset 0 2px 4px rgba(0,0,0,0.3)';
+            });
+            btn.addEventListener('mouseup', function() {
+              btn.style.transform = 'translateY(-2px) scale(1.05)';
+              btn.style.borderBottomWidth = '3px';
+              btn.style.boxShadow = '';
+            });
+          }
+          // Delete individual message
           list.querySelectorAll('.morse-inbox-delete-btn').forEach(function(btn) {
+            _juiceBtn(btn, '#ff6666', 'rgba(80,20,20,0.5)');
             btn.addEventListener('click', function(e) {
               e.stopPropagation();
               var idx = parseInt(btn.getAttribute('data-idx'), 10);
@@ -13954,16 +13983,26 @@ try {
               renderMorseInbox();
             });
           });
+          // Clear all
           if (clearBtn) {
             clearBtn.onclick = function(e) {
               e.stopPropagation();
-              if (!confirm('Clear all morse telegrams?')) return;
               state.morseInbox = [];
               save();
               renderMorseInbox();
             };
           }
+          // Replay a message
           list.querySelectorAll('.morse-replay-btn').forEach(function(btn) {
+            btn.style.cursor = 'pointer';
+            btn.addEventListener('mouseenter', function() {
+              btn.style.transform = 'scale(1.02)';
+              btn.style.filter = 'brightness(1.3)';
+            });
+            btn.addEventListener('mouseleave', function() {
+              btn.style.transform = '';
+              btn.style.filter = '';
+            });
             btn.addEventListener('click', function() {
               var i = parseInt(btn.getAttribute('data-idx'), 10);
               var m = (state.morseInbox || [])[i];

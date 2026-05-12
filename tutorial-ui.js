@@ -277,6 +277,29 @@
     'gn-tutorial':'#tutorialBtn',
   };
 
+  // --- EMPLOYEES selectors ---
+  var _SEL_EMPLOYEES = {
+    'emp-hero':'#empHeroCount','emp-sub':'#empHeroSub',
+    'emp-chips':'#empPoolBreakdown',
+    'emp-search':'#empSearch',
+    'emp-filter-all':'.filter-btn[data-filter="all"]',
+    'emp-filter-new':'.filter-btn[data-filter="new"]',
+    'emp-filter-est':'.filter-btn[data-filter="established"]',
+    'emp-filter-flag':'.filter-btn[data-filter="flagged"]',
+    'emp-sort':'#empSort',
+    'emp-card':'#empRoster','emp-name':'#empRoster',
+    'emp-role':'#empRoster','emp-bio':'#empRoster',
+    'emp-diss':'#empRoster','emp-stress':'#empRoster',
+    'emp-nav-factory':'#backToFactoryBtn',
+    'emp-nav-house':'#toHouseBtn',
+    'emp-nav-research':'#toResearchBtn',
+    'emp-nav-bureau':'#toBureauBtn',
+    'emp-nav-incinerator':'#toIncineratorBtn',
+    'emp-nav-tracker':'#backToTrackerBtn',
+    'emp-nav-tutorial':'#tutorialBtn',
+    'emp-empty':'#empEmpty,#empRoster',
+  };
+
   // Pick the right selector map for this page
   var _SEL, _PSEL;
   if (_pagePath === 'brokerage') {
@@ -287,6 +310,8 @@
     _SEL = _SEL_HOUSE; _PSEL = {};
   } else if (_pagePath === 'gallery') {
     _SEL = _SEL_GALLERY; _PSEL = {};
+  } else if (_pagePath === 'employees') {
+    _SEL = _SEL_EMPLOYEES; _PSEL = {};
   } else {
     _SEL = _SEL_POPUP;
     // No prefix fallbacks needed — all selectors are explicit
@@ -1139,6 +1164,23 @@
       } catch(_) {}
     }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // PUBLIC: jump straight to a category by id (e.g. 'morse-telegraph')
+  // ══════════════════════════════════════════════════════════════
+  window._openTutorialTo = function(catId) {
+    for (var ci = 0; ci < _CATS.length; ci++) {
+      if (_CATS[ci].id === catId) {
+        _loadStateAsync(function() {
+          _showMenu();
+          _startWalkthrough(_catStartIdx[ci]);
+        });
+        return;
+      }
+    }
+    // Category not found on this page — just open the menu
+    _loadStateAsync(function() { _showMenu(); });
+  };
 
   // ══════════════════════════════════════════════════════════════
   // EVENTS

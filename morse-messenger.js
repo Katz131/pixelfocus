@@ -22,9 +22,9 @@ var MorseMessenger = (function() {
     dot:{val:'E',
       dot:{val:'I',
         dot:{val:'S',dot:{val:'H',dot:{val:'5'},dash:{val:'4'}},dash:{val:'V',dot:{val:'3'}}},
-        dash:{val:'U',dot:{val:'F'},dash:{val:null,dash:{val:'2'}}}},
+        dash:{val:'U',dot:{val:'F'},dash:{val:' ',dash:{val:'2'}}}},
       dash:{val:'A',
-        dot:{val:'R',dot:{val:'L'}},
+        dot:{val:'R',dot:{val:'L'},dash:{val:'⏎'}},
         dash:{val:'W',dot:{val:'P'},dash:{val:'J',dash:{val:'1'}}}}},
     dash:{val:'T',
       dot:{val:'N',
@@ -32,7 +32,7 @@ var MorseMessenger = (function() {
         dash:{val:'K',dot:{val:'C'},dash:{val:'Y'}}},
       dash:{val:'M',
         dot:{val:'G',dot:{val:'Z',dot:{val:'7'}},dash:{val:'Q'}},
-        dash:{val:'O',dot:{val:null,dot:{val:'8'}},dash:{val:null,dot:{val:'9'},dash:{val:'0'}}}}}
+        dash:{val:'O',dot:{val:null,dot:{val:'8'}},dash:{val:'⌫',dot:{val:'9'},dash:{val:'0'}}}}}
   };
 
   var MORSE_MAP = {
@@ -157,7 +157,7 @@ var MorseMessenger = (function() {
     _gapTimer = setTimeout(function() {
       // If user is mid-press, don't auto-lock — they're still keying
       if (_keyDown) { _startGapTimer(); return; }
-      // Auto-lock letter
+      // Auto-lock letter (prosigns already fired instantly in _onUp)
       if (_cursor && _cursor.val && _path.length > 0) {
         _currentWord.push(_path);
         _blip(880, 60);
@@ -233,9 +233,27 @@ var MorseMessenger = (function() {
     if (ksu) { ksu.textContent = 'HOLD TO KEY'; ksu.style.color = '#3a6a3a'; }
 
     if (el < DAH_MS) {
-      if (_cursor && _cursor.dot) { _cursor = _cursor.dot; _path += '.'; _render(); _startGapTimer(); } else { _blip(220, 40); _startGapTimer(); }
+      if (_cursor && _cursor.dot) { _cursor = _cursor.dot; _path += '.'; } else { _blip(220, 40); _render(); _startGapTimer(); return; }
     } else {
-      if (_cursor && _cursor.dash) { _cursor = _cursor.dash; _path += '-'; _render(); _startGapTimer(); } else { _blip(220, 40); _startGapTimer(); }
+      if (_cursor && _cursor.dash) { _cursor = _cursor.dash; _path += '-'; } else { _blip(220, 40); _render(); _startGapTimer(); return; }
+    }
+
+    // Prosigns fire INSTANTLY — no waiting for gap timer
+    if (_cursor.val === ' ') {
+      if (_currentWord.length > 0) { _morseWords.push(_currentWord.slice()); _currentWord = []; }
+      _blip(440, 80);
+      _cursor = TREE; _path = ''; _render(); _clearGapTimer();
+    } else if (_cursor.val === '⌫') {
+      if (_currentWord.length > 0) { _currentWord.pop(); }
+      else if (_morseWords.length > 0) { _currentWord = _morseWords.pop(); if (_currentWord.length > 0) _currentWord.pop(); }
+      _blip(330, 60);
+      _cursor = TREE; _path = ''; _render(); _clearGapTimer();
+    } else if (_cursor.val === '⏎') {
+      _cursor = TREE; _path = ''; _clearGapTimer();
+      var sendBtn = document.getElementById('morseSendBtn');
+      if (sendBtn) sendBtn.click();
+    } else {
+      _render(); _startGapTimer();
     }
   }
 
@@ -377,16 +395,18 @@ var MorseMessenger = (function() {
 
     // Draw nodes
     allN.forEach(function(n) {
-      var letter = n.node.val || '';
-      var isNull = !letter && n.p !== '';
+      var rawVal = n.node.val || '';
+      var isSpecial = rawVal === ' ' || rawVal === '⌫' || rawVal === '⏎';
+      var letter = rawVal === ' ' ? 'SPC' : rawVal;
+      var isNull = !rawVal && n.p !== '';
       var isCur = n.p === _path;
       var onP = _path.indexOf(n.p) === 0;
       var isNum = /[0-9]/.test(letter);
-      var r = isNull ? 4 : (isCur ? 14 : (n.p.length <= 1 ? 12 : (n.p.length <= 2 ? 11 : (n.p.length <= 3 ? 10 : (isNum ? 8 : 9)))));
-      var fill = isNull ? '#111' : (isCur ? '#00ff88' : (onP ? '#0a3a0a' : '#0c120c'));
-      var stroke = isNull ? (onP ? '#00cc66' : '#1a3a1a') : (isCur ? '#00ff88' : (onP ? '#00cc66' : '#1a3a1a'));
-      var tc = isCur ? '#060a06' : (letter ? (isNum ? '#888' : '#00ff88') : '#1a3a1a');
-      var fs = isCur ? 12 : (n.p.length <= 1 ? 11 : (n.p.length <= 2 ? 10 : (n.p.length <= 3 ? 9 : (isNum ? 7 : 8))));
+      var r = isNull ? 4 : (isCur ? 14 : (isSpecial ? 10 : (n.p.length <= 1 ? 12 : (n.p.length <= 2 ? 11 : (n.p.length <= 3 ? 10 : (isNum ? 8 : 9))))));
+      var fill = isNull ? '#111' : (isCur ? '#00ff88' : (isSpecial ? '#1a1a0a' : (onP ? '#0a3a0a' : '#0c120c')));
+      var stroke = isNull ? (onP ? '#00cc66' : '#1a3a1a') : (isCur ? '#00ff88' : (isSpecial ? '#ffd700' : (onP ? '#00cc66' : '#1a3a1a')));
+      var tc = isCur ? '#060a06' : (isSpecial ? '#ffd700' : (letter ? (isNum ? '#888' : '#00ff88') : '#1a3a1a'));
+      var fs = isCur ? 12 : (isSpecial ? 6 : (n.p.length <= 1 ? 11 : (n.p.length <= 2 ? 10 : (n.p.length <= 3 ? 9 : (isNum ? 7 : 8)))));
 
       if (isCur) {
         svg += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(r+5)+'" fill="none" stroke="#00ff88" stroke-width="1" opacity="0.2"><animate attributeName="r" values="'+(r+5)+';'+(r+8)+';'+(r+5)+'" dur="1.5s" repeatCount="indefinite"/></circle>';
@@ -413,12 +433,12 @@ var MorseMessenger = (function() {
 
     var cm = '', ct = '';
     _morseWords.forEach(function(w, i) {
-      if (i > 0) { cm += ' / '; ct += ' '; }
+      if (i > 0) { cm += ' / '; ct += ' / '; }
       cm += w.join(' ');
       ct += w.map(function(c) { return DECODE_MAP[c] || '?'; }).join('');
     });
     if (_currentWord.length > 0) {
-      if (_morseWords.length > 0) { cm += ' / '; ct += ' '; }
+      if (_morseWords.length > 0) { cm += ' / '; ct += ' / '; }
       cm += _currentWord.join(' ');
       ct += _currentWord.map(function(c) { return DECODE_MAP[c] || '?'; }).join('');
     }
@@ -539,6 +559,7 @@ var MorseMessenger = (function() {
     html += '</div>';
 
     html += '<div style="text-align:center;font-size:7px;color:#292929;">SPACEBAR = key · pause 1s = letter locks · pause 2s = word gap · TAB = BT break · ENTER = AR transmit</div>';
+    html += '<div style="text-align:center;font-size:8px;color:#ffd700;margin-top:4px;letter-spacing:0.5px;"><span style="color:#666;">PROSIGNS:</span> <span title="dit dit dah dah">··—— = SPACE</span>  · <span title="dah dah dah dah">———— = BACKSPACE</span>  · <span title="dit dah dit dah">·—·— = SEND</span></div>';
 
     _overlay.innerHTML = html;
     document.body.appendChild(_overlay);
@@ -567,10 +588,13 @@ var MorseMessenger = (function() {
     _wireBtn('morseDelBtn', _doBk);
     _wireBtn('morseArBtn', _doAR);
     _wireBtn('morseTutBtn', function() {
-      // Open the tutorial catalog and jump to morse-telegraph category
-      if (typeof window._openTutorialCatalog === 'function') {
-        window._openTutorialCatalog('morse-telegraph');
-      }
+      // Close morse overlay, then open the tutorial to morse-telegraph category
+      close();
+      setTimeout(function() {
+        if (typeof window._openTutorialTo === 'function') {
+          window._openTutorialTo('morse-telegraph');
+        }
+      }, 100);
     });
 
     // Keyboard
@@ -603,31 +627,54 @@ var MorseMessenger = (function() {
   // ===== Incoming message display =====
   function showIncoming(fromName, morseText) {
     var decoded = decode(morseText);
+
+    function _dismiss() {
+      if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+      document.removeEventListener('keydown', _escHandler);
+    }
+    function _escHandler(e) { if (e.key === 'Escape') _dismiss(); }
+
     var ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;';
+    ov.addEventListener('click', function(e) { if (e.target === ov) _dismiss(); });
+
     var box = document.createElement('div');
     box.style.cssText = 'background:#0a1a0a;border:2px solid #00ff88;border-radius:12px;padding:20px 28px;max-width:500px;width:90%;text-align:center;';
-    box.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#00ff88;margin-bottom:12px;">INCOMING MORSE FROM ' + _escHtml(fromName).toUpperCase() + '</div>';
-    box.innerHTML += '<div style="font-size:14px;color:#ffd700;letter-spacing:3px;margin-bottom:12px;word-break:break-all;">' + _escHtml(morseText) + '</div>';
-    box.innerHTML += '<div id="morseDecodeOut" style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#00ff88;min-height:24px;letter-spacing:2px;"></div>';
-    box.innerHTML += '<button id="morseIncClose" style="margin-top:16px;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px 20px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">DISMISS</button>';
+
+    var header = document.createElement('div');
+    header.style.cssText = "font-family:'Press Start 2P',monospace;font-size:8px;color:#00ff88;margin-bottom:12px;";
+    header.textContent = 'INCOMING MORSE FROM ' + fromName.toUpperCase();
+    box.appendChild(header);
+
+    var morseDiv = document.createElement('div');
+    morseDiv.style.cssText = 'font-size:14px;color:#ffd700;letter-spacing:3px;margin-bottom:12px;word-break:break-all;';
+    morseDiv.textContent = morseText;
+    box.appendChild(morseDiv);
+
+    var out = document.createElement('div');
+    out.style.cssText = "font-family:'Press Start 2P',monospace;font-size:16px;color:#00ff88;min-height:24px;letter-spacing:2px;";
+    box.appendChild(out);
+
+    var btn = document.createElement('button');
+    btn.style.cssText = "margin-top:16px;font-family:'Press Start 2P',monospace;font-size:8px;padding:8px 20px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);";
+    btn.textContent = 'DISMISS';
+    btn.addEventListener('click', function(e) { e.stopPropagation(); _dismiss(); });
+    box.appendChild(btn);
+
     ov.appendChild(box);
     document.body.appendChild(ov);
+    document.addEventListener('keydown', _escHandler);
 
     // Typewriter decode animation
-    var out = document.getElementById('morseDecodeOut');
     var idx = 0;
     function typeChar() {
       if (idx < decoded.length) {
-        if (out) out.textContent += decoded[idx];
+        out.textContent += decoded[idx];
         idx++;
         setTimeout(typeChar, 80);
       }
     }
     setTimeout(typeChar, 600);
-
-    document.getElementById('morseIncClose').onclick = function() { ov.remove(); };
-    ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
   }
 
   // ===== Encode / Decode helpers =====

@@ -1722,7 +1722,16 @@
     if (area !== 'local' || !changes.pixelFocusState) return;
     var newState = changes.pixelFocusState.newValue;
     if (!newState) return;
+    // Preserve local unsaved canvas work — app.js saves frequently
+    // and its stale copy has an empty pixelCanvas, which would
+    // clobber whatever the user is actively drawing.
+    var localCanvas = state.pixelCanvas;
+    var localHasPixels = localCanvas && Object.keys(localCanvas).length > 0;
+    var incomingHasPixels = newState.pixelCanvas && Object.keys(newState.pixelCanvas).length > 0;
     state = newState;
+    if (localHasPixels && !incomingHasPixels) {
+      state.pixelCanvas = localCanvas;
+    }
     if (!state.pixelCanvas) state.pixelCanvas = {};
     if (!state.unlockedColors || state.unlockedColors.length === 0) state.unlockedColors = ['#00ff88'];
     if (!state.savedArtworks) state.savedArtworks = [];
