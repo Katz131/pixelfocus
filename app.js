@@ -4106,6 +4106,7 @@ try {
     renderDoNowBanner();
     try { renderQuestUI(); } catch (_rqe) { console.warn('[Quest] render error:', _rqe); }
     try { renderQuestBonusBadge(); } catch (_) {}
+    try { renderChallengeUI(); } catch (_) {}
     refreshTrackerBriefBadge();
     attachHoverSounds();
 
