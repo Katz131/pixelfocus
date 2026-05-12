@@ -11393,12 +11393,15 @@ try {
     // Pick random challenge type
     var pick = CHALLENGE_POOL[Math.floor(Math.random() * CHALLENGE_POOL.length)];
     var endsAt = Date.now() + CHALLENGE_DURATION_MS;
+    var displayName = friendName || friendId;
+    var reward = CHALLENGE_REWARDS[pick.tier] || CHALLENGE_REWARDS.standard;
 
-    // Send invite via inbox
+    // Send invite via inbox — verify delivery with response check
     try {
       var msgId = state.profileId + '_challenge_invite_' + Date.now();
       var inboxPath = 'artifacts/' + friendId + '/inbox/' + msgId;
       var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
+      showToast('Sending challenge to ' + displayName + '...', 'info');
       fetch(url, {
         method: 'PATCH',
         headers: {'Content-Type':'application/json'},
@@ -11413,14 +11416,22 @@ try {
           endsAt:{integerValue:String(endsAt)},
           ts:{integerValue:String(Date.now())}
         }})
-      }).then(function() {
+      }).then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        // Verify it landed by reading it back
+        return fetch(url).then(function(readResp) {
+          if (!readResp.ok) throw new Error('Verify failed');
+          return readResp.json();
+        });
+      }).then(function(doc) {
+        // Confirmed delivered — doc exists in Firestore
         state.friendChallenge = {
           type: pick.id,
           label: pick.label,
           desc: pick.desc,
           tier: pick.tier,
           opponentId: friendId,
-          opponentName: friendName || friendId,
+          opponentName: displayName,
           opponentProgress: 0,
           startedAt: Date.now(),
           endsAt: endsAt,
@@ -11429,10 +11440,11 @@ try {
         };
         _initChallengeTracking();
         saveState();
-        showToast('Challenge sent to ' + (friendName || friendId) + '!', 'success');
         try { renderChallengeUI(); } catch(_){}
-      }).catch(function() {
-        showToast('Failed to send challenge', 'error');
+        // Show confirmed delivery notification
+        notify('CHALLENGE DELIVERED to ' + displayName + '! "' + pick.label + '" — waiting for their response.', '#00ff88');
+      }).catch(function(err) {
+        showToast('FAILED to deliver challenge to ' + displayName + '. Try again.', 'error');
       });
     } catch(_) {
       showToast('Failed to send challenge', 'error');
@@ -11501,31 +11513,38 @@ try {
     showToast('Challenge declined', 'info');
   }
 
-  // v3.23.257: Withdraw/cancel an active or pending challenge
+  // v3.23.262: Withdraw/cancel an active or pending challenge
   function withdrawChallenge() {
+    console.log('[CHALLENGE] withdrawChallenge called, friendChallenge:', JSON.stringify(state.friendChallenge));
     var ch = state.friendChallenge;
-    if (!ch) return;
-    // Notify opponent that we withdrew
+    if (!ch) {
+      console.log('[CHALLENGE] No active challenge to withdraw');
+      notify('No challenge to withdraw.', '#ff4444');
+      return;
+    }
+    var oppName = ch.opponentName || ch.opponentId || 'opponent';
+    // Notify opponent that we withdrew the challenge request
     try {
-      var msgId = state.profileId + '_challenge_decline_' + Date.now();
+      var msgId = state.profileId + '_challenge_withdrawn_' + Date.now();
       var inboxPath = 'artifacts/' + ch.opponentId + '/inbox/' + msgId;
       var url = 'https://firestore.googleapis.com/v1/projects/pixeltodo-fbbcf/databases/(default)/documents/' + inboxPath;
       fetch(url, {
         method: 'PATCH',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({fields:{
-          type:{stringValue:'challenge_decline'},
+          type:{stringValue:'challenge_withdrawn'},
           fromId:{stringValue:state.profileId},
           fromName:{stringValue:state.displayName || state.profileId},
           ts:{integerValue:String(Date.now())}
         }})
-      }).catch(function(){});
-    } catch(_){}
+      }).catch(function(e){ console.log('[CHALLENGE] withdraw notify failed:', e); });
+    } catch(e){ console.log('[CHALLENGE] withdraw notify error:', e); }
     // Clear local challenge state
     state.friendChallenge = null;
     saveState();
-    showToast('Challenge withdrawn. You can send a new one!', 'info');
-    try { renderChallengeUI(); } catch(_){}
+    console.log('[CHALLENGE] state cleared, rendering UI');
+    try { renderChallengeUI(); } catch(e){ console.log('[CHALLENGE] renderChallengeUI error:', e); }
+    notify('Challenge request to ' + oppName + ' withdrawn. You can send a new one!', '#4ecdc4');
   }
   window.withdrawChallenge = withdrawChallenge;
 
@@ -11593,8 +11612,8 @@ try {
             var wBtn = document.createElement('button');
             wBtn.className = 'btn btn-small';
             wBtn.style.cssText = 'border-color:#ff4444;color:#ff4444;font-size:7px;padding:2px 8px;cursor:pointer;opacity:0.6;transition:all 0.15s;';
-            wBtn.textContent = 'WITHDRAW CHALLENGE';
-            wBtn.title = 'Cancel this challenge and forfeit. You can then send a new one.';
+            wBtn.textContent = 'WITHDRAW CHALLENGE REQUEST';
+            wBtn.title = 'Cancel this challenge request. The opponent will see it as withdrawn. You can then send a new one.';
             wBtn.addEventListener('mouseenter', function() { wBtn.style.opacity = '1'; });
             wBtn.addEventListener('mouseleave', function() { wBtn.style.opacity = '0.6'; });
             wBtn.addEventListener('click', function() {
@@ -14389,6 +14408,19 @@ try {
                     try { showToast(escHtml(msg.fromName || msg.fromId) + ' declined the challenge.', 'info'); } catch(_){}
                     try { renderChallengeUI(); } catch(_){}
                   }
+                } else if (msg.type === 'challenge_withdrawn') {
+                  // v3.23.260: Opponent withdrew their challenge request
+                  try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
+                  // Remove any visible invite cards from this sender
+                  var invDiv = document.getElementById('challengeInvites');
+                  if (invDiv) { invDiv.innerHTML = ''; }
+                  // If we somehow had their challenge active, clear it
+                  if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
+                    state.friendChallenge = null;
+                    saveState();
+                    try { renderChallengeUI(); } catch(_){}
+                  }
+                  showToast(escHtml(msg.fromName || msg.fromId) + ' withdrew the challenge request.', 'info');
                 } else if (msg.type === 'challenge_progress') {
                   // Update opponent progress
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
