@@ -1402,6 +1402,8 @@ try {
         }
         if (!state.realStreak) state.realStreak = 0;
         if (!state.longestRealStreak) state.longestRealStreak = state.realStreak || 0;
+        // v3.23.279: Debug — trace challenge persistence on load
+        console.log('[LOAD] friendChallenge from storage: ' + (state.friendChallenge ? JSON.stringify({status: state.friendChallenge.status, opponent: state.friendChallenge.opponentName}) : 'null'));
 
         // v3.23.226: Re-backfill realStreak from focusHistory to fix stale-sync drops.
         // Recomputes every load so the number always matches the actual focusHistory.
@@ -6310,7 +6312,7 @@ try {
       else elapsedEl.style.color = '#ff6b6b';
       // Countdown to next nag + auto-fire when it hits zero
       if (state.surveillanceActive) {
-        var _nagInterval = state.surveillanceNagInterval || 300000; // dynamic per tier
+        var _nagInterval = 60000; // v3.23.282: TEMP 60s for testing (was state.surveillanceNagInterval || 300000)
         // Re-entry guard: prevent multi-fire while async storage write is in flight
         if (window._survNagFiring) {
           elapsedEl.textContent = txt + '  |  NAG FIRING...';
@@ -6441,7 +6443,7 @@ try {
         timerEl.style.color = _tc;
         statusEl.textContent = 'ACTIVE';
         statusEl.style.color = _tc;
-        var _intMin = Math.round((state.surveillanceNagInterval || 300000) / 60000);
+        var _intMin = 1; // v3.23.282: TEMP 1min for testing (was Math.round((state.surveillanceNagInterval || 300000) / 60000))
         var _intTxt = _intMin >= 60 ? Math.floor(_intMin/60) + 'h' + (_intMin%60 > 0 ? ' ' + (_intMin%60) + 'm' : '') : _intMin + ' min';
         var _tierNames = {surveillance:'Surveillance',sentinel:'Sentinel',passive:'Passive Surveillance'};
         descEl.textContent = (_tierNames[state.surveillanceTier] || 'Surveillance') + ' active. Nag every ' + _intTxt + ' without a running focus timer.';
@@ -6608,8 +6610,31 @@ try {
       if (_tierPicker) _tierPicker.style.display = state.surveillanceActive ? 'none' : 'flex';
       if (_sliderRow && state.surveillanceActive) _sliderRow.style.display = 'none';
     }
+    // v3.23.278: Inline PROMISE TIMER countdown on the focus timer area
+    // Shows the 3-minute countdown after clicking YES on a surveillance nag.
+    // Reads state.promiseDeadlineAt (epoch ms when the 3 minutes expire).
+    function _updateSurvNagInline() {
+      var el = document.getElementById('survNagInline');
+      if (!el) return;
+      // Only show when promise timer is active (promiseDeadlineAt is in the future)
+      if (!state.promiseDeadlineAt || state.promiseDeadlineAt <= Date.now()) {
+        el.style.display = 'none';
+        return;
+      }
+      var rem = state.promiseDeadlineAt - Date.now();
+      var m = Math.floor(rem / 60000);
+      var s = Math.floor((rem % 60000) / 1000);
+      var urgent = rem < 30000; // last 30 seconds
+      el.style.display = '';
+      el.style.borderColor = urgent ? '#ff4466' : '#ff9f43';
+      el.style.color = urgent ? '#ff4466' : '#ff9f43';
+      el.style.background = urgent ? 'linear-gradient(135deg,#ff446611,#ff446608)' : 'linear-gradient(135deg,#ff9f4311,#ff9f4308)';
+      el.textContent = '⚠ PROMISE: ' + m + ':' + (s < 10 ? '0' : '') + s + ' — START A SESSION!';
+      if (urgent) el.style.animation = 'none'; // reset
+      if (urgent) { el.offsetHeight; el.style.animation = 'survNagPulse 0.5s ease-in-out infinite'; }
+    }
     // Update timer display every second (shows seconds)
-    setInterval(function() { updateSurveillanceUI(); _updateTierPickerVisibility(); _updateComboTimer(); }, 1000);
+    setInterval(function() { updateSurveillanceUI(); _updateTierPickerVisibility(); _updateComboTimer(); _updateSurvNagInline(); }, 1000);
 
     // Old setInterval nag check removed — now runs inside updateSurveillanceUI (v3.22.57)
 
@@ -11570,6 +11595,8 @@ try {
 
   var _withdrawCooldown = false; // v3.23.271: block re-renders during withdraw animation
   function renderChallengeUI() {
+    // v3.23.279: Debug — trace why challenge disappears on reload
+    console.log('[CHALLENGE] renderChallengeUI called. friendChallenge=' + JSON.stringify(state.friendChallenge ? {status: state.friendChallenge.status, opponent: state.friendChallenge.opponentName, type: state.friendChallenge.type} : null));
     // If withdraw just happened, don't rebuild the card — let the confirmation stay visible
     if (_withdrawCooldown) {
       console.log('[CHALLENGE] renderChallengeUI blocked by withdraw cooldown');
@@ -14466,8 +14493,10 @@ try {
                   }
                 } else if (msg.type === 'challenge_decline') {
                   // Opponent declined our challenge
+                  console.log('[CHALLENGE] INBOX: challenge_decline from ' + msg.fromId);
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
+                    console.log('[CHALLENGE] CLEARING friendChallenge due to decline from ' + msg.fromId);
                     state.friendChallenge = null;
                     save();
                     try { showToast(escHtml(msg.fromName || msg.fromId) + ' declined the challenge.', 'info'); } catch(_){}
@@ -14475,6 +14504,7 @@ try {
                   }
                 } else if (msg.type === 'challenge_withdrawn') {
                   // v3.23.260: Opponent withdrew their challenge request
+                  console.log('[CHALLENGE] INBOX: challenge_withdrawn from ' + msg.fromId);
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   // Remove any visible invite cards from this sender
                   var invDiv = document.getElementById('challengeInvites');

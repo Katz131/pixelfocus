@@ -19,7 +19,33 @@
 // PixelFocus Background Service Worker
 
 // v3.23.35: Open surveillance nag as a popup window that re-focuses every 5s
+// v3.23.280: Persist nag window state so it survives extension reload
 var _nagWindowId = null;
+var _nagWindowPath = null;
+var _nagWindowOpenedAt = 0;
+
+function _syncNagTracking() {
+  try {
+    chrome.storage.local.set({
+      pixelNagTracking: {
+        nagWindowId: _nagWindowId,
+        nagPath: _nagWindowPath,
+        nagOpenedAt: _nagWindowOpenedAt
+      }
+    });
+  } catch(_) {}
+}
+
+function _clearNagTrackingMemory() {
+  _nagWindowId = null;
+  _nagWindowPath = null;
+  _nagWindowOpenedAt = 0;
+}
+function _clearNagTracking() {
+  _clearNagTrackingMemory();
+  try { chrome.storage.local.remove('pixelNagTracking'); } catch(_) {}
+}
+
 function openNagPopup(htmlPath) {
   var url = chrome.runtime.getURL(htmlPath);
   console.log('[NagPopup] Opening:', url);
@@ -40,13 +66,16 @@ function openNagPopup(htmlPath) {
       }
       if (win && win.id) {
         _nagWindowId = win.id;
+        _nagWindowPath = htmlPath;
+        _nagWindowOpenedAt = Date.now();
+        _syncNagTracking();
         console.log('[NagPopup] Created window', win.id);
         // Re-focus every 5s so it stays on top
         var _refId = setInterval(function() {
           if (!_nagWindowId) { clearInterval(_refId); return; }
           try {
             chrome.windows.get(_nagWindowId, function(w) {
-              if (chrome.runtime.lastError || !w) { _nagWindowId = null; clearInterval(_refId); return; }
+              if (chrome.runtime.lastError || !w) { _clearNagTracking(); clearInterval(_refId); return; }
               chrome.windows.update(_nagWindowId, { focused: true });
             });
           } catch(_) { clearInterval(_refId); }
@@ -222,6 +251,31 @@ try {
   });
 } catch(_) {}
 
+// v3.23.280: Restore nag window on startup (survives extension reload)
+// Delay 2s so the onInstalled reload handler (500ms) finishes first —
+// otherwise it sees the new nag tab as "stale" and closes it without reopening popup.
+setTimeout(function() {
+  try {
+    chrome.storage.local.get('pixelNagTracking', function(result) {
+      var t = result.pixelNagTracking;
+      if (!t || !t.nagPath) return;
+      // Don't reopen if the nag is stale (> 10 minutes old — user likely walked away)
+      var nagAge = t.nagOpenedAt ? (Date.now() - t.nagOpenedAt) : 0;
+      if (nagAge > 600000) {
+        console.log('[NagRestore] Nag window was ' + Math.round(nagAge/60000) + ' min old. Too stale, skipping.');
+        try { chrome.storage.local.remove('pixelNagTracking'); } catch(_) {}
+        return;
+      }
+      // Close the stale blank window if it still exists
+      if (t.nagWindowId) {
+        try { chrome.windows.remove(t.nagWindowId, function() {}); } catch(_) {}
+      }
+      console.log('[NagRestore] Reopening nag window: ' + t.nagPath);
+      openNagPopup(t.nagPath);
+    });
+  } catch(_) {}
+}, 2000);
+
 // v3.23.14: On service worker wake, if a focus timer is running, make sure
 // idle challenge alarms are cleared. Handles the case where the SW dies and
 // restarts mid-session — the onChanged listener wouldn't fire again.
@@ -245,6 +299,7 @@ function clearPenaltyActiveFlag() {
         var s = r.pixelFocusState || {};
         if (s.penaltyCountdownActive) {
           s.penaltyCountdownActive = false;
+          s.promiseDeadlineAt = 0;
           _safeSaveState(s);
           console.log('[Penalty] penaltyCountdownActive cleared.');
         }
@@ -285,6 +340,7 @@ function applyPromisePenalty() {
       _setPromiseTimer(null, true);
       // Clear the flag
       state.penaltyCountdownActive = false;
+      state.promiseDeadlineAt = 0;
       _safeSaveState(state);
       return;
     }
@@ -295,6 +351,7 @@ function applyPromisePenalty() {
         Math.round((state.timerEndsAt - Date.now()) / 1000) + 's left). Penalty CANCELLED.');
       _setPromiseTimer(null, true);
       state.penaltyCountdownActive = false;
+      state.promiseDeadlineAt = 0;
       _safeSaveState(state);
       return;
     }
@@ -306,6 +363,7 @@ function applyPromisePenalty() {
         Math.round((Date.now() - state.lastStartedSessionAt) / 1000) + 's ago. Penalty CANCELLED.');
       _setPromiseTimer(null, true);
       state.penaltyCountdownActive = false;
+      state.promiseDeadlineAt = 0;
       _safeSaveState(state);
       return;
     }
@@ -327,6 +385,7 @@ function applyPromisePenalty() {
     var prevCoins = state.coins || 0;
     state.coins = Math.max(0, prevCoins - PROMISE_PENALTY);
     state.penaltyCountdownActive = false;
+    state.promiseDeadlineAt = 0;
     _safeSaveState(state);
     console.log('[PromiseTimer] PENALTY APPLIED: $' + PROMISE_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
@@ -376,6 +435,7 @@ function applyPenaltyTimerPenalty() {
       console.log('[PenaltyTimer] SAFETY CHECK: timerState=' + state.timerState + '. Penalty CANCELLED.');
       _setPenaltyTimer(null, true);
       state.penaltyCountdownActive = false;
+      state.promiseDeadlineAt = 0;
       _safeSaveState(state);
       return;
     }
@@ -383,6 +443,7 @@ function applyPenaltyTimerPenalty() {
       console.log('[PenaltyTimer] SAFETY CHECK: timerEndsAt in future. Penalty CANCELLED.');
       _setPenaltyTimer(null, true);
       state.penaltyCountdownActive = false;
+      state.promiseDeadlineAt = 0;
       _safeSaveState(state);
       return;
     }
@@ -391,6 +452,7 @@ function applyPenaltyTimerPenalty() {
         Math.round((Date.now() - state.lastStartedSessionAt) / 1000) + 's ago. Penalty CANCELLED.');
       _setPenaltyTimer(null, true);
       state.penaltyCountdownActive = false;
+      state.promiseDeadlineAt = 0;
       _safeSaveState(state);
       return;
     }
@@ -408,6 +470,7 @@ function applyPenaltyTimerPenalty() {
     var prevCoins = state.coins || 0;
     state.coins = Math.max(0, prevCoins - PENALTY_TIMER_PENALTY);
     state.penaltyCountdownActive = false;
+    state.promiseDeadlineAt = 0;
     _safeSaveState(state);
     console.log('[PenaltyTimer] PENALTY APPLIED: $' + PENALTY_TIMER_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
@@ -504,6 +567,7 @@ chrome.storage.onChanged.addListener(function(changes, area) {
     }
     if (anyCancelled) {
       newState.penaltyCountdownActive = false;
+      newState.promiseDeadlineAt = 0;
       _safeSaveState(newState);
     }
   }
@@ -515,6 +579,14 @@ chrome.storage.onChanged.addListener(function(changes, area) {
 // and applyPenaltyTimerPenalty now check timerState themselves, but we also
 // read storage here first to avoid even calling them unnecessarily.
 chrome.windows.onRemoved.addListener(function(windowId) {
+  // v3.23.280: Clear nag memory when window closes — but DON'T clear storage here.
+  // During extension reload, Chrome closes our windows and onRemoved fires in the
+  // dying service worker, which would wipe storage before the new SW can read it.
+  // Storage is cleared explicitly via NAG_DISMISSED message from the nag window.
+  if (windowId === _nagWindowId) {
+    console.log('[NagPopup] Window ' + windowId + ' closed. Clearing memory only.');
+    _clearNagTrackingMemory();
+  }
   if (windowId === _promiseTimerWindowId && !_promiseTimerResolved) {
     console.log('[PromiseTimer] Window ' + windowId + ' was CLOSED before resolution. Checking timer state...');
     setTimeout(function() {
@@ -571,6 +643,13 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     }
     sendResponse({ ok: true });
   }
+  // v3.23.280: Nag window explicitly dismissed (YES, NO, or close-without-responding).
+  // This is where we safely clear storage — NOT in onRemoved (which fires during reload).
+  if (msg && msg.type === 'NAG_DISMISSED') {
+    console.log('[NagPopup] Nag dismissed by window. Clearing storage.');
+    _clearNagTracking();
+    try { sendResponse({ ok: true }); } catch(_) {}
+  }
   // v3.22.91: Open promise timer as a popup window AND track it in background
   // so the $300 penalty fires even if the user closes the window.
   if (msg && msg.type === 'OPEN_PROMISE_TIMER') {
@@ -598,6 +677,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         chrome.storage.local.get('pixelFocusState', function(r) {
           var s = r.pixelFocusState || {};
           s.penaltyCountdownActive = true;
+          s.promiseDeadlineAt = Date.now() + 180000; // v3.23.278: persist deadline for inline display
           _safeSaveState(s);
         });
       } else if (!isTestPromise) {
@@ -617,6 +697,11 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     console.log('[PromiseTimer] Window reported success — focus timer started. Penalty cancelled.');
     _setPromiseTimer(null, true);
     try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+    // v3.23.278: Clear promise deadline from state for inline display
+    try { chrome.storage.local.get('pixelFocusState', function(r) {
+      var s = r.pixelFocusState || {};
+      if (s.promiseDeadlineAt) { s.promiseDeadlineAt = 0; _safeSaveState(s); }
+    }); } catch(_) {}
     try { sendResponse({ ok: true }); } catch(_) {}
   }
   // v3.22.96: Track promise timer opened directly by surveillance-nag-window.js
@@ -630,6 +715,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       chrome.storage.local.get('pixelFocusState', function(r) {
         var s = r.pixelFocusState || {};
         s.penaltyCountdownActive = true;
+        s.promiseDeadlineAt = Date.now() + 180000; // v3.23.278: persist deadline for inline display
         _safeSaveState(s);
       });
     }
@@ -1148,7 +1234,8 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       }
 
       // Respect the user's chosen nag interval — don't fire early
-      var nagIntervalMs = state.surveillanceNagInterval || 300000;
+      // v3.23.280: TEMP override to 60s for testing (was surveillanceNagInterval || 300000)
+      var nagIntervalMs = 60000;
       var lastNag = state.surveillanceLastNag || 0;
       if (lastNag && (now - lastNag) < (nagIntervalMs - 20000)) return; // 20s buffer for alarm jitter
 
@@ -1583,7 +1670,7 @@ chrome.runtime.onInstalled.addListener(function(details) {
   chrome.alarms.create('pixelfocus-daycheck', { periodInMinutes: 30 });
   chrome.alarms.create('pixelfocus-ct-idle', { periodInMinutes: 5 });
   chrome.alarms.create('pixelfocus-focus-idle', { periodInMinutes: 5 });
-  chrome.alarms.create('pixelfocus-surveillance', { periodInMinutes: 5 });
+  chrome.alarms.create('pixelfocus-surveillance', { periodInMinutes: 1 }); // v3.23.280: TEMP 1min for testing (was 5)
   chrome.alarms.create('pixelfocus-keepopen', { periodInMinutes: 5 });
   chrome.alarms.create('pixelfocus-site-nag', { periodInMinutes: 2 });
   chrome.alarms.create('pixelfocus-volume-mute', { periodInMinutes: 10 });
@@ -1636,7 +1723,7 @@ chrome.runtime.onStartup.addListener(function() {
   chrome.alarms.create('pixelfocus-daycheck', { periodInMinutes: 30 });
   chrome.alarms.create('pixelfocus-ct-idle', { periodInMinutes: 5 });
   chrome.alarms.create('pixelfocus-focus-idle', { periodInMinutes: 5 });
-  chrome.alarms.create('pixelfocus-surveillance', { periodInMinutes: 5 });
+  chrome.alarms.create('pixelfocus-surveillance', { periodInMinutes: 1 }); // v3.23.280: TEMP 1min for testing (was 5)
   chrome.alarms.create('pixelfocus-keepopen', { periodInMinutes: 5 });
   chrome.alarms.create('pixelfocus-site-nag', { periodInMinutes: 2 });
   chrome.alarms.create('pixelfocus-volume-mute', { periodInMinutes: 10 });
@@ -1674,7 +1761,7 @@ function opportunisticSurveillanceCheck() {
     if (!state || !state.surveillanceActive) return;
     if (state.surveillanceEndsAt && state.surveillanceEndsAt <= now) return;
     if (state.timerEndsAt && state.timerEndsAt > now) return;
-    var _oppNagMs = state.surveillanceNagInterval || 300000;
+    var _oppNagMs = 60000; // v3.23.280: TEMP 60s for testing (was state.surveillanceNagInterval || 300000)
     if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
       // v3.22.98: Reset nag anchor while timer is active so nag doesn't fire the instant it ends
       if (state.surveillanceLastNag && (now - state.surveillanceLastNag) > (_oppNagMs - 20000)) {

@@ -125,6 +125,7 @@ body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 .timer-display { font-family:'Press Start 2P',monospace; font-size:30px; color:var(--accent); text-shadow:0 0 20px var(--glow); margin:8px 0; letter-spacing:4px; }
 .timer-display.running { animation:pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%,100%{text-shadow:0 0 20px var(--glow);} 50%{text-shadow:0 0 40px var(--glow);} }
+@keyframes survNagPulse { 0%,100%{opacity:0.85;} 50%{opacity:0.4;} }
 .timer-label { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:2px; margin-bottom:4px; }
 .timer-controls { display:flex; gap:8px; justify-content:center; margin-top:8px; }
 .btn { padding:8px 16px; border:2px solid var(--border); border-radius:4px; background:var(--surface2); color:var(--text); font-family:'Press Start 2P',monospace; font-size:9px; cursor:pointer; transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1); border-bottom:3px solid rgba(0,0,0,0.3); }
@@ -753,6 +754,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
   <div id="challengeBanner" style="display:none;background:linear-gradient(135deg,rgba(255,140,58,0.12),rgba(255,215,0,0.08));border:1px solid #ff8c3a;border-radius:6px;padding:6px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Idle Challenge active! Complete this session without pausing for 1.5x rewards.">&#9876; IDLE CHALLENGE ACTIVE &mdash; 1.5x REWARDS &#9876;</div>
   <div id="questBonusBadge" style="display:none;background:linear-gradient(135deg,rgba(255,215,0,0.15),rgba(255,107,157,0.10));border:1px solid #ffd700;border-radius:6px;padding:5px 14px;margin:4px auto 4px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Your daily quest reward doubles the textiles from your next completed focus session!">&#9876; 2x TEXTILES &#8212; QUEST REWARD ACTIVE &#9876;</div>
   <div class="timer-display" id="timerDisplay" title="Counts down to 00:00. Tab away or close the window if you need a break &mdash; the timer keeps running.">10:00</div>
+  <div id="survNagInline" style="display:none;text-align:center;margin:-4px auto 4px;max-width:360px;font-family:'Press Start 2P',monospace;font-size:7px;letter-spacing:1px;padding:4px 10px;border-radius:4px;border:1px solid;opacity:0.85;" title="Promise timer &mdash; you said YES on a surveillance nag. Start a focus session before time runs out or lose $300!"></div>
   <div class="block-progress-row" id="blockProgress" title="Visual progress: each segment fills as a 10-minute textile completes within the current session."></div>
   <div class="timer-controls">
     <button class="btn btn-primary" id="startBtn" title="Start or pause the focus timer for the selected duration. Click again while running to pause.">START</button>

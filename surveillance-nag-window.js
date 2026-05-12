@@ -148,6 +148,8 @@
     // YES — record it, reset consecutive NOs, open the 3-minute promise timer, close this window
     yesBtn.addEventListener('click', function() {
       _responded = true;
+      // v3.23.280: Tell background this nag is done (clears reload-persistence)
+      try { chrome.runtime.sendMessage({ type: 'NAG_DISMISSED' }); } catch(_) {}
       try {
         chrome.storage.local.get('pixelFocusState', function(result) {
           var state = result.pixelFocusState || {};
@@ -173,6 +175,8 @@
     // NO — record it, increment consecutive NOs. On 3rd consecutive: open promise timer.
     noBtn.addEventListener('click', function() {
       _responded = true;
+      // v3.23.280: Tell background this nag is done (clears reload-persistence)
+      try { chrome.runtime.sendMessage({ type: 'NAG_DISMISSED' }); } catch(_) {}
       try {
         chrome.storage.local.get('pixelFocusState', function(result) {
           var state = result.pixelFocusState || {};
@@ -302,6 +306,9 @@
     try {
       window.addEventListener('pagehide', function() {
         if (_responded) return; // already clicked YES or NO
+        // NOTE: Do NOT send NAG_DISMISSED here — pagehide also fires during
+        // extension reload, which would wipe the tracking and prevent the nag
+        // from reopening. YES/NO buttons send NAG_DISMISSED explicitly.
         // Increment consecutive NOs in storage (same as clicking NO)
         try {
           chrome.storage.local.get('pixelFocusState', function(result) {
