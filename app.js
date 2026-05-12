@@ -11419,6 +11419,11 @@ try {
           save();
         } catch(e) { console.log('[CHALLENGE] state save error:', e); }
         try { renderChallengeUI(); } catch(e) { console.log('[CHALLENGE] renderUI error:', e); }
+        // Reset the CHALLENGE button in friends list
+        try {
+          var cBtn = document.querySelector('.friend-challenge-btn[data-fid="' + friendId + '"]');
+          if (cBtn) { cBtn.textContent = '⚔ SENT!'; cBtn.style.opacity = '0.5'; cBtn.style.borderColor = '#00ff88'; cBtn.style.color = '#00ff88'; }
+        } catch(_){}
         // Show confirmed delivery notification
         _challengeSending = false;
         notify('CHALLENGE DELIVERED to ' + displayName + '! "' + pick.label + '" — waiting for their response.', '#00ff88');
@@ -11426,11 +11431,19 @@ try {
         // Only fires on actual delivery failure
         _challengeSending = false;
         console.log('[CHALLENGE] delivery FAILED:', err);
+        try {
+          var cBtn = document.querySelector('.friend-challenge-btn[data-fid="' + friendId + '"]');
+          if (cBtn) { cBtn.disabled = false; cBtn.style.opacity = ''; cBtn.textContent = '⚔ CHALLENGE'; }
+        } catch(_){}
         notify('FAILED to deliver challenge to ' + displayName + '. Try again.', '#ff4444');
       });
     } catch(e) {
       _challengeSending = false;
       console.log('[CHALLENGE] sendChallenge outer error:', e);
+      try {
+        var cBtn = document.querySelector('.friend-challenge-btn[data-fid="' + friendId + '"]');
+        if (cBtn) { cBtn.disabled = false; cBtn.style.opacity = ''; cBtn.textContent = '⚔ CHALLENGE'; }
+      } catch(_){}
       notify('Failed to send challenge.', '#ff4444');
     }
   }
@@ -11529,6 +11542,17 @@ try {
     } catch(e) { console.log('[WITHDRAW] UI error:', e); _withdrawCooldown = false; }
     // 3. Banner notification
     try { notify('Challenge' + (oppName ? ' to ' + oppName : '') + ' withdrawn!', '#4ecdc4'); } catch(_){}
+    // 3b. Re-enable CHALLENGE button in friends list so user can send again
+    try {
+      var allCBtns = document.querySelectorAll('.friend-challenge-btn');
+      for (var _bi = 0; _bi < allCBtns.length; _bi++) {
+        allCBtns[_bi].disabled = false;
+        allCBtns[_bi].style.opacity = '';
+        allCBtns[_bi].style.borderColor = '#ffa500';
+        allCBtns[_bi].style.color = '#ffa500';
+        allCBtns[_bi].textContent = '⚔ CHALLENGE';
+      }
+    } catch(_){}
     // 4. Tell opponent via ProfileSync
     if (oppId) {
       try {
