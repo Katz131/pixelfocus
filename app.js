@@ -610,11 +610,11 @@ try {
   // DUAL CURRENCY PRICING — each tier costs BOTH textiles AND coins.
   // First two tiers (12x12, 16x16) are gentle so early growth is reachable.
   // From 20x20 upward the curve ramps 10x per step into multi-billion-textile
-  // territory. Coin cost is textile cost / 20 on all tiers.
+  // territory. Coin cost is textile cost / 2 on all tiers (v3.23.298: raised from /20).
   function generateCanvasUpgrades(currentSize) {
     const upgrades = [{ size: 8, cost: 0, coinCost: 0, label: '8\u00d78 (starter)' }];
-    upgrades.push({ size: 12, cost: 200,  coinCost: 10,  label: '12\u00d712' });
-    upgrades.push({ size: 16, cost: 2000, coinCost: 100, label: '16\u00d716' });
+    upgrades.push({ size: 12, cost: 200,  coinCost: 1000,  label: '12\u00d712' });
+    upgrades.push({ size: 16, cost: 2000, coinCost: 10000, label: '16\u00d716' });
     const maxSize = Math.max(currentSize + 24, 32);
     let s = 20;
     let cost = 100000;
@@ -622,7 +622,7 @@ try {
       upgrades.push({
         size: s,
         cost: Math.round(cost),
-        coinCost: Math.round(cost / 20),
+        coinCost: Math.round(cost * 2),
         label: `${s}\u00d7${s}`
       });
       s += 4;
@@ -812,6 +812,7 @@ try {
     // v3.23.166: Friend challenge system
     friendChallenge: null,
     friendChallengeHistory: [],
+    pendingChallengeInvites: [],   // v3.23.301: persisted invites so they survive popup close
     friendChallengeWins: 0,
     // v3.23.169: Morse code messaging
     morseInbox: [],
@@ -1359,6 +1360,26 @@ try {
         if (!state._fixDoubleTextile145) {
           state._fixDoubleTextile145 = true;
           state.questDoubleTextile = false;
+        }
+
+        // v3.23.287: Clear stuck penaltyCountdownActive on load —
+        // if no penalty/promise windows are actually active, the flag is stale
+        if (state.penaltyCountdownActive) {
+          try {
+            chrome.storage.local.get('pixelPenaltyTracking', function(ptr) {
+              var pt = ptr && ptr.pixelPenaltyTracking;
+              var hasActivePromise = pt && pt.promiseWindowId && !pt.promiseResolved;
+              var hasActivePenalty = pt && pt.penaltyWindowId && !pt.penaltyResolved;
+              if (!hasActivePromise && !hasActivePenalty) {
+                console.log('[Load] penaltyCountdownActive was stuck true with no active penalty/promise windows — clearing.');
+                state.penaltyCountdownActive = false;
+                save();
+              }
+            });
+          } catch (_) {
+            // If storage read fails, clear it anyway — better to allow pause than block it
+            state.penaltyCountdownActive = false;
+          }
         }
 
         // v3.23.110: Compute real lifetimeSessions from focusHistory.
@@ -3109,14 +3130,40 @@ try {
     var windowStartMs = dayStart + (wStart * 60 * 60 * 1000);
     var windowEndMs = dayStart + (wEnd * 60 * 60 * 1000);
 
+    // v3.23.296: Track placed label positions to prevent overlap / garbled text
+    var _placedLabels = []; // array of {left:pct, right:pct} ranges
+    function _labelFits(pct, text) {
+      // Each character in 5px font ≈ 1.2% of bar width; estimate label width
+      var estWidthPct = text.length * 1.2;
+      var lo = pct - estWidthPct * 0.5;
+      var hi = pct + estWidthPct * 0.5;
+      for (var _pi = 0; _pi < _placedLabels.length; _pi++) {
+        if (lo < _placedLabels[_pi].right && hi > _placedLabels[_pi].left) return false;
+      }
+      _placedLabels.push({ left: lo, right: hi });
+      return true;
+    }
+
     for (var i = 0; i < sessions.length; i++) {
       var s = sessions[i];
       totalMin += (s.min || 0);
       sessionCount++;
 
+      // v3.23.297: Use s.min as the authoritative duration when timestamps are shorter.
+      // The end time (Date.now() at completion) is reliable; the start may be wrong
+      // if the extension reloaded mid-session and _sessionStartedAt was reset.
+      var rawStart = s.start;
+      var rawEnd = s.end;
+      var rawSpanMs = rawEnd - rawStart;
+      var minSpanMs = (s.min || 0) * 60000;
+      if (minSpanMs > rawSpanMs * 1.5 && minSpanMs > 0) {
+        // Timestamps are too short — recompute start from end minus actual duration
+        rawStart = rawEnd - minSpanMs;
+      }
+
       // Clip session to window
-      var sStart = Math.max(s.start, windowStartMs);
-      var sEnd = Math.min(s.end, windowEndMs);
+      var sStart = Math.max(rawStart, windowStartMs);
+      var sEnd = Math.min(rawEnd, windowEndMs);
       if (sStart >= sEnd) continue; // outside this window
 
       var leftPct = ((sStart - windowStartMs) / windowMs) * 100;
@@ -3126,17 +3173,19 @@ try {
       var block = document.createElement('div');
       block.style.cssText = 'position:absolute;top:2px;bottom:2px;border-radius:3px;background:linear-gradient(180deg,#4ecdc4,#26a69a);opacity:0.85;left:' + leftPct + '%;width:' + widthPct + '%;';
 
-      // Tooltip
-      var startTime = new Date(s.start);
-      var endTime = new Date(s.end);
+      // Tooltip — use corrected rawStart for display
+      var startTime = new Date(rawStart);
+      var endTime = new Date(rawEnd);
       block.title = startTime.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + ' - ' +
                      endTime.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + ' (' + (s.min || '?') + ' min)';
       bar.appendChild(block);
 
-      // v3.23.6: Time labels below segment
+      // v3.23.296: Time labels below segment — skip if it would overlap an existing label
       var endPct = leftPct + widthPct;
-      bar.appendChild(_tlTimeLabel(_tlFmtMs(s.start), leftPct, 'left'));
-      bar.appendChild(_tlTimeLabel(_tlFmtMs(s.end), endPct, 'right'));
+      var startText = _tlFmtMs(rawStart);
+      var endText = _tlFmtMs(rawEnd);
+      if (_labelFits(leftPct, startText)) bar.appendChild(_tlTimeLabel(startText, leftPct, 'left'));
+      if (_labelFits(endPct, endText)) bar.appendChild(_tlTimeLabel(endText, endPct, 'right'));
     }
 
     // Blocked-out time zones (v3.21.30)
@@ -6312,7 +6361,7 @@ try {
       else elapsedEl.style.color = '#ff6b6b';
       // Countdown to next nag + auto-fire when it hits zero
       if (state.surveillanceActive) {
-        var _nagInterval = 60000; // v3.23.282: TEMP 60s for testing (was state.surveillanceNagInterval || 300000)
+        var _nagInterval = state.surveillanceNagInterval || 300000;
         // Re-entry guard: prevent multi-fire while async storage write is in flight
         if (window._survNagFiring) {
           elapsedEl.textContent = txt + '  |  NAG FIRING...';
@@ -6443,7 +6492,7 @@ try {
         timerEl.style.color = _tc;
         statusEl.textContent = 'ACTIVE';
         statusEl.style.color = _tc;
-        var _intMin = 1; // v3.23.282: TEMP 1min for testing (was Math.round((state.surveillanceNagInterval || 300000) / 60000))
+        var _intMin = Math.round((state.surveillanceNagInterval || 300000) / 60000);
         var _intTxt = _intMin >= 60 ? Math.floor(_intMin/60) + 'h' + (_intMin%60 > 0 ? ' ' + (_intMin%60) + 'm' : '') : _intMin + ' min';
         var _tierNames = {surveillance:'Surveillance',sentinel:'Sentinel',passive:'Passive Surveillance'};
         descEl.textContent = (_tierNames[state.surveillanceTier] || 'Surveillance') + ' active. Nag every ' + _intTxt + ' without a running focus timer.';
@@ -6619,6 +6668,29 @@ try {
       // Only show when promise timer is active (promiseDeadlineAt is in the future)
       if (!state.promiseDeadlineAt || state.promiseDeadlineAt <= Date.now()) {
         el.style.display = 'none';
+        // v3.23.289: If deadline passed, clear it from state so it doesn't linger
+        if (state.promiseDeadlineAt && state.promiseDeadlineAt <= Date.now()) {
+          state.promiseDeadlineAt = 0;
+        }
+        return;
+      }
+      // v3.23.290: If session completed, promise is fully kept — clear everything
+      if (state.timerState === 'completed') {
+        el.style.display = 'none';
+        state.promiseDeadlineAt = 0;
+        state.penaltyCountdownActive = false;
+        save();
+        return;
+      }
+      // v3.23.290: If focus timer is running/countdown, promise countdown is PAUSED
+      // (resumes if user pauses or resets). Show status, don't hide.
+      if (state.timerState === 'running' || state.timerState === 'countdown') {
+        el.style.display = '';
+        el.style.borderColor = '#00ff88';
+        el.style.color = '#00ff88';
+        el.style.background = 'linear-gradient(135deg,#00ff8811,#00ff8808)';
+        el.style.animation = 'none';
+        el.textContent = '✓ PROMISE: FOCUSING — PENALTY PAUSED';
         return;
       }
       var rem = state.promiseDeadlineAt - Date.now();
@@ -7095,17 +7167,28 @@ try {
     }
     if (state.timerState === 'running') {
       // v3.23.2: Warn if a penalty countdown is active — pausing resumes the penalty timer
+      // v3.23.287: Wrapped in try-catch — if the confirm modal fails to show for
+      // ANY reason, pause goes through. A button must never silently do nothing.
       if (state.penaltyCountdownActive && !window._penaltyPauseConfirmed) {
-        showPenaltyConfirm(
-          'PAUSE — ARE YOU SURE?',
-          'A penalty countdown is active. Pausing this session will resume the $300 penalty timer.',
-          function() {
-            window._penaltyPauseConfirmed = true;
-            startTimer(); // re-enter, this time it'll skip the confirm
-            window._penaltyPauseConfirmed = false;
+        try {
+          showPenaltyConfirm(
+            'PAUSE — ARE YOU SURE?',
+            'A penalty countdown is active. Pausing this session will resume the $300 penalty timer.',
+            function() {
+              window._penaltyPauseConfirmed = true;
+              startTimer(); // re-enter, this time it'll skip the confirm
+              window._penaltyPauseConfirmed = false;
+            }
+          );
+          // Verify the modal actually appeared in the DOM
+          if (document.getElementById('penaltyConfirmModal')) {
+            return; // Modal is visible — wait for user decision
           }
-        );
-        return;
+          // Modal didn't appear — fall through to pause
+          console.warn('[Pause] Penalty confirm modal failed to render — pausing anyway.');
+        } catch (e) {
+          console.warn('[Pause] Penalty confirm threw: ' + e.message + ' — pausing anyway.');
+        }
       }
       window._penaltyPauseConfirmed = false;
       // Snapshot the true wall-clock remaining time BEFORE clearing
@@ -7241,17 +7324,25 @@ try {
 
   function resetTimer() {
     // v3.23.2: Warn if a penalty countdown is active — resetting triggers the $300 penalty
+    // v3.23.287: Same try-catch safety — never let a dead modal block the button
     if (state.penaltyCountdownActive && (state.timerState === 'running' || state.timerState === 'paused' || state.timerState === 'countdown') && !window._penaltyResetConfirmed) {
-      showPenaltyConfirm(
-        'RESET — ARE YOU SURE?',
-        'A penalty countdown is active. Resetting will trigger the $300 penalty.',
-        function() {
-          window._penaltyResetConfirmed = true;
-          resetTimer();
-          window._penaltyResetConfirmed = false;
+      try {
+        showPenaltyConfirm(
+          'RESET — ARE YOU SURE?',
+          'A penalty countdown is active. Resetting will trigger the $300 penalty.',
+          function() {
+            window._penaltyResetConfirmed = true;
+            resetTimer();
+            window._penaltyResetConfirmed = false;
+          }
+        );
+        if (document.getElementById('penaltyConfirmModal')) {
+          return;
         }
-      );
-      return;
+        console.warn('[Reset] Penalty confirm modal failed to render — resetting anyway.');
+      } catch (e) {
+        console.warn('[Reset] Penalty confirm threw: ' + e.message + ' — resetting anyway.');
+      }
     }
     window._penaltyResetConfirmed = false;
     clearInterval(timerInterval);
@@ -8250,7 +8341,7 @@ try {
       color: dustColor,
       d: todayStr()
     });
-    state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+    state.dustCompletedToday = (state.dustCompletedToday || 0) + 1; state._dustCountDate = todayStr();
     var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
     if (state.dustPixels.length > dustCap) {
       state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
@@ -8760,7 +8851,7 @@ try {
           var palette = state.unlockedColors || ['#00ff88'];
           var dustColor = palette[Math.floor(Math.random() * palette.length)];
           state.dustPixels.push({ x: Math.random(), y: Math.random(), color: dustColor, d: todayStr() });
-          state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+          state.dustCompletedToday = (state.dustCompletedToday || 0) + 1; state._dustCountDate = todayStr();
           var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
           if (state.dustPixels.length > dustCap) {
             state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
@@ -8811,7 +8902,7 @@ try {
       var palette = state.unlockedColors || ['#00ff88'];
       var dustColor = palette[Math.floor(Math.random() * palette.length)];
       state.dustPixels.push({ x: Math.random(), y: Math.random(), color: dustColor, d: todayStr() });
-      state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+      state.dustCompletedToday = (state.dustCompletedToday || 0) + 1; state._dustCountDate = todayStr();
       var dustCap = state.materialsIncineratorUnlocked ? 5000 : 600;
       if (state.dustPixels.length > dustCap) {
         state.dustPixels = state.dustPixels.slice(state.dustPixels.length - dustCap);
@@ -9910,7 +10001,7 @@ try {
         d: todayStr()   // v3.20.17: birth date for degradation calc
       });
       // v3.20.16: track daily task completions for dust-burn threshold.
-      state.dustCompletedToday = (state.dustCompletedToday || 0) + 1;
+      state.dustCompletedToday = (state.dustCompletedToday || 0) + 1; state._dustCountDate = todayStr();
       // v3.20.0 Stage 5: dust is only silently trimmed for players who
       // have NOT yet bought the Materials Incinerator — they have no
       // way to dispose of it themselves, so the bin forgives the
@@ -10126,7 +10217,10 @@ try {
     // stamp, so tasks completed before the code update are still counted
     // as long as their specks are in the bin.
     var todayDate = todayStr();
-    var done = state.dustCompletedToday || 0;
+    // v3.23.300: Only trust dustCompletedToday if today's rollover has
+    // already run — otherwise it's a stale count from yesterday that
+    // would let the user burn without completing any tasks today.
+    var done = (state._dustCountDate === todayDate) ? (state.dustCompletedToday || 0) : 0;
     // Also count specks born today as a fallback for pre-update saves
     // where dustCompletedToday was never incremented.
     var specksToday = 0;
@@ -11308,6 +11402,87 @@ try {
     save();
   }
 
+  // v3.23.302: Discover active challenges from friends' Firestore social data
+  function _discoverFriendChallenges() {
+    if (state.friendChallenge) return; // already in a challenge
+    if (!state.friends || !state.profileId) return;
+    if (!window.ProfileSync || !window.ProfileSync.getSocialData) return;
+    var friendIds = Object.keys(state.friends).filter(function(fid) {
+      return state.friends[fid] && state.friends[fid].status === 'accepted';
+    });
+    if (friendIds.length === 0) return;
+    console.log('[CHALLENGE-SYNC] Checking ' + friendIds.length + ' friends for active challenges targeting us');
+    friendIds.forEach(function(fid) {
+      window.ProfileSync.getSocialData(fid).then(function(social) {
+        if (!social || !social.activeChallenge) return;
+        var ac = social.activeChallenge;
+        // Check if this challenge targets us
+        if (ac.opponentId !== state.profileId) return;
+        // Check if challenge hasn't expired
+        if (ac.endsAt && Date.now() >= ac.endsAt) return;
+        // Check if we already have a challenge now (may have been set by an earlier iteration)
+        if (state.friendChallenge) return;
+        // Check if already in pending invites
+        var alreadyPending = (state.pendingChallengeInvites || []).some(function(inv) { return inv.fromId === fid; });
+        if (alreadyPending) return;
+        console.log('[CHALLENGE-SYNC] Found active challenge from ' + fid + ': ' + ac.type + ' (status: ' + ac.status + ')');
+        // Auto-join: create matching challenge on our side
+        var friendName = ac.opponentName || (state.friends[fid] && state.friends[fid].displayName) || fid;
+        // Use the friend's display name for them, not what they stored as opponentName (which is us)
+        var theirName = (state.friends[fid] && state.friends[fid].displayName) || fid;
+        state.friendChallenge = {
+          type: ac.type,
+          label: ac.label || ac.type,
+          desc: ac.desc || '',
+          tier: ac.tier || 'standard',
+          opponentId: fid,
+          opponentName: theirName,
+          opponentProgress: ac.myProgress || 0,
+          startedAt: ac.startedAt || Date.now(),
+          endsAt: parseInt(ac.endsAt) || (Date.now() + 86400000),
+          status: 'active',
+          tracking: {}
+        };
+        _initChallengeTracking();
+        save();
+        try { _publishChallengeToFirestore(); } catch(_){}
+        try { renderChallengeUI(); } catch(_){}
+        try { showToast('Challenge synced from ' + theirName + '! Game on!', 'success'); } catch(_){}
+        console.log('[CHALLENGE-SYNC] Auto-joined challenge: ' + ac.type + ' vs ' + theirName);
+      }).catch(function(err) {
+        // Silently fail — friend may not have social data
+      });
+    });
+  }
+
+  // v3.23.302: Write active challenge to Firestore so opponent can discover it
+  function _publishChallengeToFirestore() {
+    if (!state.profileId || !window.ProfileSync || !window.ProfileSync.putSocialData) return;
+    var ch = state.friendChallenge;
+    if (ch) {
+      var myProgress = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+      window.ProfileSync.putSocialData(state.profileId, {
+        activeChallenge: {
+          type: ch.type,
+          label: ch.label || '',
+          desc: ch.desc || '',
+          tier: ch.tier || 'standard',
+          opponentId: ch.opponentId,
+          opponentName: ch.opponentName || '',
+          status: ch.status,
+          startedAt: ch.startedAt || Date.now(),
+          endsAt: ch.endsAt,
+          myProgress: myProgress
+        }
+      }).catch(function(e) { console.log('[CHALLENGE] publish to Firestore failed:', e); });
+    } else {
+      // Clear from Firestore when no active challenge
+      window.ProfileSync.putSocialData(state.profileId, {
+        activeChallenge: null
+      }).catch(function(){});
+    }
+  }
+
   function _syncChallengeProgress() {
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
     var ch = state.friendChallenge;
@@ -11325,6 +11500,8 @@ try {
         }).catch(function(){});
       }
     } catch(_){}
+    // v3.23.302: Also update Firestore with current progress
+    try { _publishChallengeToFirestore(); } catch(_){}
   }
 
   function _checkChallengeExpiry() {
@@ -11394,6 +11571,7 @@ try {
 
     state.friendChallenge = null;
     save();
+    try { _publishChallengeToFirestore(); } catch(_){}
     try { renderChallengeUI(); } catch(_){}
   }
 
@@ -11443,6 +11621,7 @@ try {
           };
           _initChallengeTracking();
           save();
+          try { _publishChallengeToFirestore(); } catch(_){}
         } catch(e) { console.log('[CHALLENGE] state save error:', e); }
         try { renderChallengeUI(); } catch(e) { console.log('[CHALLENGE] renderUI error:', e); }
         // Reset the CHALLENGE button in friends list
@@ -11479,6 +11658,8 @@ try {
       showToast('You already have an active challenge!', 'error');
       return;
     }
+    // v3.23.301: Clear all pending invites when accepting one
+    state.pendingChallengeInvites = [];
     state.friendChallenge = {
       type: challengeType,
       label: challengeLabel,
@@ -11494,6 +11675,7 @@ try {
     };
     _initChallengeTracking();
     save();
+    try { _publishChallengeToFirestore(); } catch(_){}
 
     // Notify sender that challenge was accepted via ProfileSync
     try {
@@ -11667,6 +11849,54 @@ try {
         '</div>';
       } else {
         activeCard.innerHTML = '<div style="font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;padding:8px;">No active challenge. Send one to a friend!</div>';
+      }
+    }
+
+    // Pending invites from state (v3.23.301)
+    var invDiv = document.getElementById('challengeInvites');
+    if (invDiv) {
+      var pInvites = state.pendingChallengeInvites || [];
+      if (pInvites.length === 0) {
+        invDiv.innerHTML = '';
+      } else {
+        invDiv.innerHTML = '';
+        for (var _ii = 0; _ii < pInvites.length; _ii++) {
+          (function(inv, idx) {
+            var tier = inv.challengeTier || 'standard';
+            var reward = CHALLENGE_REWARDS[tier] || CHALLENGE_REWARDS.standard;
+            var card = document.createElement('div');
+            card.style.cssText = 'background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #ffa500;border-radius:8px;padding:10px;margin-bottom:6px;';
+            card.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#ffa500;margin-bottom:4px;">CHALLENGE INVITE</div>' +
+              '<div style="font-size:10px;color:var(--text);margin-bottom:4px;">' + escHtml(inv.fromName) + ' challenges you!</div>' +
+              '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">' + escHtml(inv.challengeLabel || inv.challengeType) + ': ' + escHtml(inv.challengeDesc || '') + '</div>' +
+              '<div style="font-size:9px;color:#00ff88;margin-bottom:6px;">Reward: +$' + reward.coins + ' +' + reward.xp + 'XP | Penalty: -$' + CHALLENGE_LOSER_PENALTY + '</div>' +
+              '<div style="display:flex;gap:6px;"></div>';
+            var btnRow = card.querySelector('div:last-child');
+            var acceptBtn = document.createElement('button');
+            acceptBtn.className = 'btn btn-small';
+            acceptBtn.style.cssText = 'border-color:#00ff88;color:#00ff88;font-size:8px;padding:3px 8px;cursor:pointer;';
+            acceptBtn.textContent = 'ACCEPT';
+            acceptBtn.addEventListener('click', function() {
+              acceptChallenge(inv.fromId, inv.fromName, inv.challengeType, inv.challengeLabel, inv.challengeDesc, tier, inv.endsAt);
+              state.pendingChallengeInvites.splice(idx, 1);
+              save();
+              try { renderChallengeUI(); } catch(_){}
+            });
+            var declineBtn = document.createElement('button');
+            declineBtn.className = 'btn btn-small';
+            declineBtn.style.cssText = 'border-color:#ff4444;color:#ff4444;font-size:8px;padding:3px 8px;cursor:pointer;';
+            declineBtn.textContent = 'DECLINE';
+            declineBtn.addEventListener('click', function() {
+              try { declineChallenge(inv.fromId); } catch(_){}
+              state.pendingChallengeInvites.splice(idx, 1);
+              save();
+              try { renderChallengeUI(); } catch(_){}
+            });
+            btnRow.appendChild(acceptBtn);
+            btnRow.appendChild(declineBtn);
+            invDiv.appendChild(card);
+          })(pInvites[_ii], _ii);
+        }
       }
     }
 
@@ -13687,15 +13917,24 @@ try {
         }
 
         // v3.23.64: Fetch and cache a friend's avatar from their profile
+        // v3.23.293: Also refresh display name + re-fetch if >1hr stale
         function fetchFriendAvatar(friendId) {
           if (!friendId || !window.ProfileSync || !window.ProfileSync.getProfile) return;
           try {
             window.ProfileSync.getProfile(friendId).then(function(profile) {
-              if (!profile || !profile.avatarDataURL) return;
+              if (!profile) return;
               if (state.friends[friendId]) {
-                state.friends[friendId].avatarURL = profile.avatarDataURL;
-                save();
-                renderFriends();
+                var changed = false;
+                if (profile.avatarDataURL && profile.avatarDataURL !== state.friends[friendId].avatarURL) {
+                  state.friends[friendId].avatarURL = profile.avatarDataURL;
+                  changed = true;
+                }
+                if (profile.displayName && profile.displayName !== state.friends[friendId].displayName) {
+                  state.friends[friendId].displayName = profile.displayName;
+                  changed = true;
+                }
+                state.friends[friendId]._avatarFetchedAt = Date.now();
+                if (changed) { save(); renderFriends(); } else { save(); }
               }
             }).catch(function() {});
           } catch(_) {}
@@ -13758,7 +13997,7 @@ try {
                   state.morseSentCount = (state.morseSentCount || 0) + 1;
                   if (msg.famousId) { if (!state.morseFamousSent) state.morseFamousSent = []; if (state.morseFamousSent.indexOf(msg.famousId) === -1) state.morseFamousSent.push(msg.famousId); }
                   save();
-                });
+                }, state.displayName || 'Anonymous Weaver');
               });
             });
           }
@@ -13768,7 +14007,9 @@ try {
             var perms = f.permittedProjects || [];
             var hasTaskAccess = f.taskAccessGranted === true;
             // v3.23.64: Fetch avatar if not cached yet
-            if (!f.avatarURL) fetchFriendAvatar(fid);
+            // v3.23.293: Also re-fetch if older than 1 hour to pick up avatar/name changes
+            var _avatarStale = !f._avatarFetchedAt || (Date.now() - f._avatarFetchedAt > 3600000);
+            if (!f.avatarURL || _avatarStale) fetchFriendAvatar(fid);
             html += '<div style="background:var(--bg);border:1px solid ' + (hasTaskAccess ? '#5aadff' : 'var(--border)') + ';border-radius:6px;padding:8px;margin-bottom:6px;">';
             html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
             html += profileLink(fid, avatarThumb(f.avatarURL) + '<span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#5aadff;">' + escHtml(f.displayName || fid) + '</span>');
@@ -13854,7 +14095,7 @@ try {
               if (!fid || !state.profileId) return;
               if (typeof MorseMessenger !== 'undefined') {
                 MorseMessenger.open(fid, fname, state.profileId, function(targetId, msgObj) {
-                  msgObj.fromName = state.displayName || 'A weaver';
+                  msgObj.fromName = state.displayName || 'A weaver'; // safety override in case morse-messenger missed it
                   window.ProfileSync.sendInboxMessage(targetId, msgObj).then(function() {
                     try { notify('Morse message transmitted to ' + fname, '#ffd700'); } catch(_) {}
                     state.morseSentCount = (state.morseSentCount || 0) + 1;
@@ -14105,7 +14346,13 @@ try {
             }
             html += '<div style="background:linear-gradient(135deg,#0a1a0a,#0a0a1a);border:1px solid #1a3a2a;border-radius:6px;padding:8px 10px;margin-bottom:6px;overflow:visible;">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-            html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff88;">' + escHtml(msg.fromName || 'Unknown') + '</span>';
+            // v3.23.293: Always try to resolve sender name from friends list
+            var _inboxDisplayName = msg.fromName || 'Unknown';
+            var _friends = state.friends || {};
+            if (msg.fromId && _friends[msg.fromId] && _friends[msg.fromId].displayName) {
+              _inboxDisplayName = _friends[msg.fromId].displayName;
+            }
+            html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff88;">' + escHtml(_inboxDisplayName) + '</span>';
             html += '<div style="display:flex;align-items:center;gap:6px;">';
             if (timeStr) html += '<span style="font-size:8px;color:#555;">' + timeStr + '</span>';
             html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:9px;color:#ff4444;background:rgba(51,17,17,0.3);border:1px solid #441111;border-bottom:3px solid #331111;border-radius:6px;padding:4px 8px;cursor:pointer;transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #220808,0 3px 6px rgba(0,0,0,0.3);opacity:0.5;" title="Delete this telegram">&#x2716;</button>';
@@ -14441,44 +14688,27 @@ try {
                 } else if (msg.type === 'access_granted') {
                   accessGrantNotices.push(msg);
                 } else if (msg.type === 'challenge_invite') {
-                  // v3.23.257: Friend challenge invite — CSP-safe (no inline onclick)
-                  // Always delete from Firestore after processing so it doesn't re-deliver
+                  // v3.23.301: Store invite in state so it persists across popup opens
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge) {
-                    // Already in a challenge, auto-decline
                     try { declineChallenge(msg.fromId); } catch(_){}
                   } else {
-                    var invDiv = document.getElementById('challengeInvites');
-                    if (invDiv) {
-                      var tier = msg.challengeTier || 'standard';
-                      var reward = CHALLENGE_REWARDS[tier] || CHALLENGE_REWARDS.standard;
-                      var card = document.createElement('div');
-                      card.style.cssText = 'background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #ffa500;border-radius:8px;padding:10px;margin-bottom:6px;';
-                      card.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#ffa500;margin-bottom:4px;">CHALLENGE INVITE</div>' +
-                        '<div style="font-size:10px;color:var(--text);margin-bottom:4px;">' + escHtml(msg.fromName || msg.fromId) + ' challenges you!</div>' +
-                        '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">' + escHtml(msg.challengeLabel || msg.challengeType) + ': ' + escHtml(msg.challengeDesc || '') + '</div>' +
-                        '<div style="font-size:9px;color:#00ff88;margin-bottom:6px;">Reward: +$' + reward.coins + ' +' + reward.xp + 'XP | Penalty: -$' + CHALLENGE_LOSER_PENALTY + '</div>' +
-                        '<div style="display:flex;gap:6px;"></div>';
-                      var btnRow = card.querySelector('div:last-child');
-                      var acceptBtn = document.createElement('button');
-                      acceptBtn.className = 'btn btn-small';
-                      acceptBtn.style.cssText = 'border-color:#00ff88;color:#00ff88;font-size:8px;padding:3px 8px;cursor:pointer;';
-                      acceptBtn.textContent = 'ACCEPT';
-                      acceptBtn.addEventListener('click', (function(m, t) { return function() {
-                        acceptChallenge(m.fromId, m.fromName || m.fromId, m.challengeType, m.challengeLabel || '', m.challengeDesc || '', t, m.endsAt || 0);
-                        card.remove();
-                      }; })(msg, tier));
-                      var declineBtn = document.createElement('button');
-                      declineBtn.className = 'btn btn-small';
-                      declineBtn.style.cssText = 'border-color:#ff4444;color:#ff4444;font-size:8px;padding:3px 8px;cursor:pointer;';
-                      declineBtn.textContent = 'DECLINE';
-                      declineBtn.addEventListener('click', (function(m) { return function() {
-                        declineChallenge(m.fromId);
-                        card.remove();
-                      }; })(msg));
-                      btnRow.appendChild(acceptBtn);
-                      btnRow.appendChild(declineBtn);
-                      invDiv.appendChild(card);
+                    // Dedup: skip if already have invite from this sender
+                    if (!state.pendingChallengeInvites) state.pendingChallengeInvites = [];
+                    var _hasDup = state.pendingChallengeInvites.some(function(inv) { return inv.fromId === msg.fromId; });
+                    if (!_hasDup) {
+                      state.pendingChallengeInvites.push({
+                        fromId: msg.fromId,
+                        fromName: msg.fromName || msg.fromId,
+                        challengeType: msg.challengeType,
+                        challengeLabel: msg.challengeLabel || '',
+                        challengeDesc: msg.challengeDesc || '',
+                        challengeTier: msg.challengeTier || 'standard',
+                        endsAt: msg.endsAt || 0,
+                        receivedAt: Date.now()
+                      });
+                      save();
+                      try { renderChallengeUI(); } catch(_){}
                     }
                   }
                 } else if (msg.type === 'challenge_accept') {
@@ -14488,6 +14718,7 @@ try {
                     state.friendChallenge.status = 'active';
                     _initChallengeTracking();
                     save();
+                    try { _publishChallengeToFirestore(); } catch(_){}
                     try { showToast(escHtml(msg.fromName || msg.fromId) + ' accepted your challenge!', 'success'); } catch(_){}
                     try { renderChallengeUI(); } catch(_){}
                   }
@@ -14535,13 +14766,18 @@ try {
                       (existing.fromId === msg.fromId && existing.morseText === (msg.morseText || '') && existing.receivedAt && (Date.now() - new Date(existing.receivedAt).getTime()) < 120000);
                   });
                   if (!_isDupMorse) {
-                    if (typeof MorseMessenger !== 'undefined') {
-                      try { MorseMessenger.showIncoming(msg.fromName || msg.fromId || 'Unknown', msg.morseText || ''); } catch(_) {}
-                    }
                     state.morseReceivedCount = (state.morseReceivedCount || 0) + 1;
+                    // v3.23.293: Always resolve sender name from friends list
+                    var _fl = state.friends || {};
+                    var _resolvedSender = (msg.fromId && _fl[msg.fromId] && _fl[msg.fromId].displayName)
+                      ? _fl[msg.fromId].displayName
+                      : (msg.fromName || msg.fromId || 'Unknown');
+                    if (typeof MorseMessenger !== 'undefined') {
+                      try { MorseMessenger.showIncoming(_resolvedSender, msg.morseText || ''); } catch(_) {}
+                    }
                     state.morseInbox.push({
                       fromId: msg.fromId,
-                      fromName: msg.fromName || msg.fromId,
+                      fromName: _resolvedSender,
                       morseText: msg.morseText || '',
                       receivedAt: new Date().toISOString(),
                       _firestoreId: msg._id
@@ -14680,6 +14916,8 @@ try {
                 try { window.ProfileSync.putSocialData(state.profileId, { friends: state.friends }); } catch(_) {}
               }
 
+              // v3.23.302: Check friends for active challenges targeting us
+              try { _discoverFriendChallenges(); } catch(_){}
               startInboxPolling();
             }).catch(function(err) {
               console.warn('[Friends] Cloud restore failed:', err);
@@ -17262,8 +17500,8 @@ try {
   if (!_vLabel) {
     _vLabel = document.createElement('div');
     _vLabel.id = 'versionLabel';
-    _vLabel.style.cssText = 'position:fixed;bottom:4px;right:8px;font-family:Courier New,monospace;font-size:8px;color:#2a2a3a;z-index:1;pointer-events:none;';
+    _vLabel.style.cssText = 'position:fixed;bottom:2px;right:6px;font-size:8px;color:#333;z-index:1;pointer-events:none;font-family:monospace;';
     document.body.appendChild(_vLabel);
   }
-  _vLabel.textContent = 'v' + chrome.runtime.getManifest().version;
+  _vLabel.textContent = 'v' + (chrome.runtime.getManifest().version || '?');
 } catch(_) {}

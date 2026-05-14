@@ -167,12 +167,32 @@
         return hasName || hasActivity;
       });
 
-      var byTextiles = players.slice().sort(function(a, b) {
+      // v3.23.293: Deduplicate by displayName — keep the profile with the most textiles
+      var seen = {};
+      var deduped = [];
+      players.forEach(function(d) {
+        var key = (d.displayName || '').trim().toLowerCase();
+        if (!key) key = d._id; // fallback to doc ID if no name
+        var textiles = parseInt(d.lifetimeBlocks, 10) || 0;
+        if (seen[key] !== undefined) {
+          // Keep the one with more textiles
+          var existing = deduped[seen[key]];
+          var existingTextiles = parseInt(existing.lifetimeBlocks, 10) || 0;
+          if (textiles > existingTextiles) {
+            deduped[seen[key]] = d; // replace with the better one
+          }
+        } else {
+          seen[key] = deduped.length;
+          deduped.push(d);
+        }
+      });
+
+      var byTextiles = deduped.slice().sort(function(a, b) {
         return (parseInt(b.lifetimeBlocks, 10) || 0) - (parseInt(a.lifetimeBlocks, 10) || 0);
       });
       renderLeaderboard(byTextiles);
 
-      var byLevel = players.slice().sort(function(a, b) {
+      var byLevel = deduped.slice().sort(function(a, b) {
         var lvDiff = (b.level || 1) - (a.level || 1);
         if (lvDiff !== 0) return lvDiff;
         return (b.streak || 0) - (a.streak || 0);
@@ -261,4 +281,3 @@
 </script>
 </body>
 </html>
-        + '<div class="

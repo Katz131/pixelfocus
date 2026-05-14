@@ -21,6 +21,14 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* v3.23.294: Pixel-art themed scrollbars */
+  *::-webkit-scrollbar { width:10px; height:10px; }
+  *::-webkit-scrollbar-track { background:#0f0f1a; border-left:1px solid #2a2a4a; }
+  *::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#00cc6a,#009950); border:2px solid #0f0f1a; border-radius:0; box-shadow:inset 1px 1px 0 rgba(0,255,136,0.3),inset -1px -1px 0 rgba(0,0,0,0.3); }
+  *::-webkit-scrollbar-thumb:hover { background:linear-gradient(180deg,#00ff88,#00cc6a); border-color:#1a1a2e; box-shadow:inset 1px 1px 0 rgba(0,255,136,0.5),inset -1px -1px 0 rgba(0,0,0,0.2),0 0 8px rgba(0,255,136,0.3); }
+  *::-webkit-scrollbar-thumb:active { background:linear-gradient(180deg,#008844,#006633); box-shadow:inset -1px -1px 0 rgba(0,255,136,0.2),inset 1px 1px 0 rgba(0,0,0,0.4); }
+  *::-webkit-scrollbar-corner { background:#0f0f1a; }
+
   :root {
     --bg: #0a0a14;
     --surface: #12122a;
@@ -166,9 +174,6 @@
   .upgrade-btn.available:hover { background: rgba(0,255,136,0.1); }
 
   .milestone-list-wrap { max-height: 260px; overflow-y: auto; }
-  .milestone-list-wrap::-webkit-scrollbar { width: 6px; }
-  .milestone-list-wrap::-webkit-scrollbar-track { background: var(--bg); }
-  .milestone-list-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
   .gallery-view { flex: 1; }
   .gallery-view.hidden { display: none; }
@@ -314,9 +319,6 @@
   .msg-console-header .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-right:6px; box-shadow:0 0 4px rgba(0,255,136,0.8); animation:loomBlink 2.2s ease-in-out infinite; }
   @keyframes loomBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
   .msg-console { margin: 0 24px 20px; padding:10px 14px; background:#050608; border:1px solid #0c2a1c; border-radius:6px; height:120px; overflow-y:auto; font-family:'Courier New','Consolas',monospace; font-size:11px; color:#6ff0a1; box-shadow:inset 0 0 25px rgba(0,255,136,0.05); }
-  .msg-console::-webkit-scrollbar { width:6px; }
-  .msg-console::-webkit-scrollbar-track { background:#050608; }
-  .msg-console::-webkit-scrollbar-thumb { background:#123524; border-radius:3px; }
   .msg-console .msg-line { line-height:1.5; white-space:pre-wrap; word-break:break-word; opacity:0.85; }
   .msg-console .msg-line-new { color:#00ff88; text-shadow:0 0 5px rgba(0,255,136,0.5); opacity:1; transition:color 1.2s, text-shadow 1.2s; }
   .msg-console .msg-ts { color:#3a7a5a; margin-right:4px; }

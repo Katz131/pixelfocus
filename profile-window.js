@@ -453,8 +453,16 @@
     for (var j = 0; j < sessions.length; j++) {
       var s = sessions[j];
       if (!s.start || !s.end) continue;
-      var sd = new Date(s.start);
-      var ed = new Date(s.end);
+      // v3.23.297: Use s.min as authoritative duration when timestamps are too short
+      var rawStartMs = s.start;
+      var rawEndMs = s.end;
+      var rawSpanMs = rawEndMs - rawStartMs;
+      var minSpanMs = (s.min || 0) * 60000;
+      if (minSpanMs > rawSpanMs * 1.5 && minSpanMs > 0) {
+        rawStartMs = rawEndMs - minSpanMs;
+      }
+      var sd = new Date(rawStartMs);
+      var ed = new Date(rawEndMs);
       var startPct = ((sd.getHours() * 60 + sd.getMinutes()) / (24 * 60)) * 100;
       var endPct = ((ed.getHours() * 60 + ed.getMinutes()) / (24 * 60)) * 100;
       var widthPct = Math.max(0.5, endPct - startPct);

@@ -148,7 +148,8 @@
     // YES — record it, reset consecutive NOs, open the 3-minute promise timer, close this window
     yesBtn.addEventListener('click', function() {
       _responded = true;
-      // v3.23.280: Tell background this nag is done (clears reload-persistence)
+      // v3.23.285: Clear nag tracking directly (don't rely on message to possibly-sleeping SW)
+      try { chrome.storage.local.remove('pixelNagTracking'); } catch(_) {}
       try { chrome.runtime.sendMessage({ type: 'NAG_DISMISSED' }); } catch(_) {}
       try {
         chrome.storage.local.get('pixelFocusState', function(result) {
@@ -175,7 +176,8 @@
     // NO — record it, increment consecutive NOs. On 3rd consecutive: open promise timer.
     noBtn.addEventListener('click', function() {
       _responded = true;
-      // v3.23.280: Tell background this nag is done (clears reload-persistence)
+      // v3.23.285: Clear nag tracking directly (don't rely on message to possibly-sleeping SW)
+      try { chrome.storage.local.remove('pixelNagTracking'); } catch(_) {}
       try { chrome.runtime.sendMessage({ type: 'NAG_DISMISSED' }); } catch(_) {}
       try {
         chrome.storage.local.get('pixelFocusState', function(result) {

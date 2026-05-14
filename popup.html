@@ -88,9 +88,13 @@ body.focus-mode #focusModeBtn { background: var(--accent); color: #08080f; borde
 body.focus-mode .xp-section, body.focus-mode #prioritySection { padding: 14px; }
 body.focus-mode .level-num, body.focus-mode .level-title { font-size: 11px; }
 body.focus-mode .xp-text, body.focus-mode .next-xp-preview, body.focus-mode .streak-bonus { font-size: 12px; }
-body::-webkit-scrollbar { width:6px; }
-body::-webkit-scrollbar-track { background:var(--bg); }
-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+/* v3.23.294: Pixel-art themed scrollbars — all elements */
+*::-webkit-scrollbar { width:10px; height:10px; }
+*::-webkit-scrollbar-track { background:var(--bg,#0f0f1a); border-left:1px solid var(--border,#2a2a4a); }
+*::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#00cc6a,#009950); border:2px solid var(--bg,#0f0f1a); border-radius:0; box-shadow:inset 1px 1px 0 rgba(0,255,136,0.3),inset -1px -1px 0 rgba(0,0,0,0.3); transition:background 0.15s; }
+*::-webkit-scrollbar-thumb:hover { background:linear-gradient(180deg,#00ff88,#00cc6a); border-color:#1a1a2e; box-shadow:inset 1px 1px 0 rgba(0,255,136,0.5),inset -1px -1px 0 rgba(0,0,0,0.2),0 0 8px rgba(0,255,136,0.3); }
+*::-webkit-scrollbar-thumb:active { background:linear-gradient(180deg,#008844,#006633); box-shadow:inset -1px -1px 0 rgba(0,255,136,0.2),inset 1px 1px 0 rgba(0,0,0,0.4); }
+*::-webkit-scrollbar-corner { background:var(--bg,#0f0f1a); }
 .header { background:linear-gradient(135deg,var(--surface),var(--surface2)); padding:10px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--accent); position:sticky; top:0; z-index:100; }
 .header h1 { font-family:'Press Start 2P',monospace; font-size:13px; color:var(--accent); text-shadow:0 0 10px var(--glow); }
 .block-counter { display:flex; align-items:center; gap:6px; background:var(--bg); padding:4px 10px; border-radius:4px; border:1px solid var(--border); cursor:pointer; transition:all 0.2s; }
@@ -319,9 +323,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 .tip-popup { display:none; }
 /* ---- textile message console (paperclips-style) ---- */
 .msg-console { margin:6px 10px 8px; background:#050608; border:1px solid #0c2a1c; border-radius:6px; height:110px; overflow-y:auto; padding:6px 8px; font-family:'Courier New','Consolas',monospace; font-size:10px; color:#6ff0a1; box-shadow:inset 0 0 20px rgba(0,255,136,0.04); }
-.msg-console::-webkit-scrollbar { width:5px; }
-.msg-console::-webkit-scrollbar-track { background:#050608; }
-.msg-console::-webkit-scrollbar-thumb { background:#123524; border-radius:2px; }
+/* msg-console inherits themed scrollbar */
 .msg-console .msg-line { line-height:1.45; white-space:pre-wrap; word-break:break-word; opacity:0.85; }
 .msg-console .msg-line-new { color:#00ff88; text-shadow:0 0 4px rgba(0,255,136,0.45); opacity:1; transition:color 1.2s, text-shadow 1.2s; }
 .msg-console .msg-ts { color:#3a7a5a; margin-right:4px; }
@@ -813,7 +815,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 <!-- v3.23.118: Daily Quest — choose one of two -->
 <!-- v3.23.124: Quest card with Duolingo-style tile grid -->
 <style>
-.quest-tile{position:relative;min-width:70px;flex:1;aspect-ratio:1;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:default;user-select:none;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s;border:2px solid transparent;border-bottom:5px solid transparent;overflow:hidden;}
+.quest-tile{position:relative;min-width:70px;flex:1;aspect-ratio:1;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:default;user-select:none;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s;border:2px solid transparent;border-bottom:5px solid transparent;overflow:visible;}
 .quest-tile:hover{transform:translateY(-3px) scale(1.05);z-index:1;}
 .quest-tile:active{transform:translateY(1px) scale(0.96);}
 .qt-icon{font-size:22px;line-height:1;}

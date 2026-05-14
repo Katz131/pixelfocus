@@ -132,7 +132,7 @@
     }
     return {
       place: function() { tone(800 + Math.random() * 600, 0.05, 'square', 0.04); },
-      erase: function() { tone(300, 0.06, 'triangle', 0.03); },
+      erase: function() { tone(220, 0.12, 'sawtooth', 0.06); tone(330, 0.08, 'triangle', 0.04); },
       error: function() { tone(200, 0.15, 'square', 0.06); },
       click: function() { tone(600, 0.05, 'square', 0.04); },
       save:  function() { [523,659,784,1047,1318].forEach(function(f,i) { setTimeout(function() { tone(f, 0.12, 'square', 0.06); }, i*80); }); },

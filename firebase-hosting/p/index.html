@@ -224,8 +224,10 @@
     for(var j=0;j<sessions.length;j++){
       var s=sessions[j];
       if(!s.start||!s.end)continue;
-      var sd=new Date(s.start);
-      var ed=new Date(s.end);
+      var _rs=s.start,_re=s.end,_rspan=_re-_rs,_mspan=(s.min||0)*60000;
+      if(_mspan>_rspan*1.5&&_mspan>0){_rs=_re-_mspan;}
+      var sd=new Date(_rs);
+      var ed=new Date(_re);
       var startPct=((sd.getHours()*60+sd.getMinutes())/(24*60))*100;
       var endPct=((ed.getHours()*60+ed.getMinutes())/(24*60))*100;
       var widthPct=Math.max(0.5,endPct-startPct);
