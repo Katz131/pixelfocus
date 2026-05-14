@@ -816,6 +816,7 @@ try {
     friendChallengeWins: 0,
     // v3.23.169: Morse code messaging
     morseInbox: [],
+    morseSentBox: [],   // v3.23.307: sent telegrams log
     morseSentCount: 0,           // v3.23.240: lifetime morse messages sent
     morseReceivedCount: 0,       // v3.23.240: lifetime morse messages received
     morseFamousSent: [],         // v3.23.240: IDs of famous morse messages successfully sent
@@ -13996,7 +13997,12 @@ try {
                   if (typeof ProfileSync !== 'undefined') ProfileSync.sendInboxMessage(targetId, msg);
                   state.morseSentCount = (state.morseSentCount || 0) + 1;
                   if (msg.famousId) { if (!state.morseFamousSent) state.morseFamousSent = []; if (state.morseFamousSent.indexOf(msg.famousId) === -1) state.morseFamousSent.push(msg.famousId); }
+                  // v3.23.307: log to sent box
+                  if (!state.morseSentBox) state.morseSentBox = [];
+                  state.morseSentBox.push({ toId: targetId, toName: fname, morseText: msg.morseText || '', famousId: msg.famousId || null, sentAt: new Date().toISOString() });
+                  if (state.morseSentBox.length > 50) state.morseSentBox = state.morseSentBox.slice(-50);
                   save();
+                  if (typeof renderMorseInbox === 'function') renderMorseInbox();
                 }, state.displayName || 'Anonymous Weaver');
               });
             });
@@ -14100,7 +14106,12 @@ try {
                     try { notify('Morse message transmitted to ' + fname, '#ffd700'); } catch(_) {}
                     state.morseSentCount = (state.morseSentCount || 0) + 1;
                     if (msgObj.famousId) { if (!state.morseFamousSent) state.morseFamousSent = []; if (state.morseFamousSent.indexOf(msgObj.famousId) === -1) state.morseFamousSent.push(msgObj.famousId); }
+                    // v3.23.307: log to sent box
+                    if (!state.morseSentBox) state.morseSentBox = [];
+                    state.morseSentBox.push({ toId: targetId, toName: fname, morseText: msgObj.morseText || '', famousId: msgObj.famousId || null, sentAt: new Date().toISOString() });
+                    if (state.morseSentBox.length > 50) state.morseSentBox = state.morseSentBox.slice(-50);
                     save();
+                    if (typeof renderMorseInbox === 'function') renderMorseInbox();
                   }).catch(function() {
                     try { notify('Transmission failed. Try again.', '#ff4444'); } catch(_) {}
                   });
@@ -14296,8 +14307,9 @@ try {
           }
         };
 
-        // v3.23.230: Morse Inbox — collapsible received telegrams
+        // v3.23.307: Morse Inbox — collapsible received + sent telegrams with tabs
         var _morseInboxWired = false;
+        var _morseInboxTab = 'received'; // 'received' or 'sent'
         function renderMorseInbox() {
           var panel = document.getElementById('morseInboxPanel');
           var list = document.getElementById('morseInboxList');
@@ -14309,34 +14321,63 @@ try {
           var arrow = document.getElementById('morseInboxArrow');
           if (!panel || !list) return;
           var inbox = state.morseInbox || [];
+          var sentBox = state.morseSentBox || [];
           panel.style.display = 'block';
           // Wire header toggle once
           if (!_morseInboxWired && header && body && arrow) {
             _morseInboxWired = true;
             header.addEventListener('click', function(e) {
-              // Don't toggle if they clicked the clear button
               if (e.target.id === 'morseInboxClearBtn') return;
+              if (e.target.classList && e.target.classList.contains('morse-tab-btn')) return;
               var open = body.style.display !== 'none';
               body.style.display = open ? 'none' : 'block';
               arrow.style.transform = open ? '' : 'rotate(180deg)';
             });
           }
-          if (inbox.length === 0) {
+          // Render tab bar
+          var tabBar = document.getElementById('morseTabBar');
+          if (!tabBar && body) {
+            tabBar = document.createElement('div');
+            tabBar.id = 'morseTabBar';
+            tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:6px;';
+            body.insertBefore(tabBar, body.firstChild);
+          }
+          if (tabBar) {
+            var rcvCount = inbox.length;
+            var sntCount = sentBox.length;
+            tabBar.innerHTML = '<button class="morse-tab-btn" data-tab="received" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:5px 8px;border-radius:6px;cursor:pointer;border:2px solid ' + (_morseInboxTab === 'received' ? '#00ff88' : '#1a3a2a') + ';border-bottom:' + (_morseInboxTab === 'received' ? '2px' : '3px') + ' solid ' + (_morseInboxTab === 'received' ? '#00ff88' : '#0a1a0a') + ';background:' + (_morseInboxTab === 'received' ? 'linear-gradient(180deg,#0a2a1a,#001a0a)' : 'linear-gradient(180deg,#0a0f0a,#050a05)') + ';color:' + (_morseInboxTab === 'received' ? '#00ff88' : '#1a5a3a') + ';transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #001a0a,0 3px 6px rgba(0,0,0,0.3);">RECEIVED' + (rcvCount > 0 ? ' (' + rcvCount + ')' : '') + '</button>' +
+              '<button class="morse-tab-btn" data-tab="sent" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:5px 8px;border-radius:6px;cursor:pointer;border:2px solid ' + (_morseInboxTab === 'sent' ? '#ffd700' : '#2a2a1a') + ';border-bottom:' + (_morseInboxTab === 'sent' ? '2px' : '3px') + ' solid ' + (_morseInboxTab === 'sent' ? '#ffd700' : '#1a1a0a') + ';background:' + (_morseInboxTab === 'sent' ? 'linear-gradient(180deg,#2a2010,#1a1505)' : 'linear-gradient(180deg,#0f0f0a,#0a0a05)') + ';color:' + (_morseInboxTab === 'sent' ? '#ffd700' : '#5a5a2a') + ';transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #1a1a0a,0 3px 6px rgba(0,0,0,0.3);">SENT' + (sntCount > 0 ? ' (' + sntCount + ')' : '') + '</button>';
+            tabBar.querySelectorAll('.morse-tab-btn').forEach(function(tb) {
+              tb.addEventListener('click', function(e) {
+                e.stopPropagation();
+                _morseInboxTab = tb.getAttribute('data-tab');
+                renderMorseInbox();
+              });
+            });
+          }
+          // Update header badge with received count
+          var activeList = _morseInboxTab === 'sent' ? sentBox : inbox;
+          if (activeList.length === 0) {
             list.innerHTML = '';
-            if (empty) empty.style.display = 'block';
-            if (countBadge) countBadge.style.display = 'none';
+            if (empty) { empty.style.display = 'block'; empty.textContent = _morseInboxTab === 'sent' ? 'No sent telegrams yet. Open Morse and send one!' : 'No telegrams yet. Friends can send you morse messages!'; }
+            if (countBadge) { countBadge.textContent = inbox.length; countBadge.style.display = inbox.length > 0 ? 'inline' : 'none'; }
             if (clearBtn) clearBtn.style.display = 'none';
             return;
           }
           if (empty) empty.style.display = 'none';
-          if (countBadge) { countBadge.textContent = inbox.length; countBadge.style.display = 'inline'; }
+          if (countBadge) { countBadge.textContent = inbox.length; countBadge.style.display = inbox.length > 0 ? 'inline' : 'none'; }
           if (clearBtn) clearBtn.style.display = 'inline-block';
           var html = '';
-          for (var mi = inbox.length - 1; mi >= 0; mi--) {
-            var msg = inbox[mi];
+          for (var mi = activeList.length - 1; mi >= 0; mi--) {
+            var msg = activeList[mi];
             var decoded = '';
             try { decoded = typeof MorseMessenger !== 'undefined' ? MorseMessenger.decode(msg.morseText || '') : (msg.morseText || ''); } catch(_) { decoded = msg.morseText || ''; }
-            var ts = (msg.receivedAt || msg.ts) ? new Date(msg.receivedAt || msg.ts) : null;
+            var ts = null;
+            if (_morseInboxTab === 'sent') {
+              ts = msg.sentAt ? new Date(msg.sentAt) : null;
+            } else {
+              ts = (msg.receivedAt || msg.ts) ? new Date(msg.receivedAt || msg.ts) : null;
+            }
             var timeStr = '';
             if (ts) {
               var h = ts.getHours(); var m = ts.getMinutes();
@@ -14344,21 +14385,29 @@ try {
               var mon = ts.getMonth() + 1; var day = ts.getDate();
               timeStr = (mon < 10 ? '0' : '') + mon + '/' + (day < 10 ? '0' : '') + day + ' ' + timeStr;
             }
-            html += '<div style="background:linear-gradient(135deg,#0a1a0a,#0a0a1a);border:1px solid #1a3a2a;border-radius:6px;padding:8px 10px;margin-bottom:6px;overflow:visible;">';
+            var _isSent = _morseInboxTab === 'sent';
+            var _borderCol = _isSent ? '#2a2a1a' : '#1a3a2a';
+            var _nameColor = _isSent ? '#ffd700' : '#00ff88';
+            var _decodedColor = _isSent ? '#ffd700' : '#00ff88';
+            html += '<div style="background:linear-gradient(135deg,' + (_isSent ? '#1a1a0a,#0a0a1a' : '#0a1a0a,#0a0a1a') + ');border:1px solid ' + _borderCol + ';border-radius:6px;padding:8px 10px;margin-bottom:6px;overflow:visible;">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-            // v3.23.293: Always try to resolve sender name from friends list
-            var _inboxDisplayName = msg.fromName || 'Unknown';
+            var _displayName = '';
             var _friends = state.friends || {};
-            if (msg.fromId && _friends[msg.fromId] && _friends[msg.fromId].displayName) {
-              _inboxDisplayName = _friends[msg.fromId].displayName;
+            if (_isSent) {
+              _displayName = msg.toName || 'Unknown';
+              if (msg.toId && _friends[msg.toId] && _friends[msg.toId].displayName) _displayName = _friends[msg.toId].displayName;
+              html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:' + _nameColor + ';">To: ' + escHtml(_displayName) + '</span>';
+            } else {
+              _displayName = msg.fromName || 'Unknown';
+              if (msg.fromId && _friends[msg.fromId] && _friends[msg.fromId].displayName) _displayName = _friends[msg.fromId].displayName;
+              html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:' + _nameColor + ';">' + escHtml(_displayName) + '</span>';
             }
-            html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff88;">' + escHtml(_inboxDisplayName) + '</span>';
             html += '<div style="display:flex;align-items:center;gap:6px;">';
             if (timeStr) html += '<span style="font-size:8px;color:#555;">' + timeStr + '</span>';
             html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:9px;color:#ff4444;background:rgba(51,17,17,0.3);border:1px solid #441111;border-bottom:3px solid #331111;border-radius:6px;padding:4px 8px;cursor:pointer;transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #220808,0 3px 6px rgba(0,0,0,0.3);opacity:0.5;" title="Delete this telegram">&#x2716;</button>';
             html += '</div></div>';
             html += '<div class="morse-replay-btn" data-idx="' + mi + '" style="font-size:12px;color:#ffd700;letter-spacing:2px;word-break:break-all;margin-bottom:4px;cursor:pointer;" title="Click to replay">' + escHtml(msg.morseText || '') + '</div>';
-            html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#00ff88;letter-spacing:1px;">' + escHtml(decoded) + '</div>';
+            html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:' + _decodedColor + ';letter-spacing:1px;">' + escHtml(decoded) + '</div>';
             html += '</div>';
           }
           list.innerHTML = html;
@@ -14396,7 +14445,12 @@ try {
               e.stopPropagation();
               var idx = parseInt(btn.getAttribute('data-idx'), 10);
               if (isNaN(idx)) return;
-              state.morseInbox.splice(idx, 1);
+              if (_morseInboxTab === 'sent') {
+                if (!state.morseSentBox) state.morseSentBox = [];
+                state.morseSentBox.splice(idx, 1);
+              } else {
+                state.morseInbox.splice(idx, 1);
+              }
               save();
               renderMorseInbox();
             });
@@ -14405,7 +14459,11 @@ try {
           if (clearBtn) {
             clearBtn.onclick = function(e) {
               e.stopPropagation();
-              state.morseInbox = [];
+              if (_morseInboxTab === 'sent') {
+                state.morseSentBox = [];
+              } else {
+                state.morseInbox = [];
+              }
               save();
               renderMorseInbox();
             };
@@ -14423,7 +14481,7 @@ try {
             });
             btn.addEventListener('click', function() {
               var i = parseInt(btn.getAttribute('data-idx'), 10);
-              var m = (state.morseInbox || [])[i];
+              var m = (_morseInboxTab === 'sent' ? (state.morseSentBox || []) : (state.morseInbox || []))[i];
               if (m && typeof MorseMessenger !== 'undefined') {
                 try { MorseMessenger.showIncoming(m.fromName || 'Unknown', m.morseText || ''); } catch(_) {}
               }

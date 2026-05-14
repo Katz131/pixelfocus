@@ -1222,17 +1222,11 @@
     var isLastInCat = _currentIdx === catEnd;
 
     if (isLastInCat) {
-      var wasAlreadyDone = _isCatCompleted(entry.cat.id);
       _markCatCompleted(entry.cat.id);
-
-      if (_currentIdx >= _allItems.length - 1) {
-        _backToMenu();
-      } else if (!wasAlreadyDone) {
-        _backToMenu();
-      } else {
-        _currentIdx++;
-        _render();
-      }
+      // v3.23.307: Always return to menu at end of category
+      // Previously auto-advanced into next category if already completed,
+      // which caused tutorial to show irrelevant content for other sections
+      _backToMenu();
     } else {
       _currentIdx++;
       _render();
