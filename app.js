@@ -7404,9 +7404,10 @@ try {
     for (var ci = 0; ci < cats.length; ci++) {
       var c = cats[ci];
       var cnt = (state.sessionDistractions && state.sessionDistractions[c.id]) || 0;
-      catButtonsHtml += '<div class="dist-cat" data-cat-id="' + c.id + '" style="background:' + (c.color || '#666') + ';" title="Click to log a distraction from ' + c.name + '. Right-click to undo.">'
+      catButtonsHtml += '<div class="dist-cat" data-cat-id="' + c.id + '" style="background:' + (c.color || '#666') + ';" title="' + c.name + '">'
         + '<span class="dist-cat-name">' + c.name + '</span>'
         + '<span class="dist-cat-count"' + (cnt > 0 ? '' : ' style="display:none;"') + '>' + cnt + '</span>'
+        + (cnt > 0 ? '<span class="dist-cat-minus" data-minus-id="' + c.id + '" title="Undo one distraction from ' + c.name + '">\u2212</span>' : '')
         + '</div>';
     }
 
@@ -7457,10 +7458,14 @@ try {
       '  .dist-cat:active{transform:scale(0.95) translateY(1px);box-shadow:0 1px 0 rgba(0,0,0,0.35),0 1px 4px rgba(0,0,0,0.3);filter:brightness(0.9);}' +
       '  .dist-cat-name{white-space:nowrap;}' +
       '  .dist-cat-count{background:rgba(0,0,0,0.4);padding:2px 5px;border-radius:4px;font-size:7px;min-width:14px;text-align:center;}' +
+      '  .dist-cat-minus{background:rgba(0,0,0,0.5);padding:1px 5px;border-radius:4px;font-size:9px;cursor:pointer;color:#ff6b6b;font-weight:bold;transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1),background 0.15s;line-height:1;margin-left:2px;}' +
+      '  .dist-cat-minus:hover{background:rgba(255,107,107,0.3);transform:scale(1.2);}' +
+      '  .dist-cat-minus:active{transform:scale(0.9);}' +
       '  .dist-penalty{font-size:7px;color:#ff6b6b;margin-top:4px;text-align:center;min-height:12px;}' +
       '  .dist-toolbar{display:flex;gap:4px;margin-top:6px;justify-content:center;}' +
       '  .dist-cat::after{content:\'\';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);transition:left 0.5s ease;pointer-events:none;}' +
       '  .dist-cat:hover::after{left:120%;}' +
+      '  .dist-info-icon{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;background:rgba(78,205,196,0.15);color:#4ecdc4;border-radius:50%;font-size:8px;font-style:italic;cursor:help;border:1px solid rgba(78,205,196,0.3);font-family:Georgia,serif;}' +
       '  .dist-tool-btn{font-size:7px;padding:4px 8px;border:1px solid #333;border-radius:6px;background:#1a1a28;color:#aaa;cursor:pointer;font-family:"Press Start 2P","Courier New",monospace;transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1),background 0.15s,color 0.15s,box-shadow 0.2s;box-shadow:0 2px 0 rgba(0,0,0,0.3);}' +
       '  .dist-tool-btn:hover{background:#2a2a3a;color:#fff;transform:scale(1.06) translateY(-1px);box-shadow:0 0 12px rgba(78,205,196,0.3),0 3px 8px rgba(0,0,0,0.4);}' +
       '  .dist-tool-btn:active{transform:scale(0.95) translateY(1px);box-shadow:0 1px 0 rgba(0,0,0,0.3);}' +
@@ -7481,15 +7486,16 @@ try {
       '    <div class="pip-label" id="pipLabel">FOCUS</div>' +
       '    <div class="pip-clock" id="pipClock">00:00</div>' +
       '  </div>' +
-      '  <button type="button" class="pip-menu-btn" id="pipMenuBtn" title="Open distractions tracker. Log what pulled you away from focus. Each distraction costs you a % of your session earnings.">&#9776;</button>' +
+      '  <button type="button" class="pip-menu-btn" id="pipMenuBtn" title="Distractions tracker">&#9776;</button>' +
       '  <div class="pip-bar"><div class="pip-bar-fill" id="pipBarFill" style="width:0%"></div></div>' +
       '</div>' +
       '<div class="dist-panel" id="distPanel">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:7px;color:#888;font-family:Press Start 2P,monospace;">DISTRACTIONS</span><span class="dist-info-icon" title="Log distractions during focus sessions. Tap a category to count +1. Use the \u2212 button to undo. Penalties scale: 1st = 10%, 2nd = +20% (30% total), 3rd = +30% (60%), 4th+ = 100% of session earnings. Zero distractions earns a +15% focus bonus! Use ADD to create categories, EDIT to rename or delete them.">i</span></div>' +
       '  <div class="dist-cats" id="distCats">' + catButtonsHtml + '</div>' +
-      '  <div class="dist-penalty" id="distPenalty" title="Penalty scales: 1st distraction costs 10% of session earnings, 2nd adds 20% more (30% total), 3rd adds 30% (60% total). Zero distractions earns a $25 focus bonus!">' + penaltyText + '</div>' +
+      '  <div class="dist-penalty" id="distPenalty" title="Session earnings penalty from distractions">' + penaltyText + '</div>' +
       '  <div class="dist-toolbar">' +
-      '    <button class="dist-tool-btn" id="distAddBtn" title="Add a new distraction category (e.g. Instagram, YouTube, texting). Categories persist across sessions.">+ ADD</button>' +
-      '    <button class="dist-tool-btn" id="distEditBtn" title="Rename or delete distraction categories. Click a category name to rename it, click X to delete.">EDIT</button>' +
+      '    <button class="dist-tool-btn" id="distAddBtn" title="Add category">+ ADD</button>' +
+      '    <button class="dist-tool-btn" id="distEditBtn" title="Rename or delete categories">EDIT</button>' +
       '  </div>' +
       '  <div class="dist-input-row" id="distInputRow">' +
       '    <input class="dist-input" id="distInput" placeholder="Category name" maxlength="20">' +
@@ -7526,8 +7532,8 @@ try {
     return total;
   }
 
-  // v3.23.312: Focus bonus for zero distractions — $25 flat reward
-  var FOCUS_BONUS = 25;
+  // v3.23.315: Focus bonus for zero distractions — 15% of session earnings
+  var FOCUS_BONUS_PCT = 15;
 
   // v3.23.311: Default distraction category colors
   var DIST_COLORS = ['#e67e22','#3498db','#9b59b6','#e74c3c','#2ecc71','#f39c12','#1abc9c','#e84393'];
@@ -7571,9 +7577,10 @@ try {
       for (var ci = 0; ci < cats.length; ci++) {
         var c = cats[ci];
         var cnt = (state.sessionDistractions && state.sessionDistractions[c.id]) || 0;
-        html += '<div class="dist-cat" data-cat-id="' + c.id + '" style="background:' + (c.color || '#666') + ';" title="Click to log a distraction from ' + c.name + '. Right-click to undo. Each distraction costs more: 1st=10%, 2nd=+20%, 3rd=+30% of session earnings.">'
+        html += '<div class="dist-cat" data-cat-id="' + c.id + '" style="background:' + (c.color || '#666') + ';" title="' + c.name + '">'
           + '<span class="dist-cat-name">' + c.name + '</span>'
           + '<span class="dist-cat-count"' + (cnt > 0 ? '' : ' style="display:none;"') + '>' + cnt + '</span>'
+          + (cnt > 0 ? '<span class="dist-cat-minus" data-minus-id="' + c.id + '" title="Undo one distraction from ' + c.name + '">\u2212</span>' : '')
           + '</div>';
       }
       catsEl.innerHTML = html;
@@ -7594,23 +7601,31 @@ try {
           });
           // Hover sound
           el.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
-          // Right click = -1 (undo accidental tap)
-          el.addEventListener('contextmenu', function(ev) {
-            ev.preventDefault();
+
+        })(catEls[j]);
+      }
+
+      // Wire minus buttons for undo
+      var minusEls = catsEl.querySelectorAll('.dist-cat-minus');
+      for (var m = 0; m < minusEls.length; m++) {
+        (function(mel) {
+          var mCatId = mel.getAttribute('data-minus-id');
+          mel.addEventListener('click', function(ev) {
             ev.stopPropagation();
             try { SFX.click(); } catch(_){}
-            if (!state.sessionDistractions || !state.sessionDistractions[catId]) return;
-            state.sessionDistractions[catId]--;
-            if (state.sessionDistractions[catId] <= 0) delete state.sessionDistractions[catId];
+            if (!state.sessionDistractions || !state.sessionDistractions[mCatId]) return;
+            state.sessionDistractions[mCatId]--;
+            if (state.sessionDistractions[mCatId] <= 0) delete state.sessionDistractions[mCatId];
             save();
             _refreshPanel();
           });
-        })(catEls[j]);
+          mel.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+        })(minusEls[m]);
       }
 
       // Penalty display
       if (penaltyEl) {
-        var pen = getDistractionPenalty();
+        var pen = getDistractionPenaltyPct();
         var totalDist = 0;
         if (state.sessionDistractions) {
           var dk = Object.keys(state.sessionDistractions);
@@ -7619,7 +7634,7 @@ try {
         var penPct = getDistractionPenaltyPct();
           penaltyEl.textContent = totalDist > 0
             ? '-' + penPct + '% penalty (' + totalDist + ' distraction' + (totalDist !== 1 ? 's' : '') + ')'
-            : '+$' + FOCUS_BONUS + ' focus bonus (0 distractions)';
+            : '+' + FOCUS_BONUS_PCT + '% focus bonus (0 distractions)';
           penaltyEl.style.color = totalDist > 0 ? '#ff6b6b' : '#00ff88';
       }
     }
@@ -7769,6 +7784,9 @@ try {
           // Write the full document. open/close/write is the cleanest
           // way to populate a PiP window's body.
           try {
+            // v3.23.317: Clear stale distractions from any previous session
+            state.sessionDistractions = {};
+            save();
             win.document.open();
             win.document.write(buildPipMarkup());
             win.document.close();
@@ -8162,7 +8180,7 @@ try {
     if (_dCnt > 0) {
       subText += ' Distraction penalty: -' + _dpPct + '% of earnings (' + _dCnt + ' distraction' + (_dCnt !== 1 ? 's' : '') + ').';
     } else {
-      subText += ' Focus bonus: +$' + FOCUS_BONUS + ' (zero distractions).';
+      subText += ' Focus bonus: +' + FOCUS_BONUS_PCT + '% of earnings (zero distractions).';
     }
     if (modalSub) modalSub.textContent = subText;
     modal.style.display = 'flex';
@@ -8327,8 +8345,22 @@ try {
       var _distPenaltyPct = getDistractionPenaltyPct();
       var _distCount = getDistractionCount();
       // Focus bonus for zero distractions
+      // v3.23.315: Build category name/color snapshot so history is self-contained
+      var _catSnap = {};
+      var _allCats = (state.distractionCategories || []).slice();
+      var _hasOtherSnap = false;
+      for (var _si = 0; _si < _allCats.length; _si++) { if (_allCats[_si].id === '_other') _hasOtherSnap = true; _catSnap[_allCats[_si].id] = {name: _allCats[_si].name, color: _allCats[_si].color || '#888'}; }
+      if (!_hasOtherSnap) _catSnap['_other'] = {name: 'Other', color: '#888'};
+      // Focus bonus for zero distractions
       if (_distCount === 0) {
-        awardCoins(FOCUS_BONUS, 'Focus bonus (0 distractions)');
+        var _focusCoinsEarned = Math.max(0, (state.coins || 0) - (_celebSnapshotCoins || 0));
+        var _focusBonusAmt = Math.round(_focusCoinsEarned * FOCUS_BONUS_PCT / 100);
+        if (_focusBonusAmt > 0) awardCoins(_focusBonusAmt, 'Focus bonus +' + FOCUS_BONUS_PCT + '% ($' + _focusBonusAmt + ')');
+        state._lastFocusBonus = _focusBonusAmt;
+        // Log clean session to history
+        if (!state.distractionHistory) state.distractionHistory = [];
+        state.distractionHistory.push({ date: new Date().toISOString(), counts: {}, categories: _catSnap, penaltyPct: 0, deducted: 0, focusBonus: _focusBonusAmt || 0 });
+        if (state.distractionHistory.length > 100) state.distractionHistory = state.distractionHistory.slice(-100);
       }
       if (_distPenaltyPct > 0) {
         // Calculate $ amount as percentage of coins earned this session
@@ -8340,13 +8372,13 @@ try {
           state.coins -= _deducted;
           notify('-$' + _deducted + ' distraction penalty (' + _distPenaltyPct + '%)', '#ff6b6b');
         }
-        // Log to history
+        // Log to history with category names/colors baked in
         if (!state.distractionHistory) state.distractionHistory = [];
-        var _distSummary = { date: new Date().toISOString(), counts: JSON.parse(JSON.stringify(state.sessionDistractions || {})), penaltyPct: _distPenaltyPct, deducted: _deducted };
-        state.distractionHistory.push(_distSummary);
+        state.distractionHistory.push({ date: new Date().toISOString(), counts: JSON.parse(JSON.stringify(state.sessionDistractions || {})), categories: _catSnap, penaltyPct: _distPenaltyPct, deducted: _deducted });
         if (state.distractionHistory.length > 100) state.distractionHistory = state.distractionHistory.slice(-100);
       }
       // Clear session distractions for next session
+      if (!state._lastFocusBonus) state._lastFocusBonus = 0;
       state.sessionDistractions = {};
     } catch (_distErr) { console.error('[Distractions] penalty error:', _distErr); }
 
@@ -11407,7 +11439,10 @@ try {
               if (_snapCount === 0) {
                 _dHtml = '<div style="color:#00ff88;padding:6px 10px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:8px;">';
                 _dHtml += '<span style="font-size:12px;">&#x2705;</span> ZERO DISTRACTIONS';
-                _dHtml += '<div style="font-size:9px;color:#88ffbb;margin-top:4px;">+$' + FOCUS_BONUS + ' focus bonus</div>';
+                var _fbAmt = state._lastFocusBonus || 0;
+                var _wouldHaveBeen = Math.max(0, coinsEarned - _fbAmt);
+                _dHtml += '<div style="font-size:9px;color:#88ffbb;margin-top:4px;">+' + FOCUS_BONUS_PCT + '% focus bonus (+$' + _fbAmt + ')</div>';
+                _dHtml += '<div style="font-size:8px;color:#5a8a6a;margin-top:2px;">$' + _wouldHaveBeen + ' without bonus</div>';
                 _dHtml += '</div>';
               } else {
                 _dHtml = '<div style="color:#ff6b6b;padding:6px 10px;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.2);border-radius:8px;">';

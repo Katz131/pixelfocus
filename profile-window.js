@@ -422,6 +422,7 @@
 
     // v3.22.27: Weekly focus bar chart
     renderWeeklyFocus();
+    renderDistractionsSummary();
 
     // v3.23.96: Badges
     renderProfileBadges(state);
@@ -1030,6 +1031,73 @@
   // ===== Weekly Focus Bar Chart (v3.22.27, moved from app.js) =====
   var _weekOffset = 0; // 0 = current week, -1 = last week, etc.
 
+  // v3.23.316: Aggregate distraction history by date for bar chart overlay
+  function _getDistractionsForDate(state, dateStr) {
+    var hist = state.distractionHistory || [];
+    var result = { total: 0, categories: {} };
+    for (var i = 0; i < hist.length; i++) {
+      var entry = hist[i];
+      if (!entry.date) continue;
+      var entryDate = entry.date.substring(0, 10); // YYYY-MM-DD
+      if (entryDate !== dateStr) continue;
+      var counts = entry.counts || {};
+      var cats = entry.categories || {};
+      var keys = Object.keys(counts);
+      for (var k = 0; k < keys.length; k++) {
+        var catId = keys[k];
+        var cnt = counts[catId] || 0;
+        if (cnt <= 0) continue;
+        result.total += cnt;
+        if (!result.categories[catId]) {
+          var catInfo = cats[catId] || {};
+          result.categories[catId] = { name: catInfo.name || catId, color: catInfo.color || '#888', count: 0 };
+        }
+        result.categories[catId].count += cnt;
+      }
+    }
+    return result;
+  }
+
+  // v3.23.316: Aggregate all-time distraction totals
+  function _getAllTimeDistractions(state) {
+    var hist = state.distractionHistory || [];
+    var cats = {};
+    var totalSessions = 0;
+    var cleanSessions = 0;
+    var totalDistractions = 0;
+    var totalPenalty = 0;
+    var totalBonus = 0;
+    for (var i = 0; i < hist.length; i++) {
+      var entry = hist[i];
+      totalSessions++;
+      var counts = entry.counts || {};
+      var catSnap = entry.categories || {};
+      var keys = Object.keys(counts);
+      var sessionTotal = 0;
+      for (var k = 0; k < keys.length; k++) {
+        var catId = keys[k];
+        var cnt = counts[catId] || 0;
+        if (cnt <= 0) continue;
+        sessionTotal += cnt;
+        if (!cats[catId]) {
+          var info = catSnap[catId] || {};
+          cats[catId] = { name: info.name || catId, color: info.color || '#888', count: 0 };
+        }
+        cats[catId].count += cnt;
+      }
+      totalDistractions += sessionTotal;
+      if (sessionTotal === 0) cleanSessions++;
+      totalPenalty += (entry.deducted || 0);
+      totalBonus += (entry.focusBonus || 0);
+    }
+    // Sort by count descending
+    var sorted = [];
+    var catKeys = Object.keys(cats);
+    for (var c = 0; c < catKeys.length; c++) sorted.push(cats[catKeys[c]]);
+    sorted.sort(function(a, b) { return b.count - a.count; });
+    return { categories: sorted, totalSessions: totalSessions, cleanSessions: cleanSessions, totalDistractions: totalDistractions, totalPenalty: totalPenalty, totalBonus: totalBonus };
+  }
+
   function renderWeeklyFocus() {
     var barsEl = document.getElementById('weeklyBars');
     var labelsEl = document.getElementById('weeklyLabels');
@@ -1124,6 +1192,23 @@
       bar.style.cssText = 'width:100%;border-radius:3px 3px 0 0;background:' + color + ';opacity:' + opacity + ';height:' + pct + '%;min-height:2px;transition:height 0.3s ease;';
       barWrap.appendChild(bar);
 
+      // v3.23.316: Distraction badge on bar
+      var _dayDist = _getDistractionsForDate(state, day.dateStr);
+      if (_dayDist.total > 0 && !day.isFuture) {
+        var distBadge = document.createElement('div');
+        distBadge.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#ff6b6b;color:#fff;font-family:"Press Start 2P",monospace;font-size:5px;display:flex;align-items:center;justify-content:center;margin-top:3px;cursor:help;position:relative;box-shadow:0 0 6px rgba(255,107,107,0.4);';
+        distBadge.textContent = _dayDist.total;
+        // Build tooltip text
+        var _tipParts = [];
+        var _dCatKeys = Object.keys(_dayDist.categories);
+        for (var dc = 0; dc < _dCatKeys.length; dc++) {
+          var _dc = _dayDist.categories[_dCatKeys[dc]];
+          _tipParts.push(_dc.name + ': ' + _dc.count);
+        }
+        distBadge.title = _dayDist.total + ' distraction' + (_dayDist.total !== 1 ? 's' : '') + '\n' + _tipParts.join(', ');
+        barWrap.appendChild(distBadge);
+      }
+
       barsEl.appendChild(barWrap);
 
       // Day label
@@ -1138,6 +1223,21 @@
     var rm = totalMins % 60;
     var sumText = totalMins === 0 ? 'No focus data this week' : (hrs > 0 ? hrs + 'h ' : '') + rm + 'm total';
     if (summaryEl) summaryEl.textContent = sumText;
+
+    // v3.23.316: Weekly distraction summary below chart
+    var distSumEl = document.getElementById('weeklyDistSummary');
+    if (distSumEl) {
+      var weekDist = 0;
+      for (var wd = 0; wd < days.length; wd++) {
+        weekDist += _getDistractionsForDate(state, days[wd].dateStr).total;
+      }
+      if (weekDist > 0) {
+        distSumEl.style.display = '';
+        distSumEl.textContent = weekDist + ' distraction' + (weekDist !== 1 ? 's' : '') + ' this week';
+      } else {
+        distSumEl.style.display = 'none';
+      }
+    }
   }
 
   // Wire prev/next buttons for weekly focus
@@ -1147,13 +1247,55 @@
     if (prev) prev.addEventListener('click', function() {
       _weekOffset--;
       renderWeeklyFocus();
+    renderDistractionsSummary();
     });
     if (next) next.addEventListener('click', function() {
       if (_weekOffset < 0) {
         _weekOffset++;
         renderWeeklyFocus();
+    renderDistractionsSummary();
       }
     });
+  }
+
+  // v3.23.316: Render all-time distraction summary panel
+  function renderDistractionsSummary() {
+    var el = document.getElementById('distractionsSummary');
+    if (!el || !currentState) return;
+    var data = _getAllTimeDistractions(currentState);
+    if (data.totalSessions === 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+
+    var html = '';
+    // Stats row
+    var cleanPct = data.totalSessions > 0 ? Math.round(data.cleanSessions / data.totalSessions * 100) : 0;
+    html += '<div style="display:flex;gap:12px;justify-content:center;margin-bottom:10px;flex-wrap:wrap;">';
+    html += '<div style="text-align:center;"><div style="font-size:16px;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;">' + data.totalDistractions + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">TOTAL</div></div>';
+    html += '<div style="text-align:center;"><div style="font-size:16px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">' + cleanPct + '%</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">CLEAN</div></div>';
+    html += '<div style="text-align:center;"><div style="font-size:16px;color:#ff9f43;font-family:\'Press Start 2P\',monospace;">$' + data.totalPenalty + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">LOST</div></div>';
+    if (data.totalBonus > 0) {
+      html += '<div style="text-align:center;"><div style="font-size:16px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">$' + data.totalBonus + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">BONUS</div></div>';
+    }
+    html += '</div>';
+
+    // Top categories bar chart
+    if (data.categories.length > 0) {
+      var maxCat = data.categories[0].count;
+      html += '<div style="margin-top:8px;">';
+      var showCount = Math.min(data.categories.length, 6);
+      for (var i = 0; i < showCount; i++) {
+        var cat = data.categories[i];
+        var barPct = Math.max(8, Math.round(cat.count / maxCat * 100));
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+        html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:6px;color:#aaa;width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + cat.name + '</div>';
+        html += '<div style="flex:1;height:10px;background:#1a1a2e;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + barPct + '%;background:' + cat.color + ';border-radius:3px;transition:width 0.3s;"></div></div>';
+        html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:6px;color:#ff6b6b;width:24px;text-align:left;">' + cat.count + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
   }
 
   document.addEventListener('DOMContentLoaded', function() {
