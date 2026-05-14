@@ -31,26 +31,26 @@
   // actually a full working week. The shifted curve restores the intended
   // pacing.
   var COLOR_SHOP = [
-    { color: '#00ff88', cost: 0,                coinCost: 0,              name: 'Green' },     // starter, free
-    { color: '#ff6b9d', cost: 30,               coinCost: 0,              name: 'Pink' },      // teaching #1 — textiles only
-    { color: '#ffffff', cost: 200,              coinCost: 0,              name: 'White' },     // teaching #2 — textiles only
-    { color: '#4ecdc4', cost: 400,              coinCost: 30,             name: 'Teal' },      // first money-cost tier
-    { color: '#ffa502', cost: 8000,             coinCost: 400,            name: 'Orange' },
-    { color: '#ff4757', cost: 32000,            coinCost: 1600,           name: 'Red' },
-    { color: '#5352ed', cost: 128000,           coinCost: 6400,           name: 'Blue' },
-    { color: '#ffd700', cost: 512000,           coinCost: 25600,          name: 'Gold' },
-    { color: '#ff00ff', cost: 2000000,          coinCost: 100000,         name: 'Magenta' },
-    { color: '#00ffff', cost: 8000000,          coinCost: 400000,         name: 'Cyan' },
-    { color: '#9b59b6', cost: 32000000,         coinCost: 1600000,        name: 'Purple' },
-    { color: '#e056fd', cost: 128000000,        coinCost: 6400000,        name: 'Lavender' },
-    { color: '#f9ca24', cost: 500000000,        coinCost: 25000000,       name: 'Yellow' },
-    { color: '#6ab04c', cost: 2000000000,       coinCost: 100000000,      name: 'Forest' },
-    { color: '#eb4d4b', cost: 8000000000,       coinCost: 400000000,      name: 'Crimson' },
-    { color: '#c0392b', cost: 32000000000,      coinCost: 1600000000,     name: 'Dark Red' },
-    { color: '#1abc9c', cost: 128000000000,     coinCost: 6400000000,     name: 'Emerald' },
-    { color: '#3498db', cost: 500000000000,     coinCost: 25000000000,    name: 'Sky Blue' },
-    { color: '#2c3e50', cost: 2000000000000,    coinCost: 100000000000,   name: 'Midnight' },
-    { color: '#f39c12', cost: 8000000000000,    coinCost: 400000000000,   name: 'Amber' },
+    { color: '#00ff88', cost: 0,                dollarCost: 0,              name: 'Green' },     // starter, free
+    { color: '#ff6b9d', cost: 30,               dollarCost: 0,              name: 'Pink' },      // teaching #1 — textiles only
+    { color: '#ffffff', cost: 200,              dollarCost: 0,              name: 'White' },     // teaching #2 — textiles only
+    { color: '#4ecdc4', cost: 400,              dollarCost: 30,             name: 'Teal' },      // first money-cost tier
+    { color: '#ffa502', cost: 8000,             dollarCost: 400,            name: 'Orange' },
+    { color: '#ff4757', cost: 32000,            dollarCost: 1600,           name: 'Red' },
+    { color: '#5352ed', cost: 128000,           dollarCost: 6400,           name: 'Blue' },
+    { color: '#ffd700', cost: 512000,           dollarCost: 25600,          name: 'Gold' },
+    { color: '#ff00ff', cost: 2000000,          dollarCost: 100000,         name: 'Magenta' },
+    { color: '#00ffff', cost: 8000000,          dollarCost: 400000,         name: 'Cyan' },
+    { color: '#9b59b6', cost: 32000000,         dollarCost: 1600000,        name: 'Purple' },
+    { color: '#e056fd', cost: 128000000,        dollarCost: 6400000,        name: 'Lavender' },
+    { color: '#f9ca24', cost: 500000000,        dollarCost: 25000000,       name: 'Yellow' },
+    { color: '#6ab04c', cost: 2000000000,       dollarCost: 100000000,      name: 'Forest' },
+    { color: '#eb4d4b', cost: 8000000000,       dollarCost: 400000000,      name: 'Crimson' },
+    { color: '#c0392b', cost: 32000000000,      dollarCost: 1600000000,     name: 'Dark Red' },
+    { color: '#1abc9c', cost: 128000000000,     dollarCost: 6400000000,     name: 'Emerald' },
+    { color: '#3498db', cost: 500000000000,     dollarCost: 25000000000,    name: 'Sky Blue' },
+    { color: '#2c3e50', cost: 2000000000000,    dollarCost: 100000000000,   name: 'Midnight' },
+    { color: '#f39c12', cost: 8000000000000,    dollarCost: 400000000000,   name: 'Amber' },
   ];
   // ===== Canvas upgrade pricing — DUAL CURRENCY (textiles + money $) =====
   // 8x8 is the free starter. The first two tiers (12x12, 16x16) are gentle starter
@@ -68,10 +68,10 @@
   //   36x36 =  1,000,000,000 textiles + $50,000,000
   //   ...
   function generateCanvasUpgrades(currentSize) {
-    var upgrades = [{ size: 8, cost: 0, coinCost: 0, label: '8x8 (starter)' }];
+    var upgrades = [{ size: 8, cost: 0, dollarCost: 0, label: '8x8 (starter)' }];
     // Hard-coded gentle starters so the first two upgrades don't bury the user.
-    upgrades.push({ size: 12, cost: 200,  coinCost: 10,  label: '12x12' });
-    upgrades.push({ size: 16, cost: 2000, coinCost: 100, label: '16x16' });
+    upgrades.push({ size: 12, cost: 200,  dollarCost: 10,  label: '12x12' });
+    upgrades.push({ size: 16, cost: 2000, dollarCost: 100, label: '16x16' });
     // Always include at least the next ~6 tiers past the current size so the
     // user can see the mountain ahead of them.
     var maxSize = Math.max(currentSize + 24, 32);
@@ -81,7 +81,7 @@
       upgrades.push({
         size: s,
         cost: Math.round(cost),
-        coinCost: Math.round(cost / 20),
+        dollarCost: Math.round(cost / 20),
         label: s + 'x' + s
       });
       s += 4;
@@ -578,16 +578,16 @@
       var locked = !owned && !isNext;
       var haveBlocks = state.blocks || 0;
       var haveCoins = state.coins || 0;
-      var coinCost = m.coinCost || 0;
-      var canAfford = isNext && haveBlocks >= m.cost && haveCoins >= coinCost;
+      var dollarCost = m.dollarCost || 0;
+      var canAfford = isNext && haveBlocks >= m.cost && haveCoins >= dollarCost;
 
-      // Cost phrasing helpers — colors with zero coinCost (e.g. the Pink
+      // Cost phrasing helpers — colors with zero dollarCost (e.g. the Pink
       // teaching purchase at 200 textiles + $0) shouldn't show "$0" in
       // tooltips, so we assemble the cost string conditionally per item.
       var costLong = m.cost.toLocaleString() + ' textiles' +
-                     (coinCost > 0 ? ' and $' + coinCost.toLocaleString() : '');
+                     (dollarCost > 0 ? ' and $' + dollarCost.toLocaleString() : '');
       var costShort = m.cost.toLocaleString() + ' textiles' +
-                      (coinCost > 0 ? ' + $' + coinCost.toLocaleString() : '');
+                      (dollarCost > 0 ? ' + $' + dollarCost.toLocaleString() : '');
 
       var el = document.createElement('div');
       el.className = 'milestone-item' +
@@ -602,7 +602,7 @@
         rowTip = m.name + ' \u2014 READY to buy. Click to spend ' + costLong + ' to add this color to your palette.';
       } else if (isNext) {
         var needBlocks = Math.max(0, m.cost - haveBlocks);
-        var needCoins = Math.max(0, coinCost - haveCoins);
+        var needCoins = Math.max(0, dollarCost - haveCoins);
         rowTip = m.name + ' \u2014 next color in line. Costs ' + costShort + '.';
         if (needBlocks > 0) rowTip += ' Need ' + needBlocks.toLocaleString() + ' more textiles.';
         if (needCoins > 0) rowTip += ' Need $' + needCoins.toLocaleString() + ' more money.';
@@ -631,14 +631,14 @@
         req.textContent = '\u2713 Owned';
         req.style.color = 'var(--accent)';
         req.setAttribute('title', 'You already own this color.');
-      } else if (m.cost === 0 && coinCost === 0) {
+      } else if (m.cost === 0 && dollarCost === 0) {
         req.textContent = 'FREE';
         req.setAttribute('title', 'Starter color, always yours.');
       } else {
         req.textContent = formatBigCost(m.cost) + ' tex' +
-                          (coinCost > 0 ? ' + $' + formatBigCost(coinCost) : '');
+                          (dollarCost > 0 ? ' + $' + formatBigCost(dollarCost) : '');
         req.setAttribute('title', 'Costs ' + m.cost.toLocaleString() + ' textiles' +
-                          (coinCost > 0 ? ' AND $' + coinCost.toLocaleString() + ' money' : '') + '.');
+                          (dollarCost > 0 ? ' AND $' + dollarCost.toLocaleString() + ' money' : '') + '.');
       }
 
       info.appendChild(name);
@@ -648,9 +648,9 @@
 
       // Progress bar for "next" tier only. Shows the LIMITING currency so the
       // user sees which resource is furthest from letting them buy this color.
-      if (isNext && (m.cost > 0 || coinCost > 0)) {
+      if (isNext && (m.cost > 0 || dollarCost > 0)) {
         var blockPct = m.cost > 0 ? (haveBlocks / m.cost) : 1;
-        var coinPct = coinCost > 0 ? (haveCoins / coinCost) : 1;
+        var coinPct = dollarCost > 0 ? (haveCoins / dollarCost) : 1;
         var limiting = Math.min(blockPct, coinPct);
         var pct = Math.min(100, limiting * 100);
         var bar = document.createElement('div');
@@ -668,15 +668,15 @@
         el.style.cursor = 'pointer';
         el.addEventListener('click', function() {
           if ((state.blocks || 0) < m.cost) { SFX.error(); return; }
-          if ((state.coins || 0) < coinCost) { SFX.error(); return; }
+          if ((state.coins || 0) < dollarCost) { SFX.error(); return; }
           state.blocks -= m.cost;
-          state.coins -= coinCost;
+          state.coins -= dollarCost;
           if (state.unlockedColors.indexOf(m.color) === -1) {
             state.unlockedColors.push(m.color);
           }
           SFX.save();
           notify(m.name + ' added to palette. Spent ' + m.cost.toLocaleString() + ' textiles' +
-                 (coinCost > 0 ? ' + $' + coinCost.toLocaleString() : '') + '.');
+                 (dollarCost > 0 ? ' + $' + dollarCost.toLocaleString() : '') + '.');
           save();
           renderPalette();
           renderMilestones();
@@ -723,10 +723,10 @@
         return (owned_list.indexOf(x.size) === -1 && x.size > maxOwned && (acc == null || x.size < acc)) ? x.size : acc;
       }, null);
       var effectiveCost = applyDyeDiscount(u.cost);
-      var coinCost = u.coinCost || 0;
+      var dollarCost = u.dollarCost || 0;
       var haveBlocks = state.blocks || 0;
       var haveCoins = state.coins || 0;
-      var canAfford = haveBlocks >= effectiveCost && haveCoins >= coinCost;
+      var canAfford = haveBlocks >= effectiveCost && haveCoins >= dollarCost;
 
       var el = document.createElement('div');
       el.className = 'upgrade-btn' + (owned ? ' owned' : '') + (nextUp && canAfford ? ' available' : '');
@@ -736,13 +736,13 @@
       if (owned) {
         rowTip = u.label + ' \u2014 you already own this canvas size.';
       } else if (!nextUp) {
-        rowTip = u.label + ' \u2014 locked until you buy the previous size first. Costs ' + effectiveCost.toLocaleString() + ' textiles + $' + coinCost.toLocaleString() + '.';
+        rowTip = u.label + ' \u2014 locked until you buy the previous size first. Costs ' + effectiveCost.toLocaleString() + ' textiles + $' + dollarCost.toLocaleString() + '.';
       } else if (canAfford) {
-        rowTip = u.label + ' \u2014 READY to buy. Click to spend ' + effectiveCost.toLocaleString() + ' textiles + $' + coinCost.toLocaleString() + ' and grow your canvas to ' + u.size + 'x' + u.size + '.';
+        rowTip = u.label + ' \u2014 READY to buy. Click to spend ' + effectiveCost.toLocaleString() + ' textiles + $' + dollarCost.toLocaleString() + ' and grow your canvas to ' + u.size + 'x' + u.size + '.';
       } else {
         var needB = Math.max(0, effectiveCost - haveBlocks);
-        var needC = Math.max(0, coinCost - haveCoins);
-        rowTip = u.label + ' \u2014 costs ' + effectiveCost.toLocaleString() + ' textiles + $' + coinCost.toLocaleString() + '.';
+        var needC = Math.max(0, dollarCost - haveCoins);
+        rowTip = u.label + ' \u2014 costs ' + effectiveCost.toLocaleString() + ' textiles + $' + dollarCost.toLocaleString() + '.';
         if (needB > 0) rowTip += ' Need ' + needB.toLocaleString() + ' more textiles.';
         if (needC > 0) rowTip += ' Need $' + needC.toLocaleString() + ' more money.';
       }
@@ -759,11 +759,11 @@
         costSpan.textContent = '\u2713 Owned';
         costSpan.setAttribute('title', 'You already own this canvas size.');
       } else if (dyeDiscount > 0 && effectiveCost !== u.cost) {
-        costSpan.innerHTML = '<span style="text-decoration:line-through;color:var(--text-dim);">' + formatBigCost(u.cost) + '</span> ' + formatBigCost(effectiveCost) + ' tex + $' + formatBigCost(coinCost);
-        costSpan.setAttribute('title', 'Original textile cost: ' + u.cost.toLocaleString() + '. After Dye Research discount: ' + effectiveCost.toLocaleString() + ' textiles. Plus $' + coinCost.toLocaleString() + ' money.');
+        costSpan.innerHTML = '<span style="text-decoration:line-through;color:var(--text-dim);">' + formatBigCost(u.cost) + '</span> ' + formatBigCost(effectiveCost) + ' tex + $' + formatBigCost(dollarCost);
+        costSpan.setAttribute('title', 'Original textile cost: ' + u.cost.toLocaleString() + '. After Dye Research discount: ' + effectiveCost.toLocaleString() + ' textiles. Plus $' + dollarCost.toLocaleString() + ' money.');
       } else {
-        costSpan.textContent = formatBigCost(effectiveCost) + ' tex + $' + formatBigCost(coinCost);
-        costSpan.setAttribute('title', 'Costs ' + effectiveCost.toLocaleString() + ' textiles AND $' + coinCost.toLocaleString() + ' money.');
+        costSpan.textContent = formatBigCost(effectiveCost) + ' tex + $' + formatBigCost(dollarCost);
+        costSpan.setAttribute('title', 'Costs ' + effectiveCost.toLocaleString() + ' textiles AND $' + dollarCost.toLocaleString() + ' money.');
       }
       el.appendChild(labelSpan);
       el.appendChild(costSpan);
@@ -772,14 +772,14 @@
         el.style.cursor = 'pointer';
         el.addEventListener('click', function() {
           if ((state.blocks || 0) < effectiveCost) { SFX.error(); return; }
-          if ((state.coins || 0) < coinCost) { SFX.error(); return; }
+          if ((state.coins || 0) < dollarCost) { SFX.error(); return; }
           state.blocks -= effectiveCost;
-          state.coins -= coinCost;
+          state.coins -= dollarCost;
           if (!Array.isArray(state.purchasedCanvasSizes)) state.purchasedCanvasSizes = [8];
           if (state.purchasedCanvasSizes.indexOf(u.size) === -1) state.purchasedCanvasSizes.push(u.size);
           state.canvasSize = u.size;
           SFX.save();
-          notify('Master Loom expanded to ' + u.size + 'x' + u.size + '. Spent ' + effectiveCost.toLocaleString() + ' textiles + $' + coinCost.toLocaleString() + '.');
+          notify('Master Loom expanded to ' + u.size + 'x' + u.size + '. Spent ' + effectiveCost.toLocaleString() + ' textiles + $' + dollarCost.toLocaleString() + '.');
           save();
           renderCanvas();
           renderStats();

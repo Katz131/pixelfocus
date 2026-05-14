@@ -522,10 +522,10 @@ var MorseMessenger = (function() {
     html += '</div>';
 
     // Tree
-    html += '<svg id="morseTreeSvg" viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;margin-bottom:4px;"></svg>';
+    html += '<svg id="morseTreeSvg" viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;margin-bottom:4px;flex-shrink:1;min-height:0;"></svg>';
 
     // Status bar
-    html += '<div style="width:100%;max-width:680px;background:#0a1a0a;border:1px solid #1a3a1a;border-radius:8px;padding:6px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">';
+    html += '<div style="width:100%;max-width:680px;background:#0a1a0a;border:1px solid #1a3a1a;border-radius:8px;padding:6px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;height:36px;overflow:hidden;flex-shrink:0;">';
     html += '<div style="display:flex;align-items:center;gap:12px;">';
     html += '<div id="morsePd" style="font-size:18px;color:#ffd700;letter-spacing:3px;min-width:60px;"></div>';
     html += '<div id="morseLd" style="font-family:\'Press Start 2P\',monospace;font-size:20px;color:#333;min-width:24px;text-align:center;"></div>';
@@ -536,7 +536,7 @@ var MorseMessenger = (function() {
     html += '</div></div>';
 
     // Telegraph key
-    html += '<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:8px;width:100%;max-width:680px;">';
+    html += '<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:8px;width:100%;max-width:680px;flex-shrink:0;">';
     html += '<div class="morse-key" id="morseKey">';
     html += '<div id="morseKsym" style="font-family:\'Press Start 2P\',monospace;font-size:28px;color:#3a6a3a;pointer-events:none;z-index:1;">▩</div>';
     html += '<div id="morseKsub" style="font-size:9px;color:#3a6a3a;letter-spacing:2px;pointer-events:none;z-index:1;">HOLD TO KEY</div>';
@@ -546,7 +546,7 @@ var MorseMessenger = (function() {
     html += '</div>';
 
     // Controls
-    html += '<div style="display:flex;gap:8px;margin-bottom:6px;width:100%;max-width:600px;">';
+    html += '<div style="display:flex;gap:8px;margin-bottom:6px;width:100%;max-width:600px;flex-shrink:0;">';
     html += '<button id="morseBtBtn" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid #5aadff;border-bottom:4px solid #2a6aaa;background:linear-gradient(180deg,#0a1a2a,#050d15);color:#5aadff;box-shadow:0 4px 0 #030a10,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(90,173,255,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u25AE BT BREAK</button>';
     html += '<button id="morseDelBtn" style="flex:1;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid #ff4444;border-bottom:4px solid #aa1a1a;background:linear-gradient(180deg,#2a0a0a,#150505);color:#ff4444;box-shadow:0 4px 0 #0a0303,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,68,68,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u232B UNDO</button>';
     html += '<button id="morseArBtn" style="flex:2;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">\u00b7\u2014\u00b7 AR TRANSMIT</button>';
@@ -617,7 +617,7 @@ var MorseMessenger = (function() {
     html += '<div style="text-align:center;margin-top:8px;font-size:8px;color:#555;">\u00b7 = dit (tap)  \u2014 = dah (hold)</div>';
     html += '</div>';
 
-html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px solid #1a3a1a;border-radius:8px;padding:8px 10px;margin-bottom:6px;min-height:44px;">';
+html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px solid #1a3a1a;border-radius:8px;padding:8px 10px;margin-bottom:6px;min-height:44px;max-height:60px;overflow:hidden;flex-shrink:0;">';
     html += '<div style="font-size:7px;color:#555;margin-bottom:3px;">MESSAGE:</div>';
     html += '<div id="morseMm" style="font-size:13px;color:#ffd700;letter-spacing:2px;word-break:break-all;margin-bottom:2px;min-height:16px;"></div>';
     html += '<div id="morseMt" style="font-size:9px;color:#292929;font-style:italic;">Key your message...</div>';

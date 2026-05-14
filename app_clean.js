@@ -609,9 +609,9 @@ try {
   // From 20x20 upward the curve ramps 10x per step into multi-billion-textile
   // territory. Coin cost is textile cost / 20 on all tiers.
   function generateCanvasUpgrades(currentSize) {
-    const upgrades = [{ size: 8, cost: 0, coinCost: 0, label: '8\u00d78 (starter)' }];
-    upgrades.push({ size: 12, cost: 200,  coinCost: 10,  label: '12\u00d712' });
-    upgrades.push({ size: 16, cost: 2000, coinCost: 100, label: '16\u00d716' });
+    const upgrades = [{ size: 8, cost: 0, dollarCost: 0, label: '8\u00d78 (starter)' }];
+    upgrades.push({ size: 12, cost: 200,  dollarCost: 10,  label: '12\u00d712' });
+    upgrades.push({ size: 16, cost: 2000, dollarCost: 100, label: '16\u00d716' });
     const maxSize = Math.max(currentSize + 24, 32);
     let s = 20;
     let cost = 100000;
@@ -619,7 +619,7 @@ try {
       upgrades.push({
         size: s,
         cost: Math.round(cost),
-        coinCost: Math.round(cost / 20),
+        dollarCost: Math.round(cost / 20),
         label: `${s}\u00d7${s}`
       });
       s += 4;
@@ -5198,23 +5198,23 @@ try {
       const nextUp = !owned && u.size === upgrades.reduce((acc, x) => {
         return (ownedList.indexOf(x.size) === -1 && x.size > maxOwned && (acc == null || x.size < acc)) ? x.size : acc;
       }, null);
-      const coinCost = u.coinCost || 0;
+      const dollarCost = u.dollarCost || 0;
       const haveBlocks = state.blocks || 0;
       const haveCoins = state.coins || 0;
-      const canAfford = haveBlocks >= u.cost && haveCoins >= coinCost;
+      const canAfford = haveBlocks >= u.cost && haveCoins >= dollarCost;
       const el = document.createElement('div');
       el.className = 'upgrade-btn' + (owned ? ' owned' : '') + (nextUp && canAfford ? ' available' : '');
       const priceLabel = owned
         ? '\u2713 Owned'
-        : `${u.cost.toLocaleString()} tex + $${coinCost.toLocaleString()}`;
+        : `${u.cost.toLocaleString()} tex + $${dollarCost.toLocaleString()}`;
       el.innerHTML = `<span>${u.label}</span><span>${priceLabel}</span>`;
       if (!owned && canAfford && nextUp) {
         el.addEventListener('click', () => {
           if ((state.blocks || 0) < u.cost) { SFX.error(); return; }
-          if ((state.coins || 0) < coinCost) { SFX.error(); return; }
+          if ((state.coins || 0) < dollarCost) { SFX.error(); return; }
           SFX.purchase();
           state.blocks -= u.cost;
-          state.coins -= coinCost;
+          state.coins -= dollarCost;
           if (!Array.isArray(state.purchasedCanvasSizes)) state.purchasedCanvasSizes = [8];
           if (state.purchasedCanvasSizes.indexOf(u.size) === -1) state.purchasedCanvasSizes.push(u.size);
           state.canvasSize = u.size;
