@@ -4505,48 +4505,85 @@ try {
   // v3.23.187: Grace period countdown — shows remaining break time
   var _graceCountdownInterval = null;
   function _startGraceCountdown() {
-    if (_graceCountdownInterval) return; // already ticking
+    if (_graceCountdownInterval) return;
     _graceCountdownInterval = setInterval(function() {
-      var el = document.getElementById('graceCountdownLabel');
-      if (!el) return;
+      var bar = document.getElementById('graceBar');
+      if (!bar) return;
       var remaining = _gameLockGraceUntil - Date.now();
       if (remaining <= 0) {
-        el.style.display = 'none';
+        bar.remove();
         clearInterval(_graceCountdownInterval);
         _graceCountdownInterval = null;
         render();
         return;
       }
+      var totalGrace = 5 * 60 * 1000;
+      var pct = Math.max(0, Math.min(100, (remaining / totalGrace) * 100));
       var mins = Math.floor(remaining / 60000);
       var secs = Math.floor((remaining % 60000) / 1000);
-      el.textContent = '⏳ break: ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
-      el.style.display = '';
+      var timeStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
+      var clockEl = bar.querySelector('.grace-clock');
+      var progEl = bar.querySelector('.grace-progress-fill');
+      if (clockEl) clockEl.textContent = timeStr;
+      if (progEl) progEl.style.width = pct + '%';
+      // Last 60s: pulse red
+      if (remaining < 60000) {
+        bar.classList.add('grace-urgent');
+      } else {
+        bar.classList.remove('grace-urgent');
+      }
     }, 1000);
   }
   function renderGraceCountdown() {
-    var _galleryBtn = document.getElementById('galleryBtn');
-    var container = _galleryBtn ? _galleryBtn.parentElement : null;
-    if (!container) return;
-    var el = document.getElementById('graceCountdownLabel');
     var graceActive = _gameLockGraceUntil > Date.now();
+    var bar = document.getElementById('graceBar');
     if (!graceActive) {
-      if (el) el.style.display = 'none';
+      if (bar) { bar.remove(); }
       if (_graceCountdownInterval) { clearInterval(_graceCountdownInterval); _graceCountdownInterval = null; }
       return;
     }
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'graceCountdownLabel';
-      el.style.cssText = 'text-align:center;font-family:"Press Start 2P",monospace;font-size:8px;color:#00ff88;padding:4px 0 2px;opacity:0.8;letter-spacing:1px;';
-      container.parentNode.insertBefore(el, container.nextSibling);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'graceBar';
+      bar.title = 'Break time! You have 5 minutes after each focus session to explore the game pages. When this timer runs out, you\'ll be sent back to the to-do list.';
+      bar.innerHTML = '<div class="grace-inner">' +
+        '<span class="grace-label">⏳ BREAK TIME</span>' +
+        '<span class="grace-clock">0:00</span>' +
+        '<div class="grace-progress"><div class="grace-progress-fill"></div></div>' +
+        '</div>';
+      bar.style.cssText = 'width:100%;z-index:9999;' +
+        'background:linear-gradient(180deg,#0a2a1a 0%,#061a10 100%);' +
+        'border-bottom:2px solid #00ff88;padding:6px 12px;box-sizing:border-box;' +
+        'font-family:"Press Start 2P",monospace;box-shadow:0 2px 12px rgba(0,255,136,0.3);';
+      // inner flex layout
+      var styleTag = document.createElement('style');
+      styleTag.textContent = '.grace-inner{display:flex;align-items:center;gap:10px;justify-content:center;}' +
+        '.grace-label{font-size:8px;color:#00ff88;letter-spacing:2px;text-shadow:0 0 8px rgba(0,255,136,0.5);}' +
+        '.grace-clock{font-size:16px;color:#fff;text-shadow:0 0 10px rgba(0,255,136,0.6);min-width:50px;text-align:center;}' +
+        '.grace-progress{width:100px;height:6px;background:#1a1a2e;border-radius:3px;overflow:hidden;border:1px solid #00ff8844;}' +
+        '.grace-progress-fill{height:100%;background:linear-gradient(90deg,#00ff88,#00cc6a);border-radius:3px;transition:width 1s linear;}' +
+        '.grace-urgent{animation:graceUrgentPulse 0.8s ease-in-out infinite;}' +
+        '.grace-urgent .grace-label,.grace-urgent .grace-clock{color:#ff4444 !important;text-shadow:0 0 10px rgba(255,68,68,0.6) !important;}' +
+        '.grace-urgent .grace-progress-fill{background:linear-gradient(90deg,#ff4444,#ff6666) !important;}' +
+        '.grace-urgent{border-bottom-color:#ff4444 !important;}' +
+        '@keyframes graceUrgentPulse{0%,100%{opacity:1;}50%{opacity:0.7;}}';
+      bar.appendChild(styleTag);
+      document.body.prepend(bar);
     }
+    // Update clock immediately
     var remaining = _gameLockGraceUntil - Date.now();
+    var totalGrace = 5 * 60 * 1000;
+    var pct = Math.max(0, Math.min(100, (remaining / totalGrace) * 100));
     var mins = Math.floor(remaining / 60000);
     var secs = Math.floor((remaining % 60000) / 1000);
-    el.textContent = '⏳ break: ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
-    el.style.display = '';
+    var clockEl = bar.querySelector('.grace-clock');
+    var progEl = bar.querySelector('.grace-progress-fill');
+    if (clockEl) clockEl.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+    if (progEl) progEl.style.width = pct + '%';
+    if (remaining < 60000) bar.classList.add('grace-urgent');
     _startGraceCountdown();
   }
+
 
   // v3.19.15: paint the stored profile-picture snapshot into the header
   // canvas, or hide it entirely if the player hasn't set one. Called from
@@ -7458,7 +7495,7 @@ try {
       '  .pip-menu-btn:hover{background:rgba(78,205,196,0.15);transform:scale(1.15);text-shadow:0 0 8px rgba(78,205,196,0.6);}' +
       '  .pip-menu-btn:active{transform:scale(0.9);}' +
       '  .pip-menu-btn.active{color:#ffd700;}' +
-      '  .dist-panel{display:none;flex:1 1 auto;background:#0d0d1a;border:1px solid #1f1f30;border-radius:12px;margin-top:4px;padding:8px;overflow-y:auto;overflow-x:hidden;}' +
+      '  .dist-panel{position:relative;display:none;flex:1 1 auto;background:#0d0d1a;border:1px solid #1f1f30;border-radius:12px;margin-top:4px;padding:8px;overflow-y:auto;overflow-x:hidden;}' +
       '  .dist-panel.open{display:block;}' +
       '  .dist-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}' +
       '  .dist-cat{position:relative;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:8px;font-family:"Press Start 2P","Courier New",monospace;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s ease,filter 0.2s ease,border-color 0.2s ease;user-select:none;display:flex;align-items:center;gap:6px;min-width:60px;border:2px solid rgba(255,255,255,0.15);box-shadow:0 3px 0 rgba(0,0,0,0.35),0 2px 8px rgba(0,0,0,0.3);overflow:hidden;}' +
@@ -7473,7 +7510,12 @@ try {
       '  .dist-toolbar{display:flex;gap:4px;margin-top:6px;justify-content:center;}' +
       '  .dist-cat::after{content:\'\';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);transition:left 0.5s ease;pointer-events:none;}' +
       '  .dist-cat:hover::after{left:120%;}' +
-      '  .dist-info-icon{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;background:rgba(78,205,196,0.15);color:#4ecdc4;border-radius:50%;font-size:8px;font-style:italic;cursor:help;border:1px solid rgba(78,205,196,0.3);font-family:Georgia,serif;}' +
+      '  .dist-help-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:linear-gradient(180deg,#2a5a5a,#1a3a3a);color:#4ecdc4;font-size:12px;font-weight:bold;font-family:Georgia,serif;cursor:pointer;border:1px solid #3a6a6a;border-bottom:3px solid #0a2a2a;box-shadow:0 2px 0 #0a2020,0 3px 8px rgba(0,0,0,0.4);transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);user-select:none;}' +
+      '  .dist-help-btn:hover{transform:scale(1.12) translateY(-2px);background:linear-gradient(180deg,#3a7a7a,#2a5a5a);color:#6eeee4;border-color:#4ecdc4;box-shadow:0 0 14px rgba(78,205,196,0.4),0 4px 12px rgba(0,0,0,0.5);border-bottom-color:#1a4a4a;}' +
+      '  .dist-help-btn:active{transform:scale(0.92) translateY(2px);border-bottom-width:1px;box-shadow:0 1px 0 #0a1a1a,0 1px 4px rgba(0,0,0,0.3),inset 0 2px 4px rgba(0,0,0,0.3);}' +
+      '  .dist-help-overlay{display:none;position:absolute;inset:0;background:rgba(10,10,20,0.97);border-radius:8px;z-index:50;padding:12px 14px;overflow-y:auto;animation:distHelpIn 0.2s ease-out;text-align:left;}' +
+      '  .dist-help-overlay.open{display:block;}' +
+      '  @keyframes distHelpIn{from{opacity:0;transform:scale(0.95);}to{opacity:1;transform:scale(1);}}' +
       '  .dist-tool-btn{font-size:7px;padding:4px 8px;border:1px solid #333;border-radius:6px;background:#1a1a28;color:#aaa;cursor:pointer;font-family:"Press Start 2P","Courier New",monospace;transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1),background 0.15s,color 0.15s,box-shadow 0.2s;box-shadow:0 2px 0 rgba(0,0,0,0.3);}' +
       '  .dist-tool-btn:hover{background:#2a2a3a;color:#fff;transform:scale(1.06) translateY(-1px);box-shadow:0 0 12px rgba(78,205,196,0.3),0 3px 8px rgba(0,0,0,0.4);}' +
       '  .dist-tool-btn:active{transform:scale(0.95) translateY(1px);box-shadow:0 1px 0 rgba(0,0,0,0.3);}' +
@@ -7498,7 +7540,7 @@ try {
       '  <div class="pip-bar"><div class="pip-bar-fill" id="pipBarFill" style="width:0%"></div></div>' +
       '</div>' +
       '<div class="dist-panel" id="distPanel">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:7px;color:#888;font-family:Press Start 2P,monospace;">DISTRACTIONS</span><span class="dist-info-icon" title="Log distractions during focus sessions. Tap a category to count +1. Use the \u2212 button to undo. Penalties scale: 1st = 10%, 2nd = +20% (30% total), 3rd = +30% (60%), 4th+ = 100% of session earnings. Zero distractions earns a +15% focus bonus! Use ADD to create categories, EDIT to rename or delete them.">i</span></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:7px;color:#888;font-family:Press Start 2P,monospace;">DISTRACTIONS</span><span class="dist-help-btn" id="distHelpBtn">?</span></div><div class="dist-help-overlay" id="distHelpOverlay"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-family:Press Start 2P,monospace;font-size:9px;color:#4ecdc4;">HOW IT WORKS</span><span class="dist-help-btn" id="distHelpClose" style="width:18px;height:18px;font-size:10px;color:#ff6b6b;background:linear-gradient(180deg,#3a1a1a,#2a0a0a);border-color:#5a2a2a;border-bottom-color:#1a0a0a;">\u2715</span></div><div style="font-size:10px;color:#ccc;line-height:1.7;font-family:-apple-system,sans-serif;"><b style="color:#4ecdc4;">Tap</b> a category to log a distraction.<br>Use the <b style="color:#ffaa44;">\u2212</b> button to undo.<br><br><b style="color:#ff6b6b;">Penalties scale up:</b><br>1st = 10% \u2022 2nd = +20% (30% total)<br>3rd = +30% (60% total) \u2022 4th+ = 100%<br><br><span style="color:#00ff88;font-size:11px;">\u2728 Zero distractions = +15% bonus!</span><br><br><b style="color:#888;">+ ADD</b> to create categories.<br><b style="color:#888;">EDIT</b> to rename or delete.</div></div>' +
       '  <div class="dist-cats" id="distCats">' + catButtonsHtml + '</div>' +
       '  <div class="dist-penalty" id="distPenalty" title="Session earnings penalty from distractions">' + penaltyText + '</div>' +
       '  <div class="dist-toolbar">' +
@@ -7649,6 +7691,25 @@ try {
 
     // Wire initial category button clicks
     _refreshPanel();
+
+    // Help ? button — click to toggle overlay
+    var _helpBtn = doc.getElementById('distHelpBtn');
+    var _helpOverlay = doc.getElementById('distHelpOverlay');
+    var _helpClose = doc.getElementById('distHelpClose');
+    if (_helpBtn && _helpOverlay) {
+      _helpBtn.addEventListener('click', function() {
+        try { SFX.click(); } catch(_){}
+        _helpOverlay.classList.toggle('open');
+      });
+      _helpBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+      if (_helpClose) {
+        _helpClose.addEventListener('click', function() {
+          try { SFX.click(); } catch(_){}
+          _helpOverlay.classList.remove('open');
+        });
+        _helpClose.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+      }
+    }
 
     // ADD button
     var addBtn = doc.getElementById('distAddBtn');
@@ -8338,8 +8399,8 @@ try {
     // may have advanced. If any new entries unlock, a MsgLog line lands and
     // the BRIEF badge will refresh on the next render().
     try { checkTrackerStageUnlocks(); } catch (_) {}
-    // v3.23.119: Check daily quest progress after session completion
-    try { checkQuestCompletion(); } catch (_) {}
+    // v3.23.329: Quest completion check deferred to after celebration screen dismiss
+    // (was here before but fired during the focus timer celebration overlay)
     // v3.23.166: Update challenge on session complete
     try { _updateChallengeOnSessionComplete(Math.round((state.sessionDurationSec || 600) / 60)); } catch (_) {}
     // v3.21.18: Auto-sync profile to Firestore after every completed session
@@ -8361,7 +8422,7 @@ try {
       if (!_hasOtherSnap) _catSnap['_other'] = {name: 'Other', color: '#888'};
       // Focus bonus for zero distractions
       if (_distCount === 0) {
-        var _focusCoinsEarned = Math.max(0, (state.coins || 0) - (_celebSnapshotCoins || 0));
+        var _focusCoinsEarned = Math.round(Math.max(0, (state.coins || 0) - (_celebSnapshotCoins || 0)));
         var _focusBonusAmt = Math.round(_focusCoinsEarned * FOCUS_BONUS_PCT / 100);
         if (_focusBonusAmt > 0) awardCoins(_focusBonusAmt, 'Focus bonus +' + FOCUS_BONUS_PCT + '% ($' + _focusBonusAmt + ')');
         state._lastFocusBonus = _focusBonusAmt;
@@ -11043,7 +11104,7 @@ try {
     // Data
     var streak = state.streak || 0;
     var sessionMin = Math.round((state.sessionDurationSec || 600) / 60);
-    var coinsEarned = (state.coins || 0) - (snapshot.coins || 0);
+    var coinsEarned = Math.round((state.coins || 0) - (snapshot.coins || 0));
     var xpEarned = (state.xp || 0) - (snapshot.xp || 0);
     var newLevel = state.level || 1;
     var oldLevel = snapshot.level || 1;
@@ -11431,7 +11492,7 @@ try {
                   _dHtml = '<div style="color:#00ff88;padding:6px 10px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:8px;">';
                   _dHtml += '<span style="font-size:12px;">&#x2705;</span> ZERO DISTRACTIONS';
                   var _fbAmt = state._lastFocusBonus || 0;
-                  var _wouldHaveBeen = Math.max(0, coinsEarned - _fbAmt);
+                  var _wouldHaveBeen = Math.round(Math.max(0, coinsEarned - _fbAmt));
                   _dHtml += '<div style="font-size:9px;color:#88ffbb;margin-top:4px;">+' + FOCUS_BONUS_PCT + '% focus bonus (+$' + _fbAmt + ')</div>';
                   _dHtml += '<div style="font-size:8px;color:#5a8a6a;margin-top:2px;">$' + _wouldHaveBeen + ' without bonus</div>';
                   _dHtml += '</div>';
@@ -11907,13 +11968,49 @@ try {
     if (typeof t[type] !== 'number') t[type] = 0;
   }
 
+  // v3.23.332: Calculate total focus minutes from focusHistory since a given date
+  function _calcFocusMinutesSince(sinceMs) {
+    var total = 0;
+    var startDate = new Date(sinceMs);
+    startDate.setHours(0,0,0,0);
+    // Sum from focusHistory (archived days)
+    if (state.focusHistory && typeof state.focusHistory === 'object') {
+      var keys = Object.keys(state.focusHistory);
+      for (var i = 0; i < keys.length; i++) {
+        var parts = keys[i].split('-');
+        var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        if (d >= startDate) {
+          total += (state.focusHistory[keys[i]] || 0);
+        }
+      }
+    }
+    // Add today's sessions from dailySessionLog
+    if (state.dailySessionLog && state.dailySessionLog.sessions && state.dailySessionLog.sessions.length > 0) {
+      var todayStr = state.dailySessionLog.date;
+      if (todayStr) {
+        var tp = todayStr.split('-');
+        var td = new Date(parseInt(tp[0]), parseInt(tp[1]) - 1, parseInt(tp[2]));
+        if (td >= startDate) {
+          // Only add if not already in focusHistory (avoid double-counting)
+          if (!state.focusHistory || !state.focusHistory[todayStr]) {
+            for (var j = 0; j < state.dailySessionLog.sessions.length; j++) {
+              total += (state.dailySessionLog.sessions[j].min || 0);
+            }
+          }
+        }
+      }
+    }
+    return Math.round(total);
+  }
+
   function _updateChallengeOnSessionComplete(sessionMinutes) {
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
     var ch = state.friendChallenge;
     if (!ch.tracking) ch.tracking = {};
     var type = ch.type;
     if (type === 'focus_minutes') {
-      ch.tracking[type] = (ch.tracking[type] || 0) + (sessionMinutes || 0);
+      // v3.23.332: Always recalculate from focusHistory — robust against missed sessions
+      ch.tracking[type] = _calcFocusMinutesSince(ch.startedAt || ch.endsAt - 86400000);
     } else if (type === 'session_count') {
       ch.tracking[type] = (ch.tracking[type] || 0) + 1;
     } else if (type === 'best_combo') {
@@ -11954,7 +12051,8 @@ try {
 
   // v3.23.302: Discover active challenges from friends' Firestore social data
   function _discoverFriendChallenges() {
-    if (state.friendChallenge) return; // already in a challenge
+    // v3.23.332: Don't skip if we have a 'pending' challenge — we may need to upgrade it
+    if (state.friendChallenge && state.friendChallenge.status === 'active') return; // already active
     if (!state.friends || !state.profileId) return;
     if (!window.ProfileSync || !window.ProfileSync.getSocialData) return;
     var friendIds = Object.keys(state.friends).filter(function(fid) {
@@ -11971,7 +12069,20 @@ try {
         // Check if challenge hasn't expired
         if (ac.endsAt && Date.now() >= ac.endsAt) return;
         // Check if we already have a challenge now (may have been set by an earlier iteration)
-        if (state.friendChallenge) return;
+        // v3.23.332: Allow upgrade of pending→active
+        if (state.friendChallenge && state.friendChallenge.status === 'active') return;
+        // If we have a pending challenge targeting this friend, upgrade it to active
+        if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === fid) {
+          console.log('[CHALLENGE-SYNC] Upgrading pending challenge to active via Firestore discovery');
+          state.friendChallenge.status = 'active';
+          state.friendChallenge.opponentProgress = ac.myProgress || 0;
+          _initChallengeTracking();
+          save();
+          try { _publishChallengeToFirestore(); } catch(_){}
+          try { renderChallengeUI(); } catch(_){}
+          try { showToast('Challenge is now active! Game on!', 'success'); } catch(_){}
+          return;
+        }
         // Check if already in pending invites
         var alreadyPending = (state.pendingChallengeInvites || []).some(function(inv) { return inv.fromId === fid; });
         if (alreadyPending) return;
@@ -12356,7 +12467,14 @@ try {
         // Store opponent data on card so withdraw works even if state gets wiped by storage sync
         activeCard.setAttribute('data-opponent-id', ch.opponentId || '');
         activeCard.setAttribute('data-opponent-name', ch.opponentName || ch.opponentId || '');
-        var myProg = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+        // v3.23.332: For focus_minutes, always recalculate from focusHistory for accuracy
+        var myProg;
+        if (ch.type === 'focus_minutes' && ch.startedAt) {
+          myProg = _calcFocusMinutesSince(ch.startedAt);
+          if (ch.tracking) ch.tracking[ch.type] = myProg; // keep tracking in sync
+        } else {
+          myProg = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+        }
         var theirProg = ch.opponentProgress || 0;
         var pool = CHALLENGE_POOL.filter(function(c){return c.id === ch.type;})[0];
         var unit = pool ? pool.unit : '';
@@ -12373,6 +12491,7 @@ try {
             '<span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4ecdc4;">' + escHtml(ch.label || ch.type) + '</span>' +
             '<span style="font-size:9px;color:#ffa500;">' + timeStr + ' left</span>' +
           '</div>' +
+          (ch.startedAt ? '<div style="font-size:7px;color:#888;margin-bottom:4px;">Started ' + new Date(ch.startedAt).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
           statusLabel +
           '<div style="font-size:9px;color:var(--text-dim);margin-bottom:8px;">' + escHtml(ch.desc || '') + '</div>' +
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
@@ -13280,6 +13399,8 @@ try {
         overlay.style.opacity = '0';
         setTimeout(function() { overlay.style.display = 'none'; if (particles) particles.innerHTML = ''; }, 400);
         overlay.onclick = null;
+        // v3.23.329: Check quest completion after celebration is dismissed
+        setTimeout(function() { try { checkQuestCompletion(); } catch (_) {} }, 300);
         // v3.23.165: Show quest overlay after welcome back is dismissed
         setTimeout(function() {
           try {
@@ -13726,7 +13847,7 @@ try {
                     priority: 2
                   });
                 } catch(_) {}
-              }, idx * 2500);
+              }, idx * 5500);
             });
           }
         }
@@ -13749,7 +13870,7 @@ try {
             toast.style.opacity = '0';
             toast.style.transform = 'translate(-50%,-50%) scale(0.8)';
             setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 500);
-          }, 2200);
+          }, 5000);
         }
 
         _checkAllBadges();
@@ -15358,6 +15479,14 @@ try {
                   // Update opponent progress
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
+                    // v3.23.332: If we're still pending but receiving progress, opponent clearly accepted — upgrade to active
+                    if (state.friendChallenge.status === 'pending') {
+                      console.log('[CHALLENGE] Upgrading pending→active: received progress from opponent');
+                      state.friendChallenge.status = 'active';
+                      _initChallengeTracking();
+                      try { _publishChallengeToFirestore(); } catch(_){}
+                      try { showToast('Challenge is now active! Game on!', 'success'); } catch(_){}
+                    }
                     state.friendChallenge.opponentProgress = parseInt(msg.progress) || 0;
                     save();
                     try { renderChallengeUI(); } catch(_){}
