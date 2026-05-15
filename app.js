@@ -12482,8 +12482,6 @@ try {
         var hrs = Math.floor(remaining / 3600000);
         var mins = Math.floor((remaining % 3600000) / 60000);
         var timeStr = hrs + 'h ' + mins + 'm';
-        var myBarW = myProg > 0 || theirProg > 0 ? Math.min(100, Math.round((myProg / Math.max(myProg, theirProg, 1)) * 100)) : 0;
-        var theirBarW = myProg > 0 || theirProg > 0 ? Math.min(100, Math.round((theirProg / Math.max(myProg, theirProg, 1)) * 100)) : 0;
         var statusLabel = ch.status === 'pending' ? '<span style="color:#ffa500;font-size:7px;">WAITING FOR RESPONSE...</span>' : '';
 
         activeCard.innerHTML = '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #4ecdc4;border-radius:8px;padding:10px;margin-bottom:8px;">' +
@@ -12494,17 +12492,46 @@ try {
           (ch.startedAt ? '<div style="font-size:7px;color:#888;margin-bottom:4px;">Started ' + new Date(ch.startedAt).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
           statusLabel +
           '<div style="font-size:9px;color:var(--text-dim);margin-bottom:8px;">' + escHtml(ch.desc || '') + '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
-            '<div style="flex:1;">' +
-              '<div style="font-size:8px;color:#00ff88;margin-bottom:2px;">YOU: ' + myProg + ' ' + unit + '</div>' +
-              '<div style="background:#333;border-radius:3px;height:6px;overflow:hidden;"><div style="background:#00ff88;height:100%;width:' + myBarW + '%;border-radius:3px;transition:width 0.3s;"></div></div>' +
-            '</div>' +
-            '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#ff4444;">VS</div>' +
-            '<div style="flex:1;">' +
-              '<div style="font-size:8px;color:#ff6b6b;margin-bottom:2px;text-align:right;">' + escHtml(ch.opponentName || '???') + ': ' + theirProg + ' ' + unit + '</div>' +
-              '<div style="background:#333;border-radius:3px;height:6px;overflow:hidden;"><div style="background:#ff6b6b;height:100%;width:' + theirBarW + '%;border-radius:3px;float:right;transition:width 0.3s;"></div></div>' +
-            '</div>' +
-          '</div>' +
+          (function() {
+            // v3.23.333: Stacked bars with shared labeled axis — adapts to challenge type
+            var maxVal = Math.max(myProg, theirProg, 1);
+            var isTime = (unit === 'min'); // focus_minutes and focus_marathon
+            var scaleMax, ticks = '', tickCount;
+            if (isTime) {
+              // Time-based: axis in hours
+              var maxHrs = maxVal / 60;
+              var tickH = maxHrs <= 2 ? 0.5 : maxHrs <= 5 ? 1 : maxHrs <= 12 ? 2 : maxHrs <= 30 ? 5 : 10;
+              var scaleMaxH = (Math.ceil(maxHrs / tickH) + 1) * tickH;
+              scaleMax = scaleMaxH * 60;
+              for (var th = 0; th <= scaleMaxH; th += tickH) {
+                var pct = Math.round((th / scaleMaxH) * 100);
+                var lbl = th < 1 ? Math.round(th * 60) + 'm' : (th % 1 === 0 ? th + 'h' : th.toFixed(1) + 'h');
+                ticks += '<div style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-size:6px;color:#666;">' + lbl + '</div>';
+              }
+            } else {
+              // Numeric: axis in plain numbers with unit
+              var niceSteps = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000];
+              var step = 1;
+              for (var ns = 0; ns < niceSteps.length; ns++) {
+                if (Math.ceil(maxVal / niceSteps[ns]) <= 8) { step = niceSteps[ns]; break; }
+              }
+              scaleMax = (Math.ceil(maxVal / step) + 1) * step;
+              for (var tn = 0; tn <= scaleMax; tn += step) {
+                var pctN = Math.round((tn / scaleMax) * 100);
+                var lblN = tn >= 1000 ? (tn / 1000) + 'k' : String(tn);
+                ticks += '<div style="position:absolute;left:' + pctN + '%;transform:translateX(-50%);font-size:6px;color:#666;">' + lblN + '</div>';
+              }
+            }
+            var myW = Math.min(90, Math.round((myProg / scaleMax) * 100));
+            var thW = Math.min(90, Math.round((theirProg / scaleMax) * 100));
+            return '<div style="margin-bottom:4px;">' +
+              '<div style="font-size:8px;color:#00ff88;margin-bottom:3px;">YOU: ' + myProg + ' ' + unit + '</div>' +
+              '<div style="background:#222;border-radius:3px;height:8px;overflow:hidden;margin-bottom:2px;"><div style="background:linear-gradient(90deg,#00ff88,#00cc6a);height:100%;width:' + myW + '%;border-radius:3px;transition:width 0.3s;"></div></div>' +
+              '<div style="font-size:8px;color:#ff6b6b;margin-bottom:3px;">' + escHtml(ch.opponentName || '???') + ': ' + theirProg + ' ' + unit + '</div>' +
+              '<div style="background:#222;border-radius:3px;height:8px;overflow:hidden;margin-bottom:2px;"><div style="background:linear-gradient(90deg,#ff6b6b,#cc4444);height:100%;width:' + thW + '%;border-radius:3px;transition:width 0.3s;"></div></div>' +
+              '<div style="position:relative;height:12px;margin-top:2px;">' + ticks + '</div>' +
+            '</div>';
+          })() +
           '<div style="text-align:center;margin-top:4px;">' +
             '<span style="font-size:8px;color:' + (myProg > theirProg ? '#00ff88' : (myProg < theirProg ? '#ff4444' : '#888')) + ';">' +
               (myProg > theirProg ? 'YOU\'RE WINNING!' : (myProg < theirProg ? 'CATCH UP!' : 'TIED!')) +
