@@ -5811,9 +5811,17 @@ try {
       const recurBtn = (!task.completed && !isRec)
         ? '<button class="task-recur-btn" title="Make this task recurring. It will be auto-added to your list every morning. You can stop it anytime from the toast that appears when you complete it.">\u21BB</button>'
         : '';
+      var _friendBadge = '';
+      if (task.addedBy) {
+        var _fbInitial = (task.addedBy || '?').charAt(0).toUpperCase();
+        var _fbWhen = task.createdAt ? new Date(task.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
+        var _fbTip = 'Added by ' + escHtml(task.addedBy) + (_fbWhen ? ' on ' + _fbWhen : '');
+        _friendBadge = '<span class="task-friend-badge" title="' + _fbTip + '">' + _fbInitial + '</span>';
+      }
       item.innerHTML = `
         <div class="task-checkbox${task.completed ? ' checked' : ''}" title="${task.completed ? 'Mark as not done.' : 'Mark this task complete. A speck of dust drops into the dust bin. Complete 3+ tasks today to unlock the daily burn.'}"></div>
         ${_projBadge}
+        ${_friendBadge}
         ${staleBadgeHtml}
         ${recurBadge}
         <span class="task-text">${escHtml(task.text)}</span>
@@ -11315,175 +11323,221 @@ try {
         var celebCoinsEl = $('celebCoins');
         var celebXPEl = $('celebXP');
         var celebLevelEl = $('celebLevel');
-        // Animate coins
-        _celebRewardSound();
-        var rDur = 900;
-        var rStart = performance.now();
-        function rTick(now) {
-          var prog = Math.min((now - rStart) / rDur, 1);
-          var eased = 1 - Math.pow(1 - prog, 3);
-          celebCoinsEl.textContent = '+$' + Math.round(eased * coinsEarned);
-          celebXPEl.textContent = '+' + Math.round(eased * xpEarned);
-          if (prog < 1) requestAnimationFrame(rTick);
-          else {
-            celebCoinsEl.textContent = '+$' + Math.round(coinsEarned);
-            celebXPEl.textContent = '+' + Math.round(xpEarned);
-            if (newLevel > oldLevel) {
-              celebLevelEl.textContent = 'LEVEL UP' + String.fromCharCode(33) + ' Level ' + newLevel;
-              celebLevelEl.style.opacity = '1';
-              celebLevelEl.style.color = '#ffd700';
-              _celebChord([523, 659, 784, 1047], 0.8, 0.1, 0.1);
+        // v3.23.321: Duolingo-style sequential rollout — each reward appears one at a time with counting sounds
+        // Hide everything initially — they slide up as they appear
+        celebCoinsEl.textContent = '$0';
+        celebCoinsEl.parentNode.style.opacity = '0';
+        celebCoinsEl.parentNode.style.transform = 'translateY(12px)';
+        celebCoinsEl.parentNode.style.transition = 'opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+        celebXPEl.textContent = '0';
+        celebXPEl.parentNode.style.opacity = '0';
+        celebXPEl.parentNode.style.transform = 'translateY(12px)';
+        celebXPEl.parentNode.style.transition = 'opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+        // Count-up helper with tick sounds (like Duolingo XP counter)
+        function _celebCountUp(el, target, prefix, suffix, dur, baseFreq, topFreq, onDone) {
+          var cStart = performance.now();
+          var lastTick = 0;
+          function cTick(now) {
+            var prog = Math.min((now - cStart) / dur, 1);
+            var eased = 1 - Math.pow(1 - prog, 3);
+            var cur = Math.round(eased * target);
+            el.textContent = prefix + cur + suffix;
+            var tickNum = Math.floor(prog * 15);
+            if (tickNum > lastTick) {
+              lastTick = tickNum;
+              _celebNote(baseFreq + (topFreq - baseFreq) * prog, 0.04, 0, 0.05);
             }
-            // v3.23.162: Combo burst callout in celebration
-            var _celebComboEl = $('celebCombo');
-            if (_celebComboEl) {
-              var _curCombo = state.combo || 0;
-              if (_curCombo >= 2) {
-                var _comboMult = getComboMultiplier(_curCombo);
-                var _comboPay = getComboCoinPayout(_curCombo);
-                var _mktLvl = state.marketingLevel || 0;
-                if (_mktLvl > 0) _comboPay = Math.round(_comboPay * [1, 1.25, 1.6, 2.0, 2.5, 3.0][Math.min(_mktLvl, 5)]);
-                var _mktYieldC = state.marketYieldMultiplier || 1.0;
-                _comboPay = Math.round(_comboPay * _mktYieldC);
-                _celebComboEl.innerHTML = '\uD83D\uDD25 ' + _curCombo + 'x COMBO'
-                  + '<span style="display:block;font-size:10px;color:#ffb64c;margin-top:4px;">'
-                  + _comboMult.toFixed(1) + 'x XP'
-                  + (_comboPay > 0 ? ' \u00B7 +$' + _comboPay + ' burst' : '')
-                  + '</span>';
-                _celebComboEl.style.opacity = '1';
-              } else {
-                _celebComboEl.style.display = 'none';
-              }
-            }
-            // v3.23.121: Post-session P&L scorecard — show the consequences of pricing decisions
-            var _mktInfoEl = $('celebMarketInfo');
-            if (_mktInfoEl && snapshot.mktYield) {
-              var _yld = snapshot.mktYield || 1.0;
-              var _price = snapshot.mktPrice || 12;
-              var _costTotal = (snapshot.mktCosts && snapshot.mktCosts.total) ? parseFloat(snapshot.mktCosts.total) : 10;
-              var _margin = snapshot.mktMargin || 0;
-              var _demand = snapshot.mktDemand || 50;
-              var _revenue = _price * (_demand / 50);  // revenue scales with demand
-              var _profit = _revenue - _costTotal;
-              var _yldColor = _yld >= 1.5 ? '#00ff88' : _yld >= 1.0 ? '#ffd700' : '#ff5555';
-              var _profitColor = _profit >= 3 ? '#00ff88' : _profit >= 0 ? '#ffd700' : '#ff6b6b';
-              var _marginColor = _margin >= 30 ? '#00ff88' : _margin >= 10 ? '#ffd700' : _margin >= 0 ? '#ff9966' : '#ff5555';
-              var _demandColor = _demand >= 60 ? '#00ff88' : _demand >= 35 ? '#ffd700' : '#ff6b6b';
-
-              var _lines = '<div style="display:grid;grid-template-columns:auto auto;gap:2px 12px;text-align:left;margin:0 auto;width:fit-content;">';
-              _lines += '<span style="color:#888;cursor:help;" title="Your price per textile (slider, 1-30).">price</span><span style="color:#4ecdc4;">$' + _price.toFixed(0) + '</span>';
-              _lines += '<span style="color:#888;cursor:help;" title="Production cost per textile. Lowered by Factory upgrades.">costs</span><span style="color:#ff9966;">$' + _costTotal.toFixed(1) + '</span>';
-              _lines += '<span style="color:#888;cursor:help;" title="(price - costs) / price. Green 30%+, yellow 10-30%, red <10%.">margin</span><span style="color:' + _marginColor + ';">' + _margin + '%</span>';
-              _lines += '<span style="color:#888;cursor:help;" title="Buyer demand (0-100%). Lower price = more demand.">demand</span><span style="color:' + _demandColor + ';">' + _demand + '%</span>';
-              _lines += '</div>';
-              _lines += '<div style="margin-top:6px;border-top:1px solid #2a2a3a;padding-top:5px;">';
-              _lines += '<span style="color:' + _yldColor + ';font-size:12px;font-family:\'Press Start 2P\',monospace;cursor:help;" title="Multiplier on your combo burst. Above 1.0× = bonus, below = penalty.">' + _yld.toFixed(2) + 'x</span>';
-              _lines += '<span style="color:#666;"> yield</span>';
-              if (_profit >= 0) {
-                _lines += '<br><span style="color:' + _profitColor + ';cursor:help;" title="Price minus costs per textile.">+$' + _profit.toFixed(1) + ' per unit profit</span>';
-              } else {
-                _lines += '<br><span style="color:' + _profitColor + ';cursor:help;" title="Selling below production cost. Raise price or upgrade Factory.">-$' + Math.abs(_profit).toFixed(1) + ' per unit loss</span>';
-              }
-              // v3.23.167: Narrative framing for market conditions
-              if (_yld < 0.7) {
-                // Severe downturn — loom-voice story context, not dry tips
-                var _downturnLines = [
-                  'The looms run, but the warehouses are full. Buyers have stopped returning calls. The market remembers what it was, and cannot accept what it has become.',
-                  'A cold wind through the trade district. The merchants who once fought for your textiles now pass your stall without slowing. The loom hums on, indifferent.',
-                  'The price board has not moved in hours. Somewhere a factory is closing. Yours is not — but the silence in the order book is hard to distinguish from surrender.',
-                  'Demand has dried to a trickle. The loom weaves beautifully — that was never the problem. The problem is that no one is buying beautiful things right now.',
-                  'The market is in a downturn. Your textiles sit on shelves gathering dust. The loom does not understand economics. It only knows how to weave.',
-                  'A recession. The word is everywhere now. Your costs have not changed but the world\x27s willingness to pay for what you make has cratered quietly, like snow settling.'
-                ];
-                var _downIdx = Math.floor(Math.random() * _downturnLines.length);
-                _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,107,107,0.08);border-left:2px solid #ff6b6b;border-radius:3px;font-size:10px;color:#cc9988;text-align:left;font-style:italic;line-height:1.5;">';
-                _lines += _downturnLines[_downIdx];
-                _lines += '</div>';
-                console.log('[Market] Yield is ' + _yld.toFixed(2) + 'x — severe downturn. Demand: ' + _demand + '%, Margin: ' + _margin + '%, Price: $' + _price.toFixed(0));
-              } else if (_yld < 1.0) {
-                // Mild downturn — still show actionable tips
-                var _tips = [];
-                if (_demand < 35) _tips.push('Demand is soft (' + _demand + '%) — consider lowering your price to attract more buyers');
-                if (_margin < 15 && _demand >= 35) _tips.push('Thin margins — factory upgrades can cut production costs');
-                if (_profit < 0) _tips.push('Selling below cost. Adjust price or invest in efficiency upgrades');
-                if (_tips.length === 0) _tips.push('The market is sluggish — experiment with different price points on the slider');
-                _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,170,100,0.1);border-left:2px solid #ff9966;border-radius:3px;font-size:10px;color:#ffaa88;text-align:left;">';
-                _lines += '<span style="color:#ff9966;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">TIP</span><br>';
-                _lines += _tips[0];
-                _lines += '</div>';
-              } else if (_yld >= 1.5) {
-                _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(0,255,136,0.1);border-left:2px solid #00ff88;border-radius:3px;font-size:10px;color:#88ffbb;text-align:left;">';
-                _lines += '<span style="color:#00ff88;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">NICE</span><br>';
-                _lines += 'Strong yield! Your pricing is in the sweet spot.';
-                _lines += '</div>';
-              }
-              _lines += '</div>';
-
-              _mktInfoEl.innerHTML = _lines;
-              setTimeout(function() { _mktInfoEl.style.opacity = '1'; }, 400);
-            }
-            // v3.23.312: Distraction breakdown in celebration
-            var _distInfoEl = document.getElementById('celebDistInfo');
-            if (!_distInfoEl) {
-              _distInfoEl = document.createElement('div');
-              _distInfoEl.id = 'celebDistInfo';
-              _distInfoEl.style.cssText = 'margin-top:10px;font-size:10px;font-family:"Press Start 2P",monospace;opacity:0;transition:opacity 0.5s;text-align:center;';
-              if (_mktInfoEl) _mktInfoEl.parentNode.insertBefore(_distInfoEl, _mktInfoEl.nextSibling);
-              else if (celebCoinsEl) celebCoinsEl.parentNode.appendChild(_distInfoEl);
-            }
-            if (_distInfoEl) {
-              var _snapDist = snapshot.distractions || {};
-              var _snapPenaltyPct = snapshot.distractionPenaltyPct || 0;
-              var _snapCount = snapshot.distractionCount || 0;
-              var _dHtml = '';
-              if (_snapCount === 0) {
-                _dHtml = '<div style="color:#00ff88;padding:6px 10px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:8px;">';
-                _dHtml += '<span style="font-size:12px;">&#x2705;</span> ZERO DISTRACTIONS';
-                var _fbAmt = state._lastFocusBonus || 0;
-                var _wouldHaveBeen = Math.max(0, coinsEarned - _fbAmt);
-                _dHtml += '<div style="font-size:9px;color:#88ffbb;margin-top:4px;">+' + FOCUS_BONUS_PCT + '% focus bonus (+$' + _fbAmt + ')</div>';
-                _dHtml += '<div style="font-size:8px;color:#5a8a6a;margin-top:2px;">$' + _wouldHaveBeen + ' without bonus</div>';
-                _dHtml += '</div>';
-              } else {
-                _dHtml = '<div style="color:#ff6b6b;padding:6px 10px;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.2);border-radius:8px;">';
-                _dHtml += '<span style="font-size:11px;">&#x26A0;</span> ' + _snapCount + ' DISTRACTION' + (_snapCount !== 1 ? 'S' : '');
-                // Itemize by category
-                var _catNames = (state.distractionCategories || []).slice();
-                var _hasOtherCat = false;
-                for (var _ci = 0; _ci < _catNames.length; _ci++) { if (_catNames[_ci].id === '_other') _hasOtherCat = true; }
-                if (!_hasOtherCat) _catNames.push({id:'_other',name:'Other',color:'#888'});
-                var _catItems = [];
-                var _dKeys = Object.keys(_snapDist);
-                for (var _di = 0; _di < _dKeys.length; _di++) {
-                  var _dCatId = _dKeys[_di];
-                  var _dCnt = _snapDist[_dCatId];
-                  if (_dCnt <= 0) continue;
-                  var _dName = _dCatId;
-                  for (var _ci2 = 0; _ci2 < _catNames.length; _ci2++) {
-                    if (_catNames[_ci2].id === _dCatId) { _dName = _catNames[_ci2].name; break; }
-                  }
-                  _catItems.push(_dName + ' x' + _dCnt);
-                }
-                if (_catItems.length > 0) {
-                  _dHtml += '<div style="font-size:8px;color:#ffaa88;margin-top:4px;">' + _catItems.join(' &middot; ') + '</div>';
-                }
-                // Show penalty math
-                _dHtml += '<div style="font-size:9px;color:#ff8888;margin-top:4px;">';
-                // Show percentage breakdown: 10% + 20% + 30%...
-                var _penParts = [];
-                for (var _pp = 1; _pp <= _snapCount; _pp++) {
-                  _penParts.push((_pp * 10) + '%');
-                }
-                var _earnedThisSession = Math.max(0, (state.coins || 0) + (snapshot.coins || 0) - 2 * (snapshot.coins || 0));
-                _dHtml += _penParts.join(' + ') + ' = <span style="color:#ff6b6b;font-size:10px;">-' + _snapPenaltyPct + '% of earnings</span>';
-                _dHtml += '</div></div>';
-              }
-              _distInfoEl.innerHTML = _dHtml;
-              setTimeout(function() { _distInfoEl.style.opacity = '1'; }, 600);
+            if (prog < 1) requestAnimationFrame(cTick);
+            else {
+              el.textContent = prefix + target + suffix;
+              _celebNote(topFreq, 0.15, 0, 0.08);
+              _celebNote(topFreq * 1.25, 0.15, 0.05, 0.06);
+              if (onDone) onDone();
             }
           }
+          requestAnimationFrame(cTick);
         }
-        requestAnimationFrame(rTick);
+        // Step 1: Money slides in + counts up
+        celebCoinsEl.parentNode.style.opacity = '1';
+        celebCoinsEl.parentNode.style.transform = 'translateY(0)';
+        _celebCountUp(celebCoinsEl, Math.round(coinsEarned), '+$', '', 800, 300, 800, function() {
+          // Step 2: XP slides in + counts up (after money lands)
+          setTimeout(function() {
+            celebXPEl.parentNode.style.opacity = '1';
+            celebXPEl.parentNode.style.transform = 'translateY(0)';
+            _celebCountUp(celebXPEl, Math.round(xpEarned), '+', '', 600, 400, 900, function() {
+              // All counting done — now cascade the info panels
+              var _chainDelay = 0;
+              // Step 3: Level up (if any)
+              if (newLevel > oldLevel) {
+                _chainDelay += 300;
+                setTimeout(function() {
+                  celebLevelEl.textContent = 'LEVEL UP' + String.fromCharCode(33) + ' Level ' + newLevel;
+                  celebLevelEl.style.opacity = '1';
+                  celebLevelEl.style.color = '#ffd700';
+                  celebLevelEl.style.transform = 'scale(1.2)';
+                  celebLevelEl.style.transition = 'opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+                  setTimeout(function() { celebLevelEl.style.transform = 'scale(1)'; }, 300);
+                  _celebChord([523, 659, 784, 1047], 0.8, 0.1, 0.1);
+                }, 200);
+              }
+              // Step 4: Combo burst (if any)
+              var _celebComboEl = $('celebCombo');
+              if (_celebComboEl) {
+                var _curCombo = state.combo || 0;
+                if (_curCombo >= 2) {
+                  _chainDelay += 300;
+                  setTimeout(function() {
+                    var _comboMult = getComboMultiplier(_curCombo);
+                    var _comboPay = getComboCoinPayout(_curCombo);
+                    var _mktLvl = state.marketingLevel || 0;
+                    if (_mktLvl > 0) _comboPay = Math.round(_comboPay * [1, 1.25, 1.6, 2.0, 2.5, 3.0][Math.min(_mktLvl, 5)]);
+                    var _mktYieldC = state.marketYieldMultiplier || 1.0;
+                    _comboPay = Math.round(_comboPay * _mktYieldC);
+                    _celebComboEl.innerHTML = '🔥 ' + _curCombo + 'x COMBO'
+                      + '<span style="display:block;font-size:10px;color:#ffb64c;margin-top:4px;">'
+                      + _comboMult.toFixed(1) + 'x XP'
+                      + (_comboPay > 0 ? ' · +$' + _comboPay + ' burst' : '')
+                      + '</span>';
+                    _celebComboEl.style.opacity = '1';
+                    _celebComboEl.style.transform = 'scale(1.15)';
+                    _celebComboEl.style.transition = 'opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+                    setTimeout(function() { _celebComboEl.style.transform = 'scale(1)'; }, 250);
+                    _celebNote(587, 0.2, 0, 0.08);
+                    _celebNote(784, 0.2, 0.08, 0.08);
+                  }, _chainDelay);
+                } else {
+                  _celebComboEl.style.display = 'none';
+                }
+              }
+              // Step 5: Distraction breakdown (slides up)
+              _chainDelay += 300;
+              var _distDelay = _chainDelay;
+              var _distInfoEl = document.getElementById('celebDistInfo');
+              if (!_distInfoEl) {
+                _distInfoEl = document.createElement('div');
+                _distInfoEl.id = 'celebDistInfo';
+                _distInfoEl.style.cssText = 'margin-top:10px;font-size:10px;font-family:"Press Start 2P",monospace;opacity:0;transition:opacity 0.4s,transform 0.4s ease-out;text-align:center;transform:translateY(8px);';
+                var _mktInfoElRef = $('celebMarketInfo');
+                if (_mktInfoElRef) _mktInfoElRef.parentNode.insertBefore(_distInfoEl, _mktInfoElRef.nextSibling);
+                else if (celebCoinsEl) celebCoinsEl.parentNode.appendChild(_distInfoEl);
+              }
+              if (_distInfoEl) {
+                var _snapDist = snapshot.distractions || {};
+                var _snapPenaltyPct = snapshot.distractionPenaltyPct || 0;
+                var _snapCount = snapshot.distractionCount || 0;
+                var _dHtml = '';
+                if (_snapCount === 0) {
+                  _dHtml = '<div style="color:#00ff88;padding:6px 10px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:8px;">';
+                  _dHtml += '<span style="font-size:12px;">&#x2705;</span> ZERO DISTRACTIONS';
+                  var _fbAmt = state._lastFocusBonus || 0;
+                  var _wouldHaveBeen = Math.max(0, coinsEarned - _fbAmt);
+                  _dHtml += '<div style="font-size:9px;color:#88ffbb;margin-top:4px;">+' + FOCUS_BONUS_PCT + '% focus bonus (+$' + _fbAmt + ')</div>';
+                  _dHtml += '<div style="font-size:8px;color:#5a8a6a;margin-top:2px;">$' + _wouldHaveBeen + ' without bonus</div>';
+                  _dHtml += '</div>';
+                } else {
+                  _dHtml = '<div style="color:#ff6b6b;padding:6px 10px;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.2);border-radius:8px;">';
+                  _dHtml += '<span style="font-size:11px;">&#x26A0;</span> ' + _snapCount + ' DISTRACTION' + (_snapCount !== 1 ? 'S' : '');
+                  var _catNames = (state.distractionCategories || []).slice();
+                  var _hasOtherCat = false;
+                  for (var _ci = 0; _ci < _catNames.length; _ci++) { if (_catNames[_ci].id === '_other') _hasOtherCat = true; }
+                  if (!_hasOtherCat) _catNames.push({id:'_other',name:'Other',color:'#888'});
+                  var _catItems = [];
+                  var _dKeys = Object.keys(_snapDist);
+                  for (var _di = 0; _di < _dKeys.length; _di++) {
+                    var _dCatId = _dKeys[_di];
+                    var _dCnt = _snapDist[_dCatId];
+                    if (_dCnt <= 0) continue;
+                    var _dName = _dCatId;
+                    for (var _ci2 = 0; _ci2 < _catNames.length; _ci2++) {
+                      if (_catNames[_ci2].id === _dCatId) { _dName = _catNames[_ci2].name; break; }
+                    }
+                    _catItems.push(_dName + ' x' + _dCnt);
+                  }
+                  if (_catItems.length > 0) {
+                    _dHtml += '<div style="font-size:8px;color:#ffaa88;margin-top:4px;">' + _catItems.join(' &middot; ') + '</div>';
+                  }
+                  _dHtml += '<div style="font-size:9px;color:#ff8888;margin-top:4px;">';
+                  var _penParts = [];
+                  for (var _pp = 1; _pp <= _snapCount; _pp++) {
+                    _penParts.push((_pp * 10) + '%');
+                  }
+                  _dHtml += _penParts.join(' + ') + ' = <span style="color:#ff6b6b;font-size:10px;">-' + _snapPenaltyPct + '% of earnings</span>';
+                  _dHtml += '</div></div>';
+                }
+                _distInfoEl.innerHTML = _dHtml;
+                _distInfoEl.style.transform = 'translateY(8px)';
+                _distInfoEl.style.opacity = '0';
+                setTimeout(function() { _distInfoEl.style.opacity = '1'; _distInfoEl.style.transform = 'translateY(0)'; _celebNote(262, 0.1, 0, 0.04); }, _distDelay);
+              }
+              // Step 6: Market P&L scorecard (slides up last)
+              _chainDelay += 300;
+              var _mktDelay = _chainDelay;
+              var _mktInfoEl = $('celebMarketInfo');
+              if (_mktInfoEl && snapshot.mktYield) {
+                var _yld = snapshot.mktYield || 1.0;
+                var _price = snapshot.mktPrice || 12;
+                var _costTotal = (snapshot.mktCosts && snapshot.mktCosts.total) ? parseFloat(snapshot.mktCosts.total) : 10;
+                var _margin = snapshot.mktMargin || 0;
+                var _demand = snapshot.mktDemand || 50;
+                var _revenue = _price * (_demand / 50);
+                var _profit = _revenue - _costTotal;
+                var _yldColor = _yld >= 1.5 ? '#00ff88' : _yld >= 1.0 ? '#ffd700' : '#ff5555';
+                var _profitColor = _profit >= 3 ? '#00ff88' : _profit >= 0 ? '#ffd700' : '#ff6b6b';
+                var _marginColor = _margin >= 30 ? '#00ff88' : _margin >= 10 ? '#ffd700' : _margin >= 0 ? '#ff9966' : '#ff5555';
+                var _demandColor = _demand >= 60 ? '#00ff88' : _demand >= 35 ? '#ffd700' : '#ff6b6b';
+                var _lines = '<div style="display:grid;grid-template-columns:auto auto;gap:2px 12px;text-align:left;margin:0 auto;width:fit-content;">';
+                _lines += '<span style="color:#888;cursor:help;" title="Your price per textile (slider, 1-30).">price</span><span style="color:#4ecdc4;">$' + _price.toFixed(0) + '</span>';
+                _lines += '<span style="color:#888;cursor:help;" title="Production cost per textile. Lowered by Factory upgrades.">costs</span><span style="color:#ff9966;">$' + _costTotal.toFixed(1) + '</span>';
+                _lines += '<span style="color:#888;cursor:help;" title="(price - costs) / price. Green 30%+, yellow 10-30%, red <10%.">margin</span><span style="color:' + _marginColor + ';">' + _margin + '%</span>';
+                _lines += '<span style="color:#888;cursor:help;" title="Buyer demand (0-100%). Lower price = more demand.">demand</span><span style="color:' + _demandColor + ';">' + _demand + '%</span>';
+                _lines += '</div>';
+                _lines += '<div style="margin-top:6px;border-top:1px solid #2a2a3a;padding-top:5px;">';
+                _lines += '<span style="color:' + _yldColor + ';font-size:12px;font-family:\'Press Start 2P\',monospace;cursor:help;" title="Multiplier on your combo burst. Above 1.0× = bonus, below = penalty.">' + _yld.toFixed(2) + 'x</span>';
+                _lines += '<span style="color:#666;"> yield</span>';
+                if (_profit >= 0) {
+                  _lines += '<br><span style="color:' + _profitColor + ';cursor:help;" title="Price minus costs per textile.">+$' + _profit.toFixed(1) + ' per unit profit</span>';
+                } else {
+                  _lines += '<br><span style="color:' + _profitColor + ';cursor:help;" title="Selling below production cost. Raise price or upgrade Factory.">-$' + Math.abs(_profit).toFixed(1) + ' per unit loss</span>';
+                }
+                if (_yld < 0.7) {
+                  var _downturnLines = [
+                    'The looms run, but the warehouses are full. Buyers have stopped returning calls.',
+                    'A cold wind through the trade district. The merchants pass your stall without slowing.',
+                    'The price board has not moved in hours. The silence in the order book is deafening.',
+                    'Demand has dried to a trickle. The loom weaves beautifully — but no one is buying.',
+                    'The market is in a downturn. Your textiles sit on shelves gathering dust.',
+                    'A recession. Your costs have not changed but willingness to pay has cratered.'
+                  ];
+                  var _downIdx = Math.floor(Math.random() * _downturnLines.length);
+                  _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,107,107,0.08);border-left:2px solid #ff6b6b;border-radius:3px;font-size:10px;color:#cc9988;text-align:left;font-style:italic;line-height:1.5;">';
+                  _lines += _downturnLines[_downIdx];
+                  _lines += '</div>';
+                } else if (_yld < 1.0) {
+                  var _tips = [];
+                  if (_demand < 35) _tips.push('Demand is soft (' + _demand + '%) — consider lowering your price');
+                  if (_margin < 15 && _demand >= 35) _tips.push('Thin margins — factory upgrades can cut production costs');
+                  if (_profit < 0) _tips.push('Selling below cost. Adjust price or invest in efficiency upgrades');
+                  if (_tips.length === 0) _tips.push('The market is sluggish — experiment with different price points');
+                  _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(255,170,100,0.1);border-left:2px solid #ff9966;border-radius:3px;font-size:10px;color:#ffaa88;text-align:left;">';
+                  _lines += '<span style="color:#ff9966;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">TIP</span><br>';
+                  _lines += _tips[0];
+                  _lines += '</div>';
+                } else if (_yld >= 1.5) {
+                  _lines += '<div style="margin-top:6px;padding:5px 8px;background:rgba(0,255,136,0.1);border-left:2px solid #00ff88;border-radius:3px;font-size:10px;color:#88ffbb;text-align:left;">';
+                  _lines += '<span style="color:#00ff88;font-family:' + "'Press Start 2P'" + ',monospace;font-size:7px;">NICE</span><br>';
+                  _lines += 'Strong yield! Your pricing is in the sweet spot.';
+                  _lines += '</div>';
+                }
+                _lines += '</div>';
+                _mktInfoEl.innerHTML = _lines;
+                _mktInfoEl.style.transform = 'translateY(8px)';
+                _mktInfoEl.style.transition = 'opacity 0.4s, transform 0.4s ease-out';
+                setTimeout(function() { _mktInfoEl.style.opacity = '1'; _mktInfoEl.style.transform = 'translateY(0)'; _celebNote(330, 0.1, 0, 0.04); }, _mktDelay);
+              }
+            }); // end XP count-up callback
+          }, 200); // delay before XP starts
+        }); // end Money count-up callback
         if (streak >= 5) _spawnCelebParticles(particles, 20);
         tapHint.textContent = 'tap to close';
       } else {
