@@ -97,6 +97,27 @@ jobs:
           fi
           ls -la "$STAGING"
 
+      - name: Warn about unstaged extension files
+        run: |
+          echo "Checking for .js/.html/.css files in repo root not included in staging..."
+          MISSING=0
+          for f in *.js *.html *.css; do
+            [ -f "$f" ] || continue
+            # Skip known non-extension files
+            case "$f" in
+              *_new.js|*_clean.js|*_backup.*|cleanup-*|CLAUDE.md) continue ;;
+            esac
+            if [ ! -f "staging/pixelfocus/$f" ]; then
+              echo "::warning::$f exists in repo root but was NOT included in release zip"
+              MISSING=$((MISSING+1))
+            fi
+          done
+          if [ "$MISSING" -gt 0 ]; then
+            echo "::warning::$MISSING file(s) in repo root are not in the release. Update the staging step if they should ship."
+          else
+            echo "All root .js/.html/.css files are included in the release."
+          fi
+
       - name: Create zip
         id: zip
         run: |

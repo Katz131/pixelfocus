@@ -314,6 +314,96 @@
 
   .op-unavailable { font-size: 10px; color: var(--warn); margin-top: 3px; font-style: italic; }
 
+  /* ---------- Internal ops section ---------- */
+  .internal-ops-panel {
+    margin-top: 18px;
+    border: 1px solid #3a1a2a;
+    border-radius: 10px;
+    background: var(--surface);
+    padding: 16px 18px;
+  }
+  .internal-ops-panel h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--danger);
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Target picker */
+  .target-picker {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .target-picker-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--warn);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .target-picker-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  select.target-select {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    min-width: 180px;
+    cursor: pointer;
+  }
+  select.target-select:focus { outline: none; border-color: var(--danger); }
+
+  .target-info {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 10px;
+    align-items: center;
+  }
+  .target-chip {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-dim);
+  }
+  .target-chip.dissident { color: var(--danger); border-color: #3a0a14; }
+  .target-chip.kompromat { color: var(--warn); border-color: #3a2a0a; }
+  .target-chip.blackmailed { color: var(--bureau); border-color: #2a2464; }
+  .target-chip.clean { color: var(--accent); border-color: #0a3a1a; }
+  .target-chip.stress-high { color: var(--danger); }
+  .target-chip.stress-med  { color: var(--warn); }
+  .target-chip.stress-low  { color: var(--accent); }
+  .target-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--danger);
+  }
+  .target-empty {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 11px;
+    padding: 4px 0;
+  }
+
+  .op-card.internal { border-color: #3a1a2a; }
+  .op-card.internal .op-title { color: var(--danger); }
+  .op-card.internal .op-sub { color: var(--warn); }
+
   /* ---------- History ---------- */
   .history-list { display: flex; flex-direction: column; gap: 8px; max-height: 720px; overflow-y: auto; }
   .hist-entry { border-left: 3px solid var(--border); padding: 8px 12px; background: var(--surface2);
@@ -400,6 +490,20 @@
       <div id="opList" class="op-list"></div>
     </div>
   </div>
+  <div class="internal-ops-panel">
+    <h2 title="Operations that target your own employees. Select a target from the picker below, then run the operation.">Internal affairs &mdash; dissident control</h2>
+    <div class="target-picker">
+      <div class="target-picker-label">Target employee</div>
+      <div class="target-picker-row">
+        <select class="target-select" id="targetEmpSelect" title="Choose an employee from your roster to target with internal operations.">
+          <option value="">Select a target&hellip;</option>
+        </select>
+      </div>
+      <div id="targetInfoBar" class="target-info"></div>
+    </div>
+    <div id="internalOpList" class="op-list"></div>
+  </div>
+
   <div class="panel">
     <h2 class="teal" title="Recent Bureau results, newest first. Each entry shows the operation, the agent, and the outcome.">Logbook &mdash; recent traffic</h2>
     <div id="bureauHistList" class="history-list"></div>

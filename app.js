@@ -682,6 +682,11 @@ try {
     timerEndsAt: 0,
     sessionDurationSec: 600, // 600 / 1800 / 3600 — chosen via session picker
     sessionBlocks: 0,
+    // v3.23.335: Double-down extension gamble
+    doubleDownActive: false,        // true while an extension is in play
+    doubleDownOriginalSec: 0,       // original commitment in seconds before extension
+    doubleDownExtensionSec: 0,      // how many seconds were added
+    doubleDownOriginalCoins: 0,     // coins snapshot when double-down was activated
     hasSeenIntro: false,      // first-run intro modal: flips true once the player clicks BEGIN THE FIRST SHIFT
     hasSeenGalleryIntro: false, // first-run Master Loom intro modal (gallery.html): flips true once the player clicks APPROACH THE LOOM
     hasSeenFactoryIntro: false, // first-run Textile Factory intro modal (factory.html): flips true once the player clicks OBSERVE THE FLOOR
@@ -834,6 +839,7 @@ try {
     startupBrowser: 'brave',        // which browser the startup script should open ('brave' or 'chrome')
     startupExtras: [],              // additional file paths to launch on startup
     focusHistory: {},               // { 'YYYY-MM-DD': minutes } — daily focus archive
+    sessionArchive: {},             // v3.23.342: { 'YYYY-MM-DD': [{start,end,min}] } — last 7 days of session details for timeline
     blurCompletedTasks: false,      // blur today's completed tasks on profile page
     challengeActive: false,         // idle challenge accepted — 1.5x on next session
     challengeAcceptedAt: 0,         // timestamp of challenge acceptance
@@ -1256,6 +1262,15 @@ try {
         if (!state.focusHistory[_sLogDate] || state.focusHistory[_sLogDate] < _sLogMins) {
           state.focusHistory[_sLogDate] = _sLogMins;
           console.log('[Save] Safety-archived ' + _sLogMins + ' min for ' + _sLogDate + ' into focusHistory.');
+        }
+        // v3.23.342: Preserve individual session timestamps for timeline display
+        if (!state.sessionArchive || typeof state.sessionArchive !== 'object') state.sessionArchive = {};
+        state.sessionArchive[_sLogDate] = state.dailySessionLog.sessions.slice();
+        // Cap sessionArchive to 7 days
+        var _saKeys = Object.keys(state.sessionArchive);
+        if (_saKeys.length > 7) {
+          _saKeys.sort();
+          for (var _sak = 0; _sak < _saKeys.length - 7; _sak++) delete state.sessionArchive[_saKeys[_sak]];
         }
         state.dailySessionLog = { date: _saveToday, sessions: [] };
       }
@@ -1736,6 +1751,129 @@ try {
           Personnel.reconcileRoster(state);
         }
       } catch (_) {}
+      // v3.23.334: One-time credit for 2 lost sessions (10 min + 20 min) on 2026-05-15
+      // due to post-session lockout bug forcing reset. Only runs once per profile.
+      // v3.23.334b: Fix overlapping timestamps from first credit run
+      if (state._lostSessionCredit334 && !state._lostSessionCredit334b) {
+        state._lostSessionCredit334b = true;
+        // Remove the two bad sessions (they overlapped with the real 15:07-15:50 session)
+        // and undo the stats so they can be re-added correctly below
+        if (state.dailySessionLog && state.dailySessionLog.sessions) {
+          // Find and remove sessions that were injected (they have min=20 or min=10
+          // and their start time overlaps with the real 60-min session window)
+          var _cleaned = [];
+          var _removed = 0;
+          for (var _ci = 0; _ci < state.dailySessionLog.sessions.length; _ci++) {
+            var _cs = state.dailySessionLog.sessions[_ci];
+            // The bad sessions have .min of 20 or 10 and overlap with the 15:07-15:50 block
+            // They were placed at now-80min to now-60min and now-40min to now-30min
+            // A real session wouldn't have these exact durations overlapping with the 60-min one
+            if (_removed < 2 && (_cs.min === 20 || _cs.min === 10)) {
+              // Check if this session's time range overlaps with or is near the real session
+              // The real session was roughly 15:07-15:50. Bad sessions had weird offsets.
+              // Just remove the last two 10/20-min sessions added (they're at the end)
+              var _isLast = _ci >= state.dailySessionLog.sessions.length - 2;
+              if (_isLast) { _removed++; continue; }
+            }
+            _cleaned.push(_cs);
+          }
+          if (_removed > 0) {
+            state.dailySessionLog.sessions = _cleaned;
+            // Undo the stats
+            state.focusHistory['2026-05-15'] = Math.max(0, (state.focusHistory['2026-05-15'] || 0) - 30);
+            state.lifetimeFocusMinutes = Math.max(0, (state.lifetimeFocusMinutes || 0) - 30);
+            state.lifetimeSessions = Math.max(0, (state.lifetimeSessions || 0) - 2);
+            console.log('[v3.23.334b] Removed ' + _removed + ' overlapping sessions, will re-add with correct timestamps.');
+          }
+        }
+        // Now fall through to re-add them correctly
+        state._lostSessionCredit334 = false;
+      }
+      if (!state._lostSessionCredit334) {
+        state._lostSessionCredit334 = true;
+        var _creditDate = '2026-05-15';
+        var _today334 = (function() { var d = new Date(), mm = d.getMonth()+1, dd = d.getDate(); return d.getFullYear()+'-'+(mm<10?'0':'')+mm+'-'+(dd<10?'0':'')+dd; })();
+        if (_today334 === _creditDate) {
+          // Add 30 min to today's session log (two sessions)
+          if (!state.dailySessionLog || state.dailySessionLog.date !== _creditDate) {
+            state.dailySessionLog = { date: _creditDate, sessions: [] };
+          }
+          // Place sessions after the last real session in the log
+          var _lastEnd334 = 0;
+          for (var _ls = 0; _ls < state.dailySessionLog.sessions.length; _ls++) {
+            var _se = state.dailySessionLog.sessions[_ls].end || 0;
+            if (_se > _lastEnd334) _lastEnd334 = _se;
+          }
+          if (_lastEnd334 === 0) _lastEnd334 = Date.now() - 3600000;
+          // 20-min session starting 5 min after last real session
+          var _s1Start = _lastEnd334 + 300000;
+          var _s1End = _s1Start + 1200000;
+          state.dailySessionLog.sessions.push({ start: _s1Start, end: _s1End, min: 20 });
+          // 10-min session starting 5 min after the 20-min one
+          var _s2Start = _s1End + 300000;
+          var _s2End = _s2Start + 600000;
+          state.dailySessionLog.sessions.push({ start: _s2Start, end: _s2End, min: 10 });
+          // Update focusHistory for today
+          if (!state.focusHistory) state.focusHistory = {};
+          state.focusHistory[_creditDate] = (state.focusHistory[_creditDate] || 0) + 30;
+          // Update lifetime focus minutes
+          state.lifetimeFocusMinutes = (state.lifetimeFocusMinutes || 0) + 30;
+          // Update challenge tracking
+          try {
+            if (state.friendChallenge && state.friendChallenge.status === 'active' && state.friendChallenge.type === 'focus_minutes') {
+              if (!state.friendChallenge.tracking) state.friendChallenge.tracking = {};
+              state.friendChallenge.tracking['focus_minutes'] = (state.friendChallenge.tracking['focus_minutes'] || 0) + 30;
+            }
+          } catch (_) {}
+          // Update session count tracking for challenge
+          try {
+            if (state.friendChallenge && state.friendChallenge.status === 'active' && state.friendChallenge.type === 'session_count') {
+              if (!state.friendChallenge.tracking) state.friendChallenge.tracking = {};
+              state.friendChallenge.tracking['session_count'] = (state.friendChallenge.tracking['session_count'] || 0) + 2;
+            }
+          } catch (_) {}
+          // Update lifetime sessions
+          state.lifetimeSessions = (state.lifetimeSessions || 0) + 2;
+          console.log('[v3.23.334] Credited 2 lost sessions (10+20 min) to ' + _creditDate);
+          save();
+        }
+      }
+      // v3.23.351: Convert active focus_marathon challenge to focus_minutes
+      // Must run INSIDE load callback (after state is populated from storage)
+      try {
+        if (state.friendChallenge && state.friendChallenge.type === 'focus_marathon') {
+          console.log('[CHALLENGE] Converting active focus_marathon → focus_minutes (post-load migration)');
+          state.friendChallenge.type = 'focus_minutes';
+          state.friendChallenge.label = 'Focus Minutes';
+          state.friendChallenge.desc = 'Log the most focus minutes (Double Down extends sessions past 90m!)';
+          state.friendChallenge.tier = 'standard';
+          if (!state.friendChallenge.tracking) state.friendChallenge.tracking = {};
+          // Recalculate total focus minutes from sessions since challenge started
+          try {
+            var _migTotal = 0;
+            var _migStart = new Date(state.friendChallenge.startedAt || Date.now());
+            _migStart.setHours(0,0,0,0);
+            if (state.focusHistory && typeof state.focusHistory === 'object') {
+              var _migKeys = Object.keys(state.focusHistory);
+              for (var _mi = 0; _mi < _migKeys.length; _mi++) {
+                var _migParts = _migKeys[_mi].split('-');
+                var _migD = new Date(parseInt(_migParts[0]), parseInt(_migParts[1]) - 1, parseInt(_migParts[2]));
+                if (_migD >= _migStart) _migTotal += (state.focusHistory[_migKeys[_mi]] || 0);
+              }
+            }
+            if (Array.isArray(state.dailySessionLog)) {
+              for (var _mj = 0; _mj < state.dailySessionLog.length; _mj++) {
+                _migTotal += (state.dailySessionLog[_mj].durationMin || 0);
+              }
+            }
+            state.friendChallenge.tracking['focus_minutes'] = _migTotal;
+            console.log('[CHALLENGE] Recalculated focus_minutes: ' + _migTotal + ' min');
+          } catch(_migErr) { state.friendChallenge.tracking['focus_minutes'] = 0; }
+          save();
+          // Publish converted challenge to Firestore so opponent also sees focus_minutes
+          try { _publishChallengeToFirestore(); } catch(_pub) {}
+        }
+      } catch(_) {}
       cb();
     });
   }
@@ -1885,6 +2023,11 @@ try {
             state.focusHistory[logDate] = logMins;
             console.log('[DayRollover] Archived ' + logMins + ' min for ' + logDate + ' into focusHistory.');
           }
+          // v3.23.342: Preserve individual session timestamps for timeline
+          if (!state.sessionArchive || typeof state.sessionArchive !== 'object') state.sessionArchive = {};
+          state.sessionArchive[logDate] = logSessions.slice();
+          var _saKeys2 = Object.keys(state.sessionArchive);
+          if (_saKeys2.length > 7) { _saKeys2.sort(); for (var _sak2 = 0; _sak2 < _saKeys2.length - 7; _sak2++) delete state.sessionArchive[_saKeys2[_sak2]]; }
         } else if (yDate && !state.focusHistory[yDate]) {
           // No session log at all — record block estimate
           state.focusHistory[yDate] = (state.todayBlocks || 0) * 10;
@@ -3122,10 +3265,36 @@ try {
       bar.appendChild(line);
     }
 
-    // Get today's sessions
+    // v3.23.342: Merge sessions from dailySessionLog + sessionArchive.
+    // After midnight, dailySessionLog gets archived and its sessions move to
+    // sessionArchive. We need both so the timeline can show past days too.
     var today = todayStr();
-    var sessions = (state.dailySessionLog && state.dailySessionLog.date === today)
-      ? (state.dailySessionLog.sessions || []) : [];
+    var sessions = [];
+    // Current dailySessionLog (today or stale yesterday)
+    if (state.dailySessionLog && state.dailySessionLog.sessions) {
+      sessions = sessions.concat(state.dailySessionLog.sessions);
+    }
+    // Archived sessions from past days (within the visible window)
+    if (state.sessionArchive && typeof state.sessionArchive === 'object') {
+      var _archKeys = Object.keys(state.sessionArchive);
+      for (var _ak = 0; _ak < _archKeys.length; _ak++) {
+        var _archSessions = state.sessionArchive[_archKeys[_ak]];
+        if (Array.isArray(_archSessions)) {
+          sessions = sessions.concat(_archSessions);
+        }
+      }
+    }
+    // Deduplicate by start+end timestamp (same session may appear in both sources)
+    var _seenSessions = {};
+    var _dedupSessions = [];
+    for (var _ds = 0; _ds < sessions.length; _ds++) {
+      var _sKey = (sessions[_ds].start || 0) + '_' + (sessions[_ds].end || 0);
+      if (!_seenSessions[_sKey]) {
+        _seenSessions[_sKey] = true;
+        _dedupSessions.push(sessions[_ds]);
+      }
+    }
+    sessions = _dedupSessions;
 
     var totalMin = 0;
     var sessionCount = 0;
@@ -3150,8 +3319,6 @@ try {
 
     for (var i = 0; i < sessions.length; i++) {
       var s = sessions[i];
-      totalMin += (s.min || 0);
-      sessionCount++;
 
       // v3.23.297: Use s.min as the authoritative duration when timestamps are shorter.
       // The end time (Date.now() at completion) is reliable; the start may be wrong
@@ -3169,6 +3336,10 @@ try {
       var sStart = Math.max(rawStart, windowStartMs);
       var sEnd = Math.min(rawEnd, windowEndMs);
       if (sStart >= sEnd) continue; // outside this window
+
+      // v3.23.342: Only count sessions that are visible in this window
+      totalMin += (s.min || 0);
+      sessionCount++;
 
       var leftPct = ((sStart - windowStartMs) / windowMs) * 100;
       var widthPct = ((sEnd - sStart) / windowMs) * 100;
@@ -3293,15 +3464,34 @@ try {
       bar.appendChild(marker);
     }
 
-    // Summary
+    // Summary — v3.23.342: sessionCount/totalMin now only count sessions visible in window
     if (summary) {
       if (sessionCount === 0) {
-        summary.textContent = 'No focus sessions yet today.';
+        // v3.23.342: Check if focusHistory has data for a day in this window
+        // (session details lost from pre-archive era, but we know minutes were logged)
+        var _windowDates = [];
+        for (var _wd = 0; _wd < 2; _wd++) {
+          var _wdMs = windowStartMs + _wd * 86400000;
+          var _wdD = new Date(_wdMs);
+          var _wdMM = _wdD.getMonth() + 1, _wdDD = _wdD.getDate();
+          _windowDates.push(_wdD.getFullYear() + '-' + (_wdMM < 10 ? '0' : '') + _wdMM + '-' + (_wdDD < 10 ? '0' : '') + _wdDD);
+        }
+        var _archivedMin = 0;
+        for (var _wdi = 0; _wdi < _windowDates.length; _wdi++) {
+          if (_windowDates[_wdi] !== today && state.focusHistory && state.focusHistory[_windowDates[_wdi]]) {
+            _archivedMin += state.focusHistory[_windowDates[_wdi]];
+          }
+        }
+        if (_archivedMin > 0) {
+          summary.textContent = _archivedMin + 'm recorded but session times unavailable (fixed for future sessions).';
+        } else {
+          summary.textContent = 'No focus sessions in this window.';
+        }
       } else {
         var hrs = Math.floor(totalMin / 60);
         var mins = totalMin % 60;
         var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
-        summary.textContent = timeStr + ' across ' + sessionCount + ' session' + (sessionCount !== 1 ? 's' : '') + ' today';
+        summary.textContent = timeStr + ' across ' + sessionCount + ' session' + (sessionCount !== 1 ? 's' : '');
       }
     }
   }
@@ -3359,6 +3549,17 @@ try {
       } else {
         // Archived
         mins = (state.focusHistory && state.focusHistory[dateStr]) || 0;
+        // v3.23.340: Also check un-archived dailySessionLog — at midnight the
+        // log still holds yesterday's sessions until the next saveState() runs.
+        // Without this, the bar chart shows 0 for yesterday right after midnight.
+        if (state.dailySessionLog && state.dailySessionLog.date === dateStr
+            && state.dailySessionLog.sessions && state.dailySessionLog.sessions.length > 0) {
+          var _staleMins = 0;
+          for (var _sm = 0; _sm < state.dailySessionLog.sessions.length; _sm++) {
+            _staleMins += (state.dailySessionLog.sessions[_sm].min || 0);
+          }
+          if (_staleMins > mins) mins = _staleMins;
+        }
       }
 
       if (mins > maxMin) maxMin = mins;
@@ -3403,7 +3604,9 @@ try {
 
       // The bar itself
       var bar = document.createElement('div');
-      var pct = day.isFuture ? 0 : Math.max(day.mins > 0 ? 8 : 2, Math.round((day.mins / maxMin) * 100));
+      // v3.23.348: Proportional bar heights — old 8% min floor made 10m look like 30m.
+      // Now: non-zero days get min 3% (just a sliver), so relative sizes are honest.
+      var pct = day.isFuture ? 0 : Math.max(day.mins > 0 ? 3 : 1, Math.round((day.mins / maxMin) * 100));
       var color = day.isToday ? '#00ff88' : (day.isFuture ? '#1a1a2e' : '#ff9f43');
       var opacity = day.isFuture ? '0.2' : '1';
       bar.style.cssText = 'width:100%;border-radius:3px 3px 0 0;background:' + color + ';opacity:' + opacity + ';height:' + pct + '%;min-height:2px;transition:height 0.3s ease;';
@@ -4758,6 +4961,20 @@ try {
   function renderTimer() {
     const dur = state.sessionDurationSec || 600;
 
+    // v3.23.352: Show 00:00 while completed (celebration modal up).
+    // Once modal closes, transition to idle but keep timerRemaining at 0
+    // so user sees 00:00 until they interact with the timer.
+    if (state.timerState === 'completed') {
+      var _confModal = document.getElementById('focusConfirmModal');
+      if (!_confModal || _confModal.style.display !== 'flex') {
+        console.log('[Timer] Safety net: timerState was stuck at completed — resetting to idle.');
+        state.timerState = 'idle';
+        state.timerRemaining = 0; // v3.23.352: stay at 0, not full duration
+        state.timerEndsAt = 0;
+        save();
+      }
+    }
+
     // During the pre-start countdown, the display shows the grace-period
     // seconds ticking down ("GET READY 00:15" -> "00:01") instead of the
     // real session length. The real session length re-appears the moment
@@ -4769,6 +4986,14 @@ try {
       if (progressFill) progressFill.style.width = '0%';
       startBtn.textContent = 'CANCEL';
       resetBtn.style.display = 'inline-block';
+    } else if (state.timerState === 'completed') {
+      // v3.23.352: While celebration modal is showing, display 00:00
+      timerDisplay.textContent = '00:00';
+      timerDisplay.classList.remove('running');
+      timerDisplay.classList.add('done');
+      if (progressFill) progressFill.style.width = '100%';
+      startBtn.textContent = 'START';
+      resetBtn.style.display = 'none';
     } else {
       const mins = Math.floor(state.timerRemaining / 60);
       const secs = state.timerRemaining % 60;
@@ -4787,6 +5012,7 @@ try {
         resetBtn.style.display = 'inline-block';
       } else {
         timerDisplay.classList.remove('running');
+        timerDisplay.classList.remove('done');
         startBtn.textContent = 'START';
         resetBtn.style.display = state.timerRemaining < dur ? 'inline-block' : 'none';
       }
@@ -6437,7 +6663,9 @@ try {
               var _recent = st.lastCompletedSessionAt && (_now - st.lastCompletedSessionAt) < 300000;
               // Also check in-memory state (avoids stale-storage race on completion)
               var _memBusy = state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed';
-              if (_timerOn || _timerBusy || _recent || _memBusy) {
+              // v3.23.335: Also check grace period — can be up to 20 min, longer than the 5-min _recent window
+              var _inGrace = (st.gameLockGraceUntil && st.gameLockGraceUntil > _now) || (_gameLockGraceUntil && _gameLockGraceUntil > _now);
+              if (_timerOn || _timerBusy || _recent || _memBusy || _inGrace) {
                 elapsedEl.textContent = txt + '  |  NAG PAUSED (timer active)';
                 // v3.22.98: Reset the nag anchor so next nag is 5 min from NOW
                 // This prevents the nag from firing the instant the grace period ends
@@ -6963,6 +7191,30 @@ try {
     }, 1000); // every second for smooth countdown
   })();
 
+  // v3.23.353: Lightweight resume from paused — preserves distraction
+  // counts, session start time, and grace window. Only sets the timer
+  // back to running and re-arms the tick.
+  function _resumeFromPaused() {
+    state.timerState = 'running';
+    // Re-anchor wall-clock end time from the remaining seconds snapshot
+    // that was captured when the user paused.
+    if (!state.timerRemaining || state.timerRemaining <= 0) {
+      state.timerRemaining = state.sessionDurationSec || 600;
+    }
+    state.timerEndsAt = Date.now() + (state.timerRemaining * 1000);
+    // Stamp idle-challenge guards so background alarms can't fire
+    state.coldTurkeyLastIdleOpen = Date.now();
+    state.focusIdleLastNudge = Date.now();
+    try { chrome.alarms.clear('pixelfocus-ct-idle'); } catch(_) {}
+    try { chrome.alarms.clear('pixelfocus-focus-idle'); } catch(_) {}
+    save();
+    render();
+    // Re-start Cold Turkey block for the remaining duration
+    var sessionMinutes = Math.ceil((state.timerRemaining || 600) / 60);
+    triggerColdTurkey('start', sessionMinutes);
+    armTimerTick();
+  }
+
   function beginActualSession() {
     SFX.startTimer();
     // v3.23.311: Clear distraction counts for the new session
@@ -7262,8 +7514,11 @@ try {
     }
     // Resuming from paused — user is already in the zone, skip the
     // grace period and go straight back to running.
+    // v3.23.353: Use lightweight resume that preserves distraction counts,
+    // session start time, and grace window. beginActualSession() was
+    // resetting all of those, making pause+resume feel like a full restart.
     if (state.timerState === 'paused') {
-      beginActualSession();
+      _resumeFromPaused();
       return;
     }
     // Fresh start from idle (or mid-session after a reset).
@@ -7411,6 +7666,13 @@ try {
     state.challengeActive = false;
     state.challengeAcceptedAt = 0;
     state.challengeSessionPaused = false;
+    // v3.23.335: Reset double-down on manual reset (no penalty — they're resetting everything)
+    if (state.doubleDownActive) {
+      // Restore original session duration so the picker isn't stuck at extended value
+      state.sessionDurationSec = state.doubleDownOriginalSec || state.sessionDurationSec;
+      state.timerRemaining = state.sessionDurationSec;
+      resetDoubleDown();
+    }
     // Reset stops the honor-system check-in clock.
     try { cancelWorkCheckIn(); } catch (_) {}
     // v3.19.12: a manual reset clears the focus-confirmation latch
@@ -7431,6 +7693,9 @@ try {
   // The pop-out is purely a mirror — all state lives in the main tab
   // and renderTimer() pushes updates to pipWindow on every tick.
   let pipWindow = null;
+  // v3.23.337: Hold completion/failure state in PiP for 5 seconds after YES/NO
+  var _pipResultState = null; // 'success' or 'failure'
+  var _pipResultUntil = 0;   // timestamp when hold expires
 
   function buildPipMarkup() {
     // v3.23.311: Distractions tracker integrated into PiP timer.
@@ -7540,6 +7805,11 @@ try {
       '  <div class="pip-bar"><div class="pip-bar-fill" id="pipBarFill" style="width:0%"></div></div>' +
       '</div>' +
       '<div class="dist-panel" id="distPanel">' +
+      '<div id="ddSection" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #1f1f30;">' +
+      '<div style="font-size:7px;color:#ffd700;font-family:Press Start 2P,monospace;margin-bottom:6px;" title="Gamble on yourself! Extend your timer mid-session. Finish the extension = 1.5x bonus on extra time. Fail = lose 50% of session earnings.">DOUBLE DOWN</div>' +
+      '<div id="ddStatus" style="display:none;font-size:8px;color:#ffd700;font-family:Press Start 2P,monospace;text-align:center;padding:4px;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3);border-radius:6px;margin-bottom:4px;"></div>' +
+      '<div id="ddButtons" class="dist-cats" style="justify-content:center;"></div>' +
+      '</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:7px;color:#888;font-family:Press Start 2P,monospace;">DISTRACTIONS</span><span class="dist-help-btn" id="distHelpBtn">?</span></div><div class="dist-help-overlay" id="distHelpOverlay"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-family:Press Start 2P,monospace;font-size:9px;color:#4ecdc4;">HOW IT WORKS</span><span class="dist-help-btn" id="distHelpClose" style="width:18px;height:18px;font-size:10px;color:#ff6b6b;background:linear-gradient(180deg,#3a1a1a,#2a0a0a);border-color:#5a2a2a;border-bottom-color:#1a0a0a;">\u2715</span></div><div style="font-size:10px;color:#ccc;line-height:1.7;font-family:-apple-system,sans-serif;"><b style="color:#4ecdc4;">Tap</b> a category to log a distraction.<br>Use the <b style="color:#ffaa44;">\u2212</b> button to undo.<br><br><b style="color:#ff6b6b;">Penalties scale up:</b><br>1st = 10% \u2022 2nd = +20% (30% total)<br>3rd = +30% (60% total) \u2022 4th+ = 100%<br><br><span style="color:#00ff88;font-size:11px;">\u2728 Zero distractions = +15% bonus!</span><br><br><b style="color:#888;">+ ADD</b> to create categories.<br><b style="color:#888;">EDIT</b> to rename or delete.</div></div>' +
       '  <div class="dist-cats" id="distCats">' + catButtonsHtml + '</div>' +
       '  <div class="dist-penalty" id="distPenalty" title="Session earnings penalty from distractions">' + penaltyText + '</div>' +
@@ -7609,6 +7879,52 @@ try {
       menuBtn.classList.toggle('active', _panelOpen);
       try { win.resizeTo(_panelOpen ? 260 : 220, _panelOpen ? OPEN_H : CLOSED_H); } catch(_){}
     });
+
+    // v3.23.335: Wire double-down buttons in PiP menu
+    function _refreshDoubleDown() {
+      var ddBtns = doc.getElementById('ddButtons');
+      var ddStatus = doc.getElementById('ddStatus');
+      var ddSection = doc.getElementById('ddSection');
+      if (!ddBtns) return;
+      // Only show when timer is running or paused
+      var timerActive = state.timerState === 'running' || state.timerState === 'paused';
+      if (ddSection) ddSection.style.display = timerActive ? 'block' : 'none';
+      if (state.doubleDownActive) {
+        ddBtns.style.display = 'none';
+        if (ddStatus) {
+          ddStatus.style.display = 'block';
+          var origMin = Math.round((state.doubleDownOriginalSec || 0) / 60);
+          var extMin = Math.round((state.doubleDownExtensionSec || 0) / 60);
+          ddStatus.title = 'Double down is LIVE. You committed to ' + (origMin + extMin) + ' total min (' + origMin + 'm original + ' + extMin + 'm extension). Complete it for ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus on extension earnings. Hit NO at the end = lose 50% of all session earnings.';
+          ddStatus.innerHTML = '🎲 ACTIVE<br><span style="font-size:7px;color:#ccc;">Original: ' + origMin + 'm + Extension: ' + extMin + 'm</span>';
+        }
+      } else {
+        if (ddStatus) ddStatus.style.display = 'none';
+        ddBtns.style.display = 'flex';
+        var html = '';
+        for (var di = 0; di < DOUBLE_DOWN_OPTIONS.length; di++) {
+          var m = DOUBLE_DOWN_OPTIONS[di];
+          html += '<div class="dist-cat" data-dd-min="' + m + '" style="background:#8B6914;min-width:auto;padding:5px 8px;" title="Extend timer by ' + m + ' min. Complete it = ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus on extension earnings. Fail = lose 50% of all session earnings. One shot — can\'t double down twice.">'
+            + '<span class="dist-cat-name">+' + m + 'm</span></div>';
+        }
+        ddBtns.innerHTML = html;
+        // Wire click handlers
+        var ddCats = ddBtns.querySelectorAll('[data-dd-min]');
+        for (var i = 0; i < ddCats.length; i++) {
+          ddCats[i].addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+          ddCats[i].addEventListener('click', function(e) {
+            var min = parseInt(this.getAttribute('data-dd-min'), 10);
+            if (min && activateDoubleDown(min)) {
+              _refreshDoubleDown();
+              try { renderPopOutTimer(); } catch(_){}
+            }
+          });
+        }
+      }
+    }
+    _refreshDoubleDown();
+    // v3.23.344: Expose refresh so renderPopOutTimer can update DD visibility on state changes
+    win._refreshDoubleDown = _refreshDoubleDown;
 
     // Helper: refresh the category buttons + penalty display
     function _refreshPanel() {
@@ -7692,23 +8008,87 @@ try {
     // Wire initial category button clicks
     _refreshPanel();
 
-    // Help ? button — click to toggle overlay
+    // v3.23.346: Help ? button — hover opens a separate tooltip WINDOW
+    // positioned outside the PiP frame so it's actually readable.
     var _helpBtn = doc.getElementById('distHelpBtn');
-    var _helpOverlay = doc.getElementById('distHelpOverlay');
-    var _helpClose = doc.getElementById('distHelpClose');
-    if (_helpBtn && _helpOverlay) {
+    var _helpOverlay = doc.getElementById('distHelpOverlay'); // keep hidden, unused now
+    var _distTipWin = null;
+    var _distTipTimer = null;
+    if (_helpBtn) {
+      // Hide the in-window overlay permanently — tooltip is now external
+      if (_helpOverlay) _helpOverlay.style.display = 'none';
+      _helpBtn.addEventListener('mouseenter', function() {
+        try { SFX.hover(); } catch(_){}
+        if (_distTipTimer) { clearTimeout(_distTipTimer); _distTipTimer = null; }
+        if (_distTipWin && !_distTipWin.closed) return; // already open
+        // Position to the left of the PiP window
+        var sx = win.screenX || win.screenLeft || 0;
+        var sy = win.screenY || win.screenTop || 0;
+        var tipW = 280, tipH = 260;
+        var tipX = sx - tipW - 8;
+        var tipY = sy;
+        // If would go off-screen left, put it to the right instead
+        if (tipX < 0) tipX = sx + (win.outerWidth || 220) + 8;
+        var tipHtml = '<!DOCTYPE html><html><head><style>'
+          + 'body{margin:0;padding:14px 16px;background:#0e0e1a;color:#ccc;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;line-height:1.7;border:1px solid #2a2a3a;border-radius:10px;overflow:hidden;}'
+          + 'b{color:#4ecdc4;}  .warn{color:#ff6b6b;}  .bonus{color:#00ff88;font-size:14px;}'
+          + 'h3{margin:0 0 8px;font-size:14px;color:#4ecdc4;font-family:"Press Start 2P",monospace;font-weight:normal;}'
+          + '</style></head><body>'
+          + '<h3>HOW IT WORKS</h3>'
+          + '<b>Tap</b> a category to log a distraction.<br>'
+          + 'Use the <b style="color:#ffaa44;">−</b> button to undo.<br><br>'
+          + '<span class="warn"><b>Penalties scale up:</b></span><br>'
+          + '1st = 10% • 2nd = +20% (30% total)<br>'
+          + '3rd = +30% (60% total) • 4th+ = 100%<br><br>'
+          + '<span class="bonus">✨ Zero distractions = +15% bonus!</span><br><br>'
+          + '<b>+ ADD</b> to create categories.<br>'
+          + '<b>EDIT</b> to rename or delete.'
+          + '</body></html>';
+        try {
+          _distTipWin = window.open('', '_distTip', 'width=' + tipW + ',height=' + tipH + ',left=' + tipX + ',top=' + tipY + ',menubar=no,toolbar=no,location=no,status=no,resizable=no,scrollbars=no');
+          if (_distTipWin) {
+            _distTipWin.document.open();
+            _distTipWin.document.write(tipHtml);
+            _distTipWin.document.close();
+            // Auto-close when mouse leaves the tooltip window
+            _distTipWin.document.body.addEventListener('mouseleave', function() {
+              _distTipTimer = setTimeout(function() {
+                if (_distTipWin && !_distTipWin.closed) _distTipWin.close();
+                _distTipWin = null;
+              }, 400);
+            });
+            _distTipWin.document.body.addEventListener('mouseenter', function() {
+              if (_distTipTimer) { clearTimeout(_distTipTimer); _distTipTimer = null; }
+            });
+            // Close on click anywhere in the tooltip
+            _distTipWin.document.body.addEventListener('click', function() {
+              if (_distTipWin && !_distTipWin.closed) _distTipWin.close();
+              _distTipWin = null;
+            });
+          }
+        } catch(_e) { console.warn('[DistTip] Could not open tooltip window:', _e); }
+      });
+      _helpBtn.addEventListener('mouseleave', function() {
+        _distTipTimer = setTimeout(function() {
+          if (_distTipWin && !_distTipWin.closed) {
+            // Check if mouse moved into the tooltip window
+            try {
+              var tipDoc = _distTipWin.document;
+              if (tipDoc && tipDoc.querySelector(':hover')) return; // mouse is in tooltip
+            } catch(_) {}
+            _distTipWin.close();
+            _distTipWin = null;
+          }
+        }, 400);
+      });
       _helpBtn.addEventListener('click', function() {
         try { SFX.click(); } catch(_){}
-        _helpOverlay.classList.toggle('open');
+        // Toggle — if open, close it
+        if (_distTipWin && !_distTipWin.closed) {
+          _distTipWin.close();
+          _distTipWin = null;
+        }
       });
-      _helpBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
-      if (_helpClose) {
-        _helpClose.addEventListener('click', function() {
-          try { SFX.click(); } catch(_){}
-          _helpOverlay.classList.remove('open');
-        });
-        _helpClose.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
-      }
     }
 
     // ADD button
@@ -7880,7 +8260,12 @@ try {
             if (btn) {
               btn.addEventListener('click', function(ev) {
                 try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
-                try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
+                // v3.23.353: PiP button only handles pause/resume.
+                // Starting new sessions or adding time must be done
+                // from the main popup — prevents accidental resets.
+                if (state.timerState === 'running' || state.timerState === 'paused') {
+                  try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
+                }
                 try { renderPopOutTimer(); } catch (_) {}
               });
             }
@@ -7919,8 +8304,34 @@ try {
     clock.classList.remove('countdown', 'paused', 'done');
     fill.classList.remove('countdown', 'done');
     if (btn) btn.classList.remove('running', 'countdown', 'done');
+    if (btn) btn.style.opacity = ''; // v3.23.353: reset opacity (idle dims it)
 
     var dur = state.sessionDurationSec || 600;
+
+    // v3.23.337: Hold success/failure state for 5 seconds after YES/NO
+    if (_pipResultState && Date.now() < _pipResultUntil) {
+      clock.textContent = '00:00';
+      clock.classList.add('done');
+      fill.classList.add('done');
+      fill.style.width = '100%';
+      if (_pipResultState === 'success') {
+        label.textContent = 'COMPLETE! ✓';
+        label.title = 'Session completed successfully! Rewards earned.';
+        label.style.color = '#00ff88';
+      } else {
+        label.textContent = 'FAILED ✗';
+        label.title = 'Session failed. No rewards earned.';
+        label.style.color = '#ff4466';
+      }
+      if (btn) { btn.classList.add('done'); btn.title = 'Session ended'; }
+      if (btnIcon) btnIcon.innerHTML = PIP_ICON_STOP;
+      return;
+    } else if (_pipResultState && Date.now() >= _pipResultUntil) {
+      _pipResultState = null;
+      _pipResultUntil = 0;
+      // Reset label color
+      try { label.style.color = ''; } catch(_){}
+    }
 
     if (state.timerState === 'countdown') {
       var cs = Math.max(0, countdownRemaining);
@@ -7955,18 +8366,87 @@ try {
         if (btnIcon) btnIcon.innerHTML = PIP_ICON_PLAY;
         if (btn) btn.title = 'Resume';
       } else if (state.timerState === 'running') {
-        label.textContent = (dur / 60) + '-MIN FOCUS';
+        label.textContent = state.doubleDownActive ? '🎲 DD ' + (dur / 60) + 'M' : (dur / 60) + '-MIN FOCUS';
+        if (state.doubleDownActive) {
+          var _ddOrig = Math.round((state.doubleDownOriginalSec || 0) / 60);
+          var _ddExt = Math.round((state.doubleDownExtensionSec || 0) / 60);
+          label.title = 'DOUBLE DOWN active! ' + _ddOrig + 'm original + ' + _ddExt + 'm extension. Finish = ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus. Fail = -50% earnings.';
+        } else {
+          label.title = dur >= 60 ? (dur / 60) + '-minute focus session' : dur + '-second focus session';
+        }
         if (btn) btn.classList.add('running');
         if (btnIcon) btnIcon.innerHTML = PIP_ICON_PAUSE;
         if (btn) btn.title = 'Pause';
       } else {
-        label.textContent = (dur / 60) + '-MIN READY';
+        // v3.23.352: If timerRemaining is 0 (just completed), show COMPLETE not READY
+        if (state.timerRemaining === 0) {
+          label.textContent = 'COMPLETE';
+          label.style.color = '#00ff88';
+          clock.textContent = '00:00';
+        } else {
+          label.textContent = (dur / 60) + '-MIN READY';
+          label.style.color = ''; // v3.23.337: clear any held success/failure color
+        }
         if (btnIcon) btnIcon.innerHTML = PIP_ICON_PLAY;
-        if (btn) btn.title = 'Start';
+        // v3.23.353: PiP can't start new sessions — point user to main popup
+        if (btn) btn.title = 'Open extension to start';
+        if (btn) btn.style.opacity = '0.4';
       }
       var pct = ((dur - state.timerRemaining) / dur) * 100;
       fill.style.width = pct + '%';
     }
+    // v3.23.344: Refresh DD section visibility on every render tick so it
+    // appears/disappears when timer starts/stops (was only set once on init)
+    try { if (pipWindow._refreshDoubleDown) pipWindow._refreshDoubleDown(); } catch(_){}
+  }
+
+  // ============== DOUBLE DOWN — EXTEND TIMER GAMBLE ==============
+  // v3.23.335: Mid-session gamble. Extend the running timer by N minutes.
+  // Original commitment is preserved. If you complete: extension time earns
+  // a bonus multiplier. If you fail (click NO): lose extension earnings + 50% original.
+  var DOUBLE_DOWN_OPTIONS = [10, 20, 30, 60, 90]; // minutes
+  var DOUBLE_DOWN_BONUS_MULT = 1.5; // 1.5x earnings on extension time
+
+  function activateDoubleDown(extraMinutes) {
+    if (state.timerState !== 'running' && state.timerState !== 'paused') {
+      notify('Timer must be running to double down!', 'var(--warning)');
+      return false;
+    }
+    if (state.doubleDownActive) {
+      notify('Already doubled down! Finish this extension first.', 'var(--warning)');
+      return false;
+    }
+    // Record original commitment
+    state.doubleDownActive = true;
+    state.doubleDownOriginalSec = state.sessionDurationSec || 600;
+    state.doubleDownExtensionSec = extraMinutes * 60;
+    state.doubleDownOriginalCoins = state.coins || 0;
+
+    // Extend the timer
+    var extraSec = extraMinutes * 60;
+    state.sessionDurationSec += extraSec;
+    state.timerRemaining += extraSec;
+    // If running, push the wall-clock end time forward
+    if (state.timerState === 'running' && state.timerEndsAt > 0) {
+      state.timerEndsAt += extraSec * 1000;
+    }
+    save();
+    render();
+    try { SFX.blockEarned(); } catch(_){}
+    notify('DOUBLE DOWN! +' + extraMinutes + ' min — ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus if you finish, 50% penalty if you fail!', '#ffd700');
+    try {
+      if (typeof MsgLog !== 'undefined') {
+        MsgLog.push('DOUBLE DOWN activated: +' + extraMinutes + ' min extension. Original commitment: ' + Math.round(state.doubleDownOriginalSec / 60) + ' min. Total: ' + Math.round(state.sessionDurationSec / 60) + ' min.');
+      }
+    } catch(_){}
+    return true;
+  }
+
+  function resetDoubleDown() {
+    state.doubleDownActive = false;
+    state.doubleDownOriginalSec = 0;
+    state.doubleDownExtensionSec = 0;
+    state.doubleDownOriginalCoins = 0;
   }
 
   function closePopOutTimer() {
@@ -8200,7 +8680,8 @@ try {
       // No modal DOM — direct-award fallback. Guard it too.
       if (_focusConfirmArmed) return;
       _focusConfirmArmed = true;
-      awardSessionReward(reward);
+      var _fallbackSnapshotCoins = state.coins || 0;
+      awardSessionReward(reward, _fallbackSnapshotCoins);
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
       _focusConfirmArmed = false;
@@ -8243,6 +8724,12 @@ try {
     if ((state.marketingLevel || 0) >= 1 && mktYield !== 1.0) {
       subText += ' Market yield: ' + mktYield + 'x.';
     }
+    // v3.23.335: Show double-down stakes in confirmation
+    if (state.doubleDownActive) {
+      var _ddOrigMin = Math.round((state.doubleDownOriginalSec || 0) / 60);
+      var _ddExtMin = Math.round((state.doubleDownExtensionSec || 0) / 60);
+      subText += ' DOUBLE DOWN ACTIVE: Original ' + _ddOrigMin + 'm + ' + _ddExtMin + 'm extension. YES = ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus on extension. NO = lose 50% of session earnings!';
+    }
     // v3.23.312: Show distraction penalty in confirmation
     var _dpPct = getDistractionPenaltyPct();
     var _dCnt = getDistractionCount();
@@ -8251,7 +8738,16 @@ try {
     } else {
       subText += ' Focus bonus: +' + FOCUS_BONUS_PCT + '% of earnings (zero distractions).';
     }
-    if (modalSub) modalSub.textContent = subText;
+    if (modalSub) {
+      modalSub.textContent = subText;
+      if (state.doubleDownActive) {
+        modalSub.title = 'Double Down stakes: You extended your timer. YES = you get ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus on the extension time earnings. NO = you lose 50% of everything earned since you activated double down. The gamble resolves based on whether you actually focused.';
+        modalSub.style.cursor = 'help';
+      } else {
+        modalSub.title = '';
+        modalSub.style.cursor = '';
+      }
+    }
     modal.style.display = 'flex';
     // Defensive: clone the Yes/No buttons NOW (before attaching new
     // listeners), so any stale handlers from a previous render cycle
@@ -8296,7 +8792,30 @@ try {
       // v3.23.21: Snapshot state BEFORE rewards for celebration deltas
       var _celebSnapshotCoins = state.coins || 0;
       var _celebSnapshot = { coins: state.coins || 0, xp: state.xp || 0, level: state.level || 1, combo: state.combo || 0, mktYield: state.marketYieldMultiplier || 1.0, mktPrice: state.marketPrice || 12, mktCosts: state.marketCosts ? JSON.parse(JSON.stringify(state.marketCosts)) : null, mktMargin: state.marketMarginPct || 0, mktDemand: state.marketDemandPct || 50, distractions: state.sessionDistractions ? JSON.parse(JSON.stringify(state.sessionDistractions)) : {}, distractionPenaltyPct: getDistractionPenaltyPct(), distractionCount: getDistractionCount() };
-      awardSessionReward(reward);
+      awardSessionReward(reward, _celebSnapshotCoins);
+      // v3.23.335: Double-down bonus \u2014 extension time earns DOUBLE_DOWN_BONUS_MULT
+      if (state.doubleDownActive) {
+        try {
+          var _ddCoinsAfterReward = state.coins || 0;
+          var _ddCoinsEarned = Math.max(0, _ddCoinsAfterReward - _celebSnapshotCoins);
+          // The extension portion = (extensionSec / totalSec) of total earnings
+          var _ddTotalSec = state.sessionDurationSec || 1;
+          var _ddExtRatio = Math.min(1, (state.doubleDownExtensionSec || 0) / _ddTotalSec);
+          var _ddExtEarnings = Math.round(_ddCoinsEarned * _ddExtRatio);
+          // Bonus = (MULT - 1) * extension earnings (since base is already paid)
+          var _ddBonus = Math.round(_ddExtEarnings * (DOUBLE_DOWN_BONUS_MULT - 1));
+          if (_ddBonus > 0) {
+            awardCoins(_ddBonus, 'Double down bonus (' + DOUBLE_DOWN_BONUS_MULT + 'x on extension)');
+          }
+          state._lastDoubleDownBonus = _ddBonus;
+          state._lastDoubleDownOrigMin = Math.round((state.doubleDownOriginalSec || 0) / 60);
+          state._lastDoubleDownExtMin = Math.round((state.doubleDownExtensionSec || 0) / 60);
+          notify('DOUBLE DOWN WON! +$' + _ddBonus + ' extension bonus!', '#ffd700');
+        } catch(_ddErr) { console.error('[DoubleDown] bonus error:', _ddErr); }
+        resetDoubleDown();
+      } else {
+        state._lastDoubleDownBonus = 0;
+      }
       if (challengeBonus) {
         setTimeout(function() {
           notify('\u2694 IDLE CHALLENGE COMPLETE! 1.5x rewards earned!', '#ffd700');
@@ -8312,6 +8831,9 @@ try {
         _gameLockGraceUntil = Date.now() + (_graceMin * 60 * 1000);
         state.gameLockGraceUntil = _gameLockGraceUntil; // persist for other pages
       }
+      // v3.23.337: Hold "COMPLETE! ✓" in PiP for 5 seconds
+      _pipResultState = 'success';
+      _pipResultUntil = Date.now() + 5000;
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
       save();
@@ -8333,6 +8855,23 @@ try {
       state.challengeActive = false;
       state.challengeAcceptedAt = 0;
       state.challengeSessionPaused = false;
+      // v3.23.335: Double-down penalty — lose 50% of coins earned since DD was activated
+      if (state.doubleDownActive) {
+        try {
+          var _ddPenaltyBase = Math.max(0, (state.coins || 0) - (state.doubleDownOriginalCoins || 0));
+          var _ddPenalty = Math.round(_ddPenaltyBase * 0.5);
+          if (_ddPenalty > 0) {
+            state.coins = Math.max(0, (state.coins || 0) - _ddPenalty);
+            notify('DOUBLE DOWN FAILED! -$' + _ddPenalty + ' penalty (50% of session earnings)', '#ff4466');
+          } else {
+            notify('Double down failed! No bonus earned.', '#ff4466');
+          }
+        } catch(_) {}
+        resetDoubleDown();
+      }
+      // v3.23.337: Hold "FAILED ✗" in PiP for 5 seconds
+      _pipResultState = 'failure';
+      _pipResultUntil = Date.now() + 5000;
       state.timerRemaining = state.sessionDurationSec || 600;
       state.timerState = 'idle';
       save();
@@ -8345,7 +8884,9 @@ try {
   }
 
   // Award N earnBlock() calls (chains combos naturally) plus any commitment bonus.
-  function awardSessionReward(reward) {
+  function awardSessionReward(reward, _celebSnapshotCoins) {
+    // v3.23.335: _celebSnapshotCoins passed from caller — coins BEFORE session rewards
+    if (typeof _celebSnapshotCoins !== 'number') _celebSnapshotCoins = state.coins || 0;
     // Track lifetime focus minutes for the profile page. Uses the session
     // length that was in effect when this session started.
     try {
@@ -8370,6 +8911,11 @@ try {
             state.focusHistory[oldDate] = oldMins;
             console.log('[SessionLog] Archived ' + oldMins + ' min for ' + oldDate + ' before resetting dailySessionLog.');
           }
+          // v3.23.342: Preserve individual session timestamps for timeline
+          if (!state.sessionArchive || typeof state.sessionArchive !== 'object') state.sessionArchive = {};
+          state.sessionArchive[oldDate] = state.dailySessionLog.sessions.slice();
+          var _saKeys3 = Object.keys(state.sessionArchive);
+          if (_saKeys3.length > 7) { _saKeys3.sort(); for (var _sak3 = 0; _sak3 < _saKeys3.length - 7; _sak3++) delete state.sessionArchive[_saKeys3[_sak3]]; }
         }
         state.dailySessionLog = { date: today, sessions: [] };
       }
@@ -8423,7 +8969,8 @@ try {
       // Focus bonus for zero distractions
       if (_distCount === 0) {
         var _focusCoinsEarned = Math.round(Math.max(0, (state.coins || 0) - (_celebSnapshotCoins || 0)));
-        var _focusBonusAmt = Math.round(_focusCoinsEarned * FOCUS_BONUS_PCT / 100);
+        // v3.23.334: Use Math.ceil so even small earnings ($1-$6) get at least $1 bonus
+        var _focusBonusAmt = _focusCoinsEarned > 0 ? Math.max(1, Math.ceil(_focusCoinsEarned * FOCUS_BONUS_PCT / 100)) : 0;
         if (_focusBonusAmt > 0) awardCoins(_focusBonusAmt, 'Focus bonus +' + FOCUS_BONUS_PCT + '% ($' + _focusBonusAmt + ')');
         state._lastFocusBonus = _focusBonusAmt;
         // Log clean session to history
@@ -10586,7 +11133,10 @@ try {
         // Count today's tasks: use the incremental counter OR count
         // specks born today, whichever is higher (covers pre-update saves).
         var todayD = todayStr();
-        var done = state.dustCompletedToday || 0;
+        // v3.23.344: Match burnDustNow() gating — only trust dustCompletedToday
+        // if _dustCountDate is today, otherwise stale yesterday count makes
+        // the button appear enabled when it shouldn't be.
+        var done = (state._dustCountDate === todayD) ? (state.dustCompletedToday || 0) : 0;
         var spkToday = 0;
         var dp = state.dustPixels || [];
         for (var di = 0; di < dp.length; di++) {
@@ -11093,6 +11643,8 @@ try {
   // v3.23.31: options.skipStreak skips screen 1, options.streakOnly skips screens 2+3
   function showPostSessionCelebration(snapshot, options) {
     var opts = options || {};
+    // v3.23.343: Clear any badge toasts so they don't obscure the celebration
+    try { if (window._dismissBadgeToasts) window._dismissBadgeToasts(); } catch(_){}
     var overlay = $('streakOverlay');
     if (!overlay) return;
     var screen1 = $('celebScreen1');
@@ -11494,7 +12046,10 @@ try {
                   var _fbAmt = state._lastFocusBonus || 0;
                   var _wouldHaveBeen = Math.round(Math.max(0, coinsEarned - _fbAmt));
                   _dHtml += '<div style="font-size:9px;color:#88ffbb;margin-top:4px;">+' + FOCUS_BONUS_PCT + '% focus bonus (+$' + _fbAmt + ')</div>';
-                  _dHtml += '<div style="font-size:8px;color:#5a8a6a;margin-top:2px;">$' + _wouldHaveBeen + ' without bonus</div>';
+                  // v3.23.334: Only show "without bonus" when bonus > 0 — avoids confusing "$12 without bonus" when bonus is $0
+                  if (_fbAmt > 0) {
+                    _dHtml += '<div style="font-size:8px;color:#5a8a6a;margin-top:2px;">$' + _wouldHaveBeen + ' without bonus</div>';
+                  }
                   _dHtml += '</div>';
                 } else {
                   _dHtml = '<div style="color:#ff6b6b;padding:6px 10px;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.2);border-radius:8px;">';
@@ -11530,6 +12085,37 @@ try {
                 _distInfoEl.style.transform = 'translateY(8px)';
                 _distInfoEl.style.opacity = '0';
                 setTimeout(function() { _distInfoEl.style.opacity = '1'; _distInfoEl.style.transform = 'translateY(0)'; _celebNote(262, 0.1, 0, 0.04); }, _distDelay);
+              }
+              // Step 5b: Double-down bonus/result (slides up after distractions)
+              var _ddBonus = state._lastDoubleDownBonus || 0;
+              var _ddOrigMin = state._lastDoubleDownOrigMin || 0;
+              var _ddExtMin = state._lastDoubleDownExtMin || 0;
+              if (_ddBonus > 0 || _ddOrigMin > 0) {
+                _chainDelay += 300;
+                var _ddDelay = _chainDelay;
+                var _ddInfoEl = document.getElementById('celebDDInfo');
+                if (!_ddInfoEl) {
+                  _ddInfoEl = document.createElement('div');
+                  _ddInfoEl.id = 'celebDDInfo';
+                  _ddInfoEl.style.cssText = 'margin-top:10px;font-size:10px;font-family:"Press Start 2P",monospace;opacity:0;transition:opacity 0.4s,transform 0.4s ease-out;text-align:center;transform:translateY(8px);';
+                  var _ddRef = document.getElementById('celebDistInfo') || $('celebMarketInfo');
+                  if (_ddRef) _ddRef.parentNode.insertBefore(_ddInfoEl, _ddRef.nextSibling);
+                  else if (celebCoinsEl) celebCoinsEl.parentNode.appendChild(_ddInfoEl);
+                }
+                if (_ddInfoEl) {
+                  var _ddHtml = '<div style="color:#ffd700;padding:6px 10px;background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:8px;cursor:help;" title="You doubled down: extended your ' + _ddOrigMin + '-min session by ' + _ddExtMin + ' min. The extension portion earned ' + DOUBLE_DOWN_BONUS_MULT + 'x. This bonus = ' + DOUBLE_DOWN_BONUS_MULT + 'x on the extension earnings minus the base 1x already paid.">';
+                  _ddHtml += '<span style="font-size:12px;">&#x1F3B2;</span> DOUBLE DOWN WON';
+                  _ddHtml += '<div style="font-size:9px;color:#ffdd66;margin-top:4px;">+$' + _ddBonus + ' extension bonus (' + DOUBLE_DOWN_BONUS_MULT + 'x on ' + _ddExtMin + 'm)</div>';
+                  _ddHtml += '<div style="font-size:8px;color:#aa9944;margin-top:2px;">Original: ' + _ddOrigMin + 'm + Extension: ' + _ddExtMin + 'm</div>';
+                  _ddHtml += '</div>';
+                  _ddInfoEl.innerHTML = _ddHtml;
+                  _ddInfoEl.style.transform = 'translateY(8px)';
+                  _ddInfoEl.style.opacity = '0';
+                  setTimeout(function() { _ddInfoEl.style.opacity = '1'; _ddInfoEl.style.transform = 'translateY(0)'; _celebNote(392, 0.15, 0, 0.04); }, _ddDelay);
+                }
+              } else {
+                var _oldDdInfo = document.getElementById('celebDDInfo');
+                if (_oldDdInfo) _oldDdInfo.remove();
               }
               // Step 6: Market P&L scorecard (slides up last)
               _chainDelay += 300;
@@ -11604,7 +12190,13 @@ try {
       } else {
         // Dismiss
         overlay.style.opacity = '0';
-        setTimeout(function() { overlay.style.display = 'none'; particles.innerHTML = ''; }, 400);
+        setTimeout(function() {
+          overlay.style.display = 'none'; particles.innerHTML = '';
+          // v3.23.334: Force render on celebration dismiss to ensure all
+          // controls (slider, session picker) are properly unlocked.
+          // Fixes post-session lockout where controls stayed disabled.
+          try { render(); } catch (_) {}
+        }, 400);
         overlay.onclick = null;
       }
     };
@@ -11619,7 +12211,7 @@ try {
     // ===== STEADY TIER (12) =====
     {
       id: 'focus_90', desc: 'Focus for 90 minutes total today',
-      tipDesc: 'Total focus minutes across all completed sessions today.',
+      tipDesc: 'Total focus minutes across all completed sessions today. Double-down extensions count toward this total!',
       type: 'focusMin', tier: 'steady',
       genTarget: function() { return 90; },
       tiles: [
@@ -11641,7 +12233,7 @@ try {
     },
     {
       id: 'focus_120', desc: 'Focus for 2 hours total today',
-      tipDesc: 'Total focus minutes across all completed sessions today. That\'s serious deep work.',
+      tipDesc: 'Total focus minutes across all completed sessions today. Double-down extensions count! That\'s serious deep work.',
       type: 'focusMin', tier: 'steady',
       genTarget: function() { return 120; },
       tiles: [
@@ -11677,7 +12269,7 @@ try {
     },
     {
       id: 'focus_60', desc: 'Focus for 1 hour total today',
-      tipDesc: 'Total focus minutes across all completed sessions today.',
+      tipDesc: 'Total focus minutes across all completed sessions today. Double-down extensions count!',
       type: 'focusMin', tier: 'steady',
       genTarget: function() { return 60; },
       tiles: [
@@ -11749,7 +12341,7 @@ try {
     },
     {
       id: 'focus_90b', desc: 'Focus for 1.5 hours total today',
-      tipDesc: 'Total focus minutes across all completed sessions today.',
+      tipDesc: 'Total focus minutes across all completed sessions today. Double-down extensions count!',
       type: 'focusMin', tier: 'steady',
       genTarget: function() { return 90; },
       tiles: [
@@ -11762,7 +12354,7 @@ try {
     // ===== AMBITIOUS TIER (12) =====
     {
       id: 'focus_210', desc: 'Focus for 3.5 hours total today',
-      tipDesc: 'Total focus minutes across all sessions. A marathon day.',
+      tipDesc: 'Total focus minutes across all sessions. Double-down extensions count! A marathon day.',
       type: 'focusMin', tier: 'ambitious',
       genTarget: function() { return 210; },
       tiles: [
@@ -11799,7 +12391,7 @@ try {
     },
     {
       id: 'focus_240', desc: 'Focus for 4 hours total today',
-      tipDesc: 'Total focus minutes across all sessions. A true grind day.',
+      tipDesc: 'Total focus minutes across all sessions. Double-down extensions count! A true grind day.',
       type: 'focusMin', tier: 'ambitious',
       genTarget: function() { return 240; },
       tiles: [
@@ -11919,14 +12511,14 @@ try {
   // ═══════════════════════════════════════════════════════════════════════
 
   var CHALLENGE_POOL = [
-    { id: 'focus_minutes',    label: 'Focus Minutes',       unit: 'min',      tier: 'standard', desc: 'Log the most focus minutes' },
+    { id: 'focus_minutes',    label: 'Focus Minutes',       unit: 'min',      tier: 'standard', desc: 'Log the most focus minutes (Double Down extends sessions past 90m!)' },
     { id: 'session_count',    label: 'Sessions Completed',  unit: 'sessions', tier: 'low',      desc: 'Complete the most focus sessions' },
     { id: 'best_combo',       label: 'Best Combo',          unit: 'x',        tier: 'high',     desc: 'Reach the highest combo multiplier' },
     { id: 'quest_completions',label: 'Quests Completed',    unit: 'quests',   tier: 'high',     desc: 'Complete the most daily quests' },
     { id: 'textiles_woven',   label: 'Textiles Woven',      unit: 'textiles', tier: 'standard', desc: 'Weave the most textiles' },
     { id: 'tasks_completed',  label: 'Tasks Completed',     unit: 'tasks',    tier: 'low',      desc: 'Complete the most tasks' },
     { id: 'total_xp',         label: 'XP Earned',           unit: 'XP',       tier: 'standard', desc: 'Earn the most XP' },
-    { id: 'focus_marathon',   label: 'Longest Session',     unit: 'min',      tier: 'high',     desc: 'Complete the longest single focus session' }
+    { id: 'focus_marathon',   label: 'Longest Session',     unit: 'min',      tier: 'high',     desc: 'Complete the longest single focus session (use Double Down to break the 90m cap!)' }
   ];
 
   var CHALLENGE_REWARDS = {
@@ -11967,6 +12559,9 @@ try {
     var type = state.friendChallenge.type;
     if (typeof t[type] !== 'number') t[type] = 0;
   }
+
+  // v3.23.351: Old migration removed — was running at parse-time before state loaded from storage.
+  // Correct migration now lives inside the load() callback (see v3.23.351 block near cb()).
 
   // v3.23.332: Calculate total focus minutes from focusHistory since a given date
   function _calcFocusMinutesSince(sinceMs) {
@@ -12224,11 +12819,60 @@ try {
       }
     } catch(_){}
 
-    // Show result notification
-    var resultText = result === 'win' ? 'YOU WON +$' + reward.coins + ' +' + reward.xp + 'XP!' :
-                     result === 'loss' ? 'YOU LOST -$' + CHALLENGE_LOSER_PENALTY :
-                     'TIE - No change';
-    try { showToast(resultText, result === 'win' ? 'success' : (result === 'loss' ? 'error' : 'info')); } catch(_){}
+    // v3.23.343: Full-screen challenge result celebration
+    try {
+      var _crOverlay = document.createElement('div');
+      _crOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.4s ease;cursor:pointer;';
+      var _crColors = { win: { bg: 'rgba(0,255,136,0.08)', border: '#00ff88', accent: '#00ff88', icon: '🏆' },
+                        loss: { bg: 'rgba(255,68,68,0.08)', border: '#ff4444', accent: '#ff4444', icon: '💀' },
+                        tie: { bg: 'rgba(255,165,0,0.08)', border: '#ffa500', accent: '#ffa500', icon: '🤝' } };
+      var _crC = _crColors[result] || _crColors.tie;
+      var _crLabel = pool ? pool.label : ch.type;
+      var _crUnit = pool ? pool.unit : '';
+      var _crPayoutHtml = '';
+      if (result === 'win') {
+        _crPayoutHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#00ff88;margin-top:12px;">+$' + reward.coins + '</div>'
+          + '<div style="font-size:11px;color:#ffd700;margin-top:6px;">+' + reward.xp + ' XP</div>';
+      } else if (result === 'loss') {
+        _crPayoutHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#ff4444;margin-top:12px;">-$' + CHALLENGE_LOSER_PENALTY + '</div>';
+      } else {
+        _crPayoutHtml = '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ffa500;margin-top:12px;">No change</div>';
+      }
+      _crOverlay.innerHTML = '<div style="background:' + _crC.bg + ';border:2px solid ' + _crC.border + ';border-radius:16px;padding:28px 36px;text-align:center;max-width:320px;transform:scale(0.5);transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1);" id="_crCard">'
+        + '<div style="font-size:56px;margin-bottom:8px;">' + _crC.icon + '</div>'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:' + _crC.accent + ';letter-spacing:1px;">'
+          + (result === 'win' ? 'CHALLENGE WON!' : (result === 'loss' ? 'CHALLENGE LOST' : 'CHALLENGE TIED')) + '</div>'
+        + '<div style="font-size:10px;color:#8a8aaa;margin-top:8px;">' + escHtml(_crLabel) + ' vs ' + escHtml(ch.opponentName || '???') + '</div>'
+        + '<div style="display:flex;justify-content:center;gap:24px;margin-top:14px;">'
+          + '<div style="text-align:center;"><div style="font-size:8px;color:#8a8aaa;">YOU</div><div style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#fff;">' + myProgress + '<span style="font-size:8px;color:#8a8aaa;"> ' + _crUnit + '</span></div></div>'
+          + '<div style="font-size:20px;color:#555;align-self:center;">vs</div>'
+          + '<div style="text-align:center;"><div style="font-size:8px;color:#8a8aaa;">' + escHtml(ch.opponentName || '???').toUpperCase() + '</div><div style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#fff;">' + theirProgress + '<span style="font-size:8px;color:#8a8aaa;"> ' + _crUnit + '</span></div></div>'
+        + '</div>'
+        + _crPayoutHtml
+        + '<div style="font-size:9px;color:#555;margin-top:16px;">tap to dismiss</div>'
+        + '</div>';
+      document.body.appendChild(_crOverlay);
+      requestAnimationFrame(function() {
+        _crOverlay.style.opacity = '1';
+        var card = document.getElementById('_crCard');
+        if (card) card.style.transform = 'scale(1)';
+      });
+      _crOverlay.addEventListener('click', function() {
+        _crOverlay.style.opacity = '0';
+        setTimeout(function() { if (_crOverlay.parentNode) _crOverlay.remove(); }, 400);
+      });
+      // Auto-dismiss after 8 seconds
+      setTimeout(function() {
+        if (_crOverlay.parentNode) {
+          _crOverlay.style.opacity = '0';
+          setTimeout(function() { if (_crOverlay.parentNode) _crOverlay.remove(); }, 400);
+        }
+      }, 8000);
+    } catch(e) {
+      // Fallback to toast if overlay fails
+      var resultText = result === 'win' ? 'YOU WON +$' + reward.coins + '!' : result === 'loss' ? 'YOU LOST -$' + CHALLENGE_LOSER_PENALTY : 'TIE';
+      try { showToast(resultText, result === 'win' ? 'success' : 'error'); } catch(_){}
+    }
 
     state.friendChallenge = null;
     save();
@@ -12237,22 +12881,97 @@ try {
   }
 
   var _challengeSending = false; // prevent double-send
+
+  // v3.23.342: Challenge type picker — show modal, let player choose
   function sendChallenge(friendId, friendName) {
     if (_challengeSending) { console.log('[CHALLENGE] Already sending, ignoring'); return; }
     if (state.friendChallenge) {
       notify('You already have an active challenge!', '#ff4444');
       return;
     }
+    // Build picker modal
+    var overlay = document.createElement('div');
+    overlay.id = 'challengePickerOverlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.15s ease;';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--card-bg,#1a1a2e);border:2px solid #ffa500;border-radius:12px;padding:16px;max-width:320px;width:90%;max-height:80vh;overflow-y:auto;';
+    var displayName = friendName || friendId;
+    modal.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#ffa500;text-align:center;margin-bottom:12px;">CHALLENGE ' + escHtml(displayName).toUpperCase() + '</div>'
+      + '<div style="font-size:10px;color:var(--text-dim,#8a8aaa);text-align:center;margin-bottom:14px;">Pick your challenge type:</div>';
+    // Tier icons + colors
+    var tierStyle = { low: { color: '#66bb6a', icon: '🟢' }, standard: { color: '#ffa500', icon: '🟡' }, high: { color: '#ff4444', icon: '🔴' } };
+    for (var ci = 0; ci < CHALLENGE_POOL.length; ci++) {
+      var c = CHALLENGE_POOL[ci];
+      var ts = tierStyle[c.tier] || tierStyle.standard;
+      var reward = CHALLENGE_REWARDS[c.tier] || CHALLENGE_REWARDS.standard;
+      var btn = document.createElement('div');
+      btn.setAttribute('data-challenge-idx', ci);
+      // v3.23.348: Duolingo-style 3D raised buttons
+      var _tierShadow = { low: '0 4px 0 #2e7d32', standard: '0 4px 0 #b37300', high: '0 4px 0 #b71c1c' };
+      btn.style.cssText = 'background:rgba(255,165,0,0.08);border:1px solid rgba(255,165,0,0.25);border-bottom:none;border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;box-shadow:' + (_tierShadow[c.tier] || _tierShadow.standard) + ',0 2px 8px rgba(0,0,0,0.3);transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);position:relative;';
+      btn.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">'
+        + '<span style="font-size:14px;">' + ts.icon + '</span>'
+        + '<div style="flex:1;">'
+        + '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:' + ts.color + ';">' + escHtml(c.label) + '</div>'
+        + '<div style="font-size:9px;color:var(--text-dim,#8a8aaa);margin-top:4px;">' + escHtml(c.desc) + '</div>'
+        + '<div style="font-size:8px;color:#ffd700;margin-top:3px;">Reward: $' + reward.coins + ' + ' + reward.xp + ' XP</div>'
+        + '</div>'
+        + '</div>';
+      modal.appendChild(btn);
+    }
+    // Cancel button
+    var cancelBtn = document.createElement('div');
+    // v3.23.348: 3D cancel button
+    cancelBtn.style.cssText = 'text-align:center;margin-top:8px;font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ff4444;cursor:pointer;padding:8px;opacity:0.8;border-radius:8px;background:rgba(255,68,68,0.08);box-shadow:0 3px 0 #8b0000,0 1px 6px rgba(0,0,0,0.2);transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);';
+    cancelBtn.textContent = 'CANCEL';
+    modal.appendChild(cancelBtn);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Hover effects
+    var pickBtns = modal.querySelectorAll('[data-challenge-idx]');
+    pickBtns.forEach(function(b) {
+      // v3.23.348: Duolingo 3D hover (lift) + press (squish) effects
+      var _bTier = CHALLENGE_POOL[parseInt(b.getAttribute('data-challenge-idx'))] || {};
+      var _bShadowMap = { low: '0 4px 0 #2e7d32', standard: '0 4px 0 #b37300', high: '0 4px 0 #b71c1c' };
+      var _bShadowNorm = (_bShadowMap[_bTier.tier] || _bShadowMap.standard) + ',0 2px 8px rgba(0,0,0,0.3)';
+      var _bShadowHov = (_bShadowMap[_bTier.tier] || _bShadowMap.standard).replace('4px', '6px') + ',0 4px 12px rgba(0,0,0,0.4)';
+      b.addEventListener('mouseenter', function() { b.style.background = 'rgba(255,165,0,0.15)'; b.style.borderColor = '#ffa500'; b.style.transform = 'scale(1.04) translateY(-2px)'; b.style.boxShadow = _bShadowHov; });
+      b.addEventListener('mouseleave', function() { b.style.background = 'rgba(255,165,0,0.08)'; b.style.borderColor = 'rgba(255,165,0,0.25)'; b.style.transform = ''; b.style.boxShadow = _bShadowNorm; });
+      b.addEventListener('mousedown', function() { b.style.transform = 'scale(0.97) translateY(3px)'; b.style.boxShadow = '0 1px 0 ' + ((_bShadowMap[_bTier.tier] || _bShadowMap.standard).split(' ').pop()) + ',0 1px 4px rgba(0,0,0,0.2)'; });
+      b.addEventListener('mouseup', function() { b.style.transform = 'scale(1.04) translateY(-2px)'; b.style.boxShadow = _bShadowHov; });
+      b.addEventListener('click', function() {
+        var idx = parseInt(b.getAttribute('data-challenge-idx'));
+        var pick = CHALLENGE_POOL[idx];
+        if (!pick) return;
+        overlay.remove();
+        _sendChallengeWithType(friendId, friendName, pick);
+      });
+    });
+    // Cancel
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+      // Re-enable the challenge button
+      try {
+        var cBtn = document.querySelector('.friend-challenge-btn[data-fid="' + friendId + '"]');
+        if (cBtn) { cBtn.disabled = false; cBtn.style.opacity = ''; cBtn.textContent = '⚔ CHALLENGE'; }
+      } catch(_){}
+    });
+    // Click outside = cancel
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) { cancelBtn.click(); }
+    });
+  }
+
+  function _sendChallengeWithType(friendId, friendName, pick) {
     _challengeSending = true;
-    // Pick random challenge type
-    var pick = CHALLENGE_POOL[Math.floor(Math.random() * CHALLENGE_POOL.length)];
     var endsAt = Date.now() + CHALLENGE_DURATION_MS;
     var displayName = friendName || friendId;
     var reward = CHALLENGE_REWARDS[pick.tier] || CHALLENGE_REWARDS.standard;
 
     // Send invite via ProfileSync (uses correct Firestore path + API key)
     try {
-      notify('Sending challenge to ' + displayName + '...', '#4ecdc4');
+      notify('Sending "' + pick.label + '" challenge to ' + displayName + '...', '#4ecdc4');
       window.ProfileSync.sendInboxMessage(friendId, {
         type: 'challenge_invite',
         fromId: state.profileId,
@@ -12492,6 +13211,7 @@ try {
           (ch.startedAt ? '<div style="font-size:7px;color:#888;margin-bottom:4px;">Started ' + new Date(ch.startedAt).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
           statusLabel +
           '<div style="font-size:9px;color:var(--text-dim);margin-bottom:8px;">' + escHtml(ch.desc || '') + '</div>' +
+          ((ch.type === 'focus_minutes' || ch.type === 'focus_marathon') ? '<div style="font-size:8px;color:#ffd700;margin-bottom:6px;cursor:help;" title="Use the ☰ hamburger menu in the pop-out timer to Double Down — extend your session past the 90-min cap. Finish the extension for a 1.5x bonus on extension earnings, but fail and you lose 50% of session earnings.">&#9776; TIP: Double Down in the pop-out timer to break the 90m cap!</div>' : '') +
           (function() {
             // v3.23.333: Stacked bars with shared labeled axis — adapts to challenge type
             var maxVal = Math.max(myProg, theirProg, 1);
@@ -13879,13 +14599,24 @@ try {
           }
         }
 
+        // v3.23.343: Queue badge toasts so they show one at a time instead of stacking
+        var _badgeToastQueue = [];
+        var _badgeToastActive = false;
         function _showBadgeToast(icon, name, desc) {
+          _badgeToastQueue.push({ icon: icon, name: name, desc: desc });
+          if (!_badgeToastActive) _processBadgeToastQueue();
+        }
+        function _processBadgeToastQueue() {
+          if (_badgeToastQueue.length === 0) { _badgeToastActive = false; return; }
+          _badgeToastActive = true;
+          var item = _badgeToastQueue.shift();
           var toast = document.createElement('div');
+          toast.className = 'badge-toast-popup';
           toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.3);z-index:99999;background:linear-gradient(135deg,#1a1610,#2a2010);border:3px solid #ffd700;border-radius:16px;padding:24px 32px;text-align:center;box-shadow:0 0 60px rgba(255,215,0,0.4);opacity:0;transition:all 0.5s cubic-bezier(0.34,1.56,0.64,1);pointer-events:none;';
-          toast.innerHTML = '<div style="font-size:52px;margin-bottom:8px;animation:badgeBounce 0.6s ease;">' + icon + '</div>'
+          toast.innerHTML = '<div style="font-size:52px;margin-bottom:8px;animation:badgeBounce 0.6s ease;">' + item.icon + '</div>'
             + '<div style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#ffd700;letter-spacing:1px;margin-bottom:4px;">BADGE UNLOCKED!</div>'
-            + '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#fff;letter-spacing:0.5px;">' + name + '</div>'
-            + '<div style="font-size:10px;color:#aaa;margin-top:6px;">' + desc + '</div>';
+            + '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#fff;letter-spacing:0.5px;">' + item.name + '</div>'
+            + '<div style="font-size:10px;color:#aaa;margin-top:6px;">' + item.desc + '</div>';
           document.body.appendChild(toast);
           requestAnimationFrame(function() {
             toast.style.opacity = '1';
@@ -13893,12 +14624,25 @@ try {
           });
           // Play celebration sound
           try { SFX.levelUp(); } catch(_) { try { SFX.success(); } catch(_) {} }
+          // v3.23.343: Show for 3s (was 5s), then process next in queue
           setTimeout(function() {
             toast.style.opacity = '0';
             toast.style.transform = 'translate(-50%,-50%) scale(0.8)';
-            setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 500);
-          }, 5000);
+            setTimeout(function() {
+              if (toast.parentNode) toast.parentNode.removeChild(toast);
+              _processBadgeToastQueue(); // show next in queue
+            }, 500);
+          }, 3000);
         }
+        // v3.23.343: Dismiss all badge toasts immediately (called when celebration screen appears)
+        window._dismissBadgeToasts = function() {
+          _badgeToastQueue = [];
+          var toasts = document.querySelectorAll('.badge-toast-popup');
+          for (var t = 0; t < toasts.length; t++) {
+            if (toasts[t].parentNode) toasts[t].parentNode.removeChild(toasts[t]);
+          }
+          _badgeToastActive = false;
+        };
 
         _checkAllBadges();
       } catch(e) { console.error('[BadgeCheck]', e); }

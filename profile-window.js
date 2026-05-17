@@ -214,20 +214,6 @@
     });
   }
 
-  // ---- Placeholder helper for contenteditable ----
-  function applyPlaceholder(el, value) {
-    if (!el) return;
-    if (value && value.length > 0) {
-      el.textContent = value;
-      el.classList.remove('is-placeholder');
-      el.style.color = '';
-    } else {
-      el.textContent = el.getAttribute('data-placeholder') || '';
-      el.classList.add('is-placeholder');
-      el.style.color = 'var(--text-dim)';
-    }
-  }
-
   // ---- Count unlocked buildings ----
   function countBuildings(state) {
     // 5 annex buildings in the factory-hub: Gallery, Ratiocinatory,
@@ -267,16 +253,13 @@
   function render(state) {
     currentState = state;
     // Identity
-    // IMPORTANT: never clobber an inline-editable field that currently has
-    // focus. render() is called on every storage change (which is constant
-    // in this app), and overwriting a focused field mid-keystroke replaces
-    // the player's draft with the placeholder text. Only apply the
-    // placeholder/value when the field is not being actively edited.
+    // v3.23.354: Input fields — only update value when field is not focused.
+    // render() fires on every storage change (constant in this app).
     var active = (typeof document !== 'undefined') ? document.activeElement : null;
     var nameEl = document.getElementById('displayName');
     var tagEl  = document.getElementById('tagline');
-    if (nameEl && nameEl !== active) applyPlaceholder(nameEl, state.displayName || '');
-    if (tagEl  && tagEl  !== active) applyPlaceholder(tagEl,  state.tagline || '');
+    if (nameEl && nameEl !== active) nameEl.value = state.displayName || '';
+    if (tagEl  && tagEl  !== active) tagEl.value  = state.tagline || '';
 
     // Avatar
     renderAvatar(state);
@@ -571,31 +554,49 @@
     } catch (_) {}
   }
 
-  function wireEditable(id, key, maxLen) {
+  // v3.23.354: Rewritten for <input> elements with Duolingo-style save feedback.
+  // Much more reliable than contenteditable divs under constant storage re-renders.
+  function wireEditable(id, key, maxLen, flashId) {
     var el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener('focus', function() {
-      if (el.classList.contains('is-placeholder')) {
-        el.textContent = '';
-        el.classList.remove('is-placeholder');
-        el.style.color = '';
-      }
-    });
-    el.addEventListener('blur', function() {
-      var v = el.textContent || '';
+    var flash = flashId ? document.getElementById(flashId) : null;
+    var _saveTimer = null;
+
+    function doSave() {
+      var v = el.value || '';
       saveField(key, v, maxLen);
-      applyPlaceholder(el, currentState ? (currentState[key] || '') : '');
+      // Flash "Saved!" indicator
+      if (flash) {
+        flash.classList.add('show');
+        clearTimeout(flash._hideTimer);
+        flash._hideTimer = setTimeout(function() {
+          flash.classList.remove('show');
+        }, 1200);
+      }
+    }
+
+    // Save on blur
+    el.addEventListener('blur', function() {
+      if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+      doSave();
     });
+    // Save on Enter
     el.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
+        doSave();
         el.blur();
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        applyPlaceholder(el, currentState ? (currentState[key] || '') : '');
+        el.value = currentState ? (currentState[key] || '') : '';
         el.blur();
       }
+    });
+    // Auto-save while typing (debounced 800ms) — so it saves even without blur
+    el.addEventListener('input', function() {
+      if (_saveTimer) clearTimeout(_saveTimer);
+      _saveTimer = setTimeout(doSave, 800);
     });
   }
 
@@ -1300,8 +1301,8 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     wireNav();
-    wireEditable('displayName', 'displayName', 40);
-    wireEditable('tagline', 'tagline', 140);
+    wireEditable('displayName', 'displayName', 40, 'nameSaveFlash');
+    wireEditable('tagline', 'tagline', 140, 'taglineSaveFlash');
     wireCopyButton();
     wireWeeklyFocusNav();
     var lbBtn = document.getElementById('leaderboardBtn');

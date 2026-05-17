@@ -249,49 +249,147 @@
     return Math.round(((outcomes[key] || 0) / total) * 100);
   }
 
-  function renderOperations() {
-    var listEl = $('opList');
-    if (!listEl) return;
-    var ops = Bureau.getOperations();
-    var html = '';
-    for (var i = 0; i < ops.length; i++) {
-      var op = ops[i];
-      var avail = Bureau.operationAvailability(state, op);
-      var succ = oddsPct(op.outcomes, 'success');
-      var part = oddsPct(op.outcomes, 'partial');
-      var blwn = oddsPct(op.outcomes, 'blown');
-      var disabled = avail ? ' disabled' : '';
-      var reasonHtml = avail ? '<div class="op-unavailable">' + esc(avail.reason) + '</div>' : '';
-      var slotLabel = (Bureau.getSlotById(op.slot) || {}).title || op.slot;
-      var gateStr = 'Needs: ' + slotLabel + ' &middot; S' + (op.minSeniority || 1) + '+ / L' + (op.minLoyalty || 1) + '+';
-      html += '<div class="op-card" data-op-id="' + esc(op.id) + '">' +
-                '<div class="op-title">' + esc(op.title) + '</div>' +
-                '<div class="op-sub">' + esc(op.subtitle || '') + '</div>' +
-                '<div class="op-desc">' + esc(op.desc) + '</div>' +
-                '<div class="op-meta">' +
-                  '<span class="odds-chip success">Success ' + succ + '%</span>' +
-                  '<span class="odds-chip partial">Partial ' + part + '%</span>' +
-                  '<span class="odds-chip blown">Blown ' + blwn + '%</span>' +
-                  '<span>' + gateStr + '</span>' +
-                '</div>' +
-                '<div class="op-actions">' +
-                  '<span class="op-cost">$' + (op.cost || 0) + '</span>' +
-                  '<button class="run-op-btn" data-op-id="' + esc(op.id) + '"' + disabled + '>RUN</button>' +
-                '</div>' +
-                reasonHtml +
-              '</div>';
-    }
-    listEl.innerHTML = html;
+  // Build HTML for a single operation card
+  function buildOpCard(op, extraCls) {
+    var avail = Bureau.operationAvailability(state, op);
+    var succ = oddsPct(op.outcomes, 'success');
+    var part = oddsPct(op.outcomes, 'partial');
+    var blwn = oddsPct(op.outcomes, 'blown');
+    var disabled = avail ? ' disabled' : '';
+    var reasonHtml = avail ? '<div class="op-unavailable">' + esc(avail.reason) + '</div>' : '';
+    var slotLabel = (Bureau.getSlotById(op.slot) || {}).title || op.slot;
+    var gateStr = 'Needs: ' + slotLabel + ' &middot; S' + (op.minSeniority || 1) + '+ / L' + (op.minLoyalty || 1) + '+';
+    return '<div class="op-card' + (extraCls ? ' ' + extraCls : '') + '" data-op-id="' + esc(op.id) + '">' +
+              '<div class="op-title">' + esc(op.title) + '</div>' +
+              '<div class="op-sub">' + esc(op.subtitle || '') + '</div>' +
+              '<div class="op-desc">' + esc(op.desc) + '</div>' +
+              '<div class="op-meta">' +
+                '<span class="odds-chip success">Success ' + succ + '%</span>' +
+                '<span class="odds-chip partial">Partial ' + part + '%</span>' +
+                '<span class="odds-chip blown">Blown ' + blwn + '%</span>' +
+                '<span>' + gateStr + '</span>' +
+              '</div>' +
+              '<div class="op-actions">' +
+                '<span class="op-cost">$' + (op.cost || 0) + '</span>' +
+                '<button class="run-op-btn" data-op-id="' + esc(op.id) + '"' + disabled + '>RUN</button>' +
+              '</div>' +
+              reasonHtml +
+            '</div>';
+  }
 
-    var runBtns = listEl.querySelectorAll('button.run-op-btn');
+  // Wire run buttons inside a container
+  function wireRunButtons(container) {
+    var runBtns = container.querySelectorAll('button.run-op-btn');
     for (var r = 0; r < runBtns.length; r++) {
       (function(btn){
         btn.addEventListener('click', function() {
-          var opId = btn.getAttribute('data-op-id');
-          handleRunOp(opId);
+          handleRunOp(btn.getAttribute('data-op-id'));
         });
       })(runBtns[r]);
     }
+  }
+
+  // v3.23.350: External operations only
+  function renderOperations() {
+    var listEl = $('opList');
+    if (!listEl) return;
+    var ops = Bureau.getExternalOperations();
+    var html = '';
+    for (var i = 0; i < ops.length; i++) {
+      html += buildOpCard(ops[i], '');
+    }
+    listEl.innerHTML = html;
+    wireRunButtons(listEl);
+  }
+
+  // ---------------------------------------------------------------------------
+  // v3.23.350: Internal operations — target picker + ops list
+  // ---------------------------------------------------------------------------
+  function renderTargetPicker() {
+    var selectEl = $('targetEmpSelect');
+    var infoBar  = $('targetInfoBar');
+    if (!selectEl) return;
+
+    var roster = state.personnelRoster || [];
+    var currentTarget = state.bureauTargetEmpId || '';
+
+    // Build options — all roster employees (exclude those posted to Bureau slots)
+    var parts = ['<option value="">Select a target…</option>'];
+    for (var i = 0; i < roster.length; i++) {
+      var e = roster[i];
+      if (!e) continue;
+      // Include everyone on roster (floor + bureau-assigned — internal ops can target bureau agents too)
+      var flags = [];
+      if (e.dissident) flags.push('⚠ DISSIDENT');
+      if (e.kompromatGathered) flags.push('📁 KOMPROMAT');
+      if (e.blackmailed) flags.push('🔗 BLACKMAILED');
+      var stressTag = e.stress >= 60 ? ' [Stress ' + (e.stress || 0) + ']' : '';
+      var sel = (e.id === currentTarget) ? ' selected' : '';
+      parts.push('<option value="' + esc(e.id) + '"' + sel + '>' +
+                  esc(e.name) + ' — ' + esc(e.role || '') +
+                  (flags.length ? ' (' + flags.join(', ') + ')' : '') +
+                  stressTag +
+                '</option>');
+    }
+    selectEl.innerHTML = parts.join('');
+
+    // Render info bar for selected target
+    if (infoBar) {
+      var target = Bureau.getTargetEmployee(state);
+      if (target) {
+        var chips = [];
+        chips.push('<span class="target-name">' + esc(target.name) + '</span>');
+        chips.push('<span class="target-chip">' + esc(target.role || 'Unknown') + '</span>');
+
+        // Stress chip
+        var stressLvl = (target.stress || 0);
+        var stressCls = stressLvl >= 60 ? 'stress-high' : stressLvl >= 30 ? 'stress-med' : 'stress-low';
+        chips.push('<span class="target-chip ' + stressCls + '">Stress ' + stressLvl + '</span>');
+
+        // Status flags
+        if (target.dissident) {
+          chips.push('<span class="target-chip dissident">DISSIDENT</span>');
+        } else {
+          chips.push('<span class="target-chip clean">Loyal</span>');
+        }
+        if (target.kompromatGathered) chips.push('<span class="target-chip kompromat">Kompromat on file</span>');
+        if (target.blackmailed) chips.push('<span class="target-chip blackmailed">Blackmailed</span>');
+
+        // Tenure
+        var tenure = Bureau.tenureDays(target);
+        if (tenure > 0) chips.push('<span class="target-chip">' + tenure + 'd tenure</span>');
+
+        infoBar.innerHTML = chips.join('');
+      } else {
+        infoBar.innerHTML = '<span class="target-empty">No target selected. Choose an employee above to unlock internal operations.</span>';
+      }
+    }
+  }
+
+  function renderInternalOps() {
+    var listEl = $('internalOpList');
+    if (!listEl) return;
+    var ops = Bureau.getInternalOperations();
+    var html = '';
+    for (var i = 0; i < ops.length; i++) {
+      html += buildOpCard(ops[i], 'internal');
+    }
+    listEl.innerHTML = html;
+    wireRunButtons(listEl);
+  }
+
+  function wireTargetPicker() {
+    var selectEl = $('targetEmpSelect');
+    if (!selectEl || selectEl._wired) return;
+    selectEl._wired = true;
+    selectEl.addEventListener('change', function() {
+      var empId = selectEl.value || null;
+      Bureau.setTargetEmployee(state, empId);
+      save(function() {
+        renderTargetPicker();
+        renderInternalOps();
+      });
+    });
   }
 
   function handleRunOp(opId) {
@@ -353,6 +451,8 @@
     renderHero();
     renderSlots();
     renderOperations();
+    renderTargetPicker();
+    renderInternalOps();
     renderHistory();
   }
 
@@ -375,6 +475,7 @@
     } catch (_) {}
 
     renderAll();
+    wireTargetPicker();
 
     // Tick — refreshes cooldown-driven op availability
     tickTimer = setInterval(function() {
@@ -382,9 +483,9 @@
         renderHero();
         if (Bureau.cooldownRemainingMs(state) === 0) {
           var anyDisabled = false;
-          var btns = document.querySelectorAll('#opList button.run-op-btn');
+          var btns = document.querySelectorAll('#opList button.run-op-btn, #internalOpList button.run-op-btn');
           for (var i = 0; i < btns.length; i++) if (btns[i].disabled) { anyDisabled = true; break; }
-          if (anyDisabled) renderOperations();
+          if (anyDisabled) { renderOperations(); renderInternalOps(); }
         }
       } catch (_) {}
     }, 1000);

@@ -278,6 +278,144 @@
     letter-spacing: 0.5px;
   }
 
+  /* v3.23.349: FIRE button — Duolingo 3D style */
+  .emp-fire-btn {
+    margin-top: 6px;
+    padding: 5px 14px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: #ff4466;
+    background: rgba(255,68,102,0.08);
+    border: 1px solid rgba(255,68,102,0.3);
+    border-bottom: none;
+    border-radius: 6px;
+    box-shadow: 0 3px 0 #8b0000, 0 2px 6px rgba(0,0,0,0.25);
+    cursor: pointer;
+    align-self: flex-start;
+    letter-spacing: 1px;
+    transition: all 0.15s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+  .emp-fire-btn:hover {
+    background: rgba(255,68,102,0.15);
+    border-color: #ff4466;
+    transform: scale(1.06) translateY(-2px);
+    box-shadow: 0 5px 0 #8b0000, 0 4px 10px rgba(0,0,0,0.35);
+    color: #ff6688;
+  }
+  .emp-fire-btn:active {
+    transform: scale(0.96) translateY(2px);
+    box-shadow: 0 1px 0 #8b0000, 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  /* Fire confirmation modal overlay */
+  .fire-modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 99999;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .fire-modal {
+    background: var(--surface);
+    border: 2px solid #ff4466;
+    border-radius: 12px;
+    padding: 20px 24px;
+    max-width: 380px;
+    width: 90%;
+    text-align: center;
+  }
+  .fire-modal-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: #ff4466;
+    margin-bottom: 12px;
+  }
+  .fire-modal-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .fire-modal-warning {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  .fire-modal-warning strong { color: var(--gold); }
+  .fire-modal-actions { display: flex; gap: 10px; justify-content: center; }
+  .fire-modal-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid;
+    border-bottom: none;
+    transition: all 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .fire-modal-btn.confirm {
+    color: #ff4466;
+    background: rgba(255,68,102,0.1);
+    border-color: rgba(255,68,102,0.4);
+    box-shadow: 0 3px 0 #8b0000, 0 2px 6px rgba(0,0,0,0.25);
+  }
+  .fire-modal-btn.confirm:hover {
+    background: rgba(255,68,102,0.2);
+    transform: scale(1.06) translateY(-2px);
+    box-shadow: 0 5px 0 #8b0000, 0 4px 10px rgba(0,0,0,0.35);
+  }
+  .fire-modal-btn.confirm:active { transform: scale(0.96) translateY(2px); box-shadow: 0 1px 0 #8b0000; }
+  .fire-modal-btn.cancel {
+    color: var(--accent3);
+    background: rgba(78,205,196,0.06);
+    border-color: rgba(78,205,196,0.3);
+    box-shadow: 0 3px 0 #1a5c57, 0 2px 6px rgba(0,0,0,0.25);
+  }
+  .fire-modal-btn.cancel:hover {
+    background: rgba(78,205,196,0.15);
+    transform: scale(1.06) translateY(-2px);
+    box-shadow: 0 5px 0 #1a5c57, 0 4px 10px rgba(0,0,0,0.35);
+  }
+  .fire-modal-btn.cancel:active { transform: scale(0.96) translateY(2px); box-shadow: 0 1px 0 #1a5c57; }
+
+  /* Sabotage result banner */
+  .sabotage-banner {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 100000;
+    background: var(--surface);
+    border: 2px solid #ff4466;
+    border-radius: 10px;
+    padding: 14px 20px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(255,68,102,0.3);
+    animation: slideDown 0.3s ease;
+  }
+  .sabotage-banner.clean { border-color: var(--accent); box-shadow: 0 4px 20px rgba(0,255,136,0.2); }
+  @keyframes slideDown { from { transform: translateX(-50%) translateY(-40px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+  .sabotage-banner-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    margin-bottom: 6px;
+  }
+  .sabotage-banner-title.bad { color: #ff4466; }
+  .sabotage-banner-title.clean { color: var(--accent); }
+  .sabotage-banner-text {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+  .sabotage-banner-cost {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: #ff4466;
+    margin-top: 6px;
+  }
+
   .empty-state {
     max-width: 720px;
     margin: 60px auto;
@@ -302,7 +440,7 @@
 <body>
 
 <div class="top-bar">
-  <h1 title="The Employee Management Center. Displays every named employee currently on your personnel roster. Hiring happens at the factory; this window is read-only &mdash; you can search, filter, and sort, but you cannot fire anyone from here.">Personnel</h1>
+  <h1 title="The Employee Management Center. Displays every named employee currently on your personnel roster. Hiring happens at the factory. You can search, filter, sort &mdash; and fire anyone you like, if you're willing to accept the consequences.">Personnel</h1>
   <div class="top-bar-nav">
     <button class="nav-btn" id="backToFactoryBtn" title="Return to the factory.">&larr; FACTORY</button>
     <button class="nav-btn" id="toHouseBtn" title="Walk home. Open the House &mdash; the wakeup antechamber with a short rap sheet on the household.">HOUSE</button>

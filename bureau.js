@@ -395,6 +395,186 @@
           return { coins: 0, line: 'The newspaper traced the story back to us. An editorial has been published. It is unflattering.' };
         }
       }
+    },
+
+    // ====================================================================
+    // v3.23.349: INTERNAL DISSIDENT OPERATIONS
+    // These target employees on the player's own roster. They require a
+    // target employee to be selected (stored in state.bureauTargetEmpId).
+    // The bureau-window.js UI handles target selection.
+    // ====================================================================
+
+    // ---------- Identify / Investigate ----------
+    {
+      id: 'internalInvestigation',
+      title: 'Internal investigation',
+      subtitle: 'The Chief reviews the personnel file.',
+      desc: 'Investigate an employee for disloyalty. Success reveals hidden stress and may flag them as a dissident before they act. More reliable than waiting for them to turn on their own.',
+      slot: 'chiefOfStation',
+      cost: 400, minSeniority: 2, minLoyalty: 3,
+      outcomes: { success: 60, partial: 30, blown: 10 },
+      heatOnBlown: 4, burnOnBlown: false,
+      internal: true, // flag: targets own employee
+      rewards: {
+        success: function(s, a) {
+          // On success, investigate the targeted employee
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target && !target.dissident && (target.stress || 0) >= 2) {
+            // Correctly identified a stressed employee — flag as dissident
+            if (typeof Personnel !== 'undefined' && Personnel.markDissident) {
+              Personnel.markDissident(target, 'Identified by Bureau internal investigation.');
+            }
+            return { coins: 0, line: 'Investigation complete. ' + (target.name || 'The subject') + ' was found to be disloyal. They have been flagged as a dissident.', sideEffect: 'identified' };
+          } else if (target && !target.dissident) {
+            // Employee is clean — give them +1 stress from the investigation
+            if (typeof Personnel !== 'undefined' && Personnel.addStress) {
+              Personnel.addStress(target, 1, 'Investigated by Bureau. Found clean, but shaken.');
+            }
+            return { coins: 0, line: 'Investigation complete. ' + (target.name || 'The subject') + ' appears loyal. The investigation itself, however, was noted.' };
+          }
+          return { coins: 0, line: 'Investigation yielded nothing actionable. The file has been returned to the cabinet.' };
+        },
+        partial: function(s, a) {
+          return { coins: 0, line: 'Inconclusive. The subject was evasive but nothing provable. We will watch.' };
+        },
+        blown: function(s, a) {
+          // Blown investigation — the target gains stress
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target && typeof Personnel !== 'undefined' && Personnel.addStress) {
+            Personnel.addStress(target, 2, 'Discovered they were being investigated. Furious.');
+          }
+          return { coins: 0, line: 'The subject discovered the investigation. They are not pleased. Trust has been damaged.' };
+        }
+      }
+    },
+
+    // ---------- Gather Compromat ----------
+    {
+      id: 'gatherKompromat',
+      title: 'Gather compromat',
+      subtitle: 'The Archivist opens the private file.',
+      desc: 'Dig into an employee’s past for compromising material. Success stores kompromat that can later be used for blackmail or leverage. The target must not know.',
+      slot: 'archivist',
+      cost: 600, minSeniority: 3, minLoyalty: 3,
+      outcomes: { success: 50, partial: 35, blown: 15 },
+      heatOnBlown: 5, burnOnBlown: false,
+      internal: true,
+      rewards: {
+        success: function(s, a) {
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target) {
+            target.kompromatGathered = true;
+            target.kompromatAt = Date.now();
+            return { coins: 0, line: 'Material acquired on ' + (target.name || 'the subject') + '. A sealed folder has been placed in the vault. It will keep.' };
+          }
+          return { coins: 0, line: 'A folder was compiled. It may be useful.' };
+        },
+        partial: function(s, a) {
+          return { coins: 0, line: 'Some material found, but nothing that would survive scrutiny. The search continues.' };
+        },
+        blown: function(s, a) {
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target && typeof Personnel !== 'undefined' && Personnel.addStress) {
+            Personnel.addStress(target, 2, 'Learned the Bureau was digging into their past.');
+          }
+          return { coins: 0, line: ‘The subject’s former landlord called them. They now know someone has been asking questions.’ };
+        }
+      }
+    },
+
+    // ---------- Blackmail ----------
+    {
+      id: 'blackmailEmployee',
+      title: 'Blackmail',
+      subtitle: 'The Sparrow delivers the envelope.',
+      desc: 'Use gathered kompromat to coerce a dissident into compliance. Requires kompromat to have been gathered on the target first. Removes dissident flag on success but the employee remembers.',
+      slot: 'sparrow',
+      cost: 800, minSeniority: 2, minLoyalty: 3,
+      outcomes: { success: 55, partial: 30, blown: 15 },
+      heatOnBlown: 8, burnOnBlown: false,
+      internal: true,
+      requiresKompromat: true,
+      rewards: {
+        success: function(s, a) {
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target && target.dissident) {
+            target.dissident = false;
+            target.dissidentReason = '';
+            target.blackmailed = true;
+            target.blackmailedAt = Date.now();
+            target.stress = Math.max(0, (target.stress || 0) - 2);
+            return { coins: 0, line: (target.name || 'The subject') + ' has agreed to cooperate. The envelope was persuasive. They will not forget this.' };
+          }
+          if (target && !target.dissident) {
+            target.blackmailed = true;
+            return { coins: 0, line: (target.name || 'The subject') + ' was already cooperative, but the envelope ensures they stay that way.' };
+          }
+          return { coins: 0, line: 'The envelope was delivered. Its contents were understood.' };
+        },
+        partial: function(s, a) {
+          return { coins: 0, line: 'The subject read the material and said nothing. They have not agreed. They have not refused.' };
+        },
+        blown: function(s, a) {
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target) {
+            if (typeof Personnel !== 'undefined' && Personnel.addStress) {
+              Personnel.addStress(target, 3, 'Blackmail attempt discovered. Now hostile.');
+            }
+            // Kompromat is burned
+            delete target.kompromatGathered;
+            delete target.kompromatAt;
+          }
+          return { coins: 0, line: 'The subject took the envelope to a solicitor. The kompromat has been burned. Heat rises.' };
+        }
+      }
+    },
+
+    // ---------- Neutralize (permanent, clean removal) ----------
+    {
+      id: 'neutralizeEmployee',
+      title: 'Neutralize',
+      subtitle: 'The Street Asset gets the nod.',
+      desc: 'Permanently remove an employee through Bureau channels. No sabotage risk. No questions asked. No one comes back from this. Extremely high heat.',
+      slot: 'streetAsset',
+      cost: 2000, minSeniority: 2, minLoyalty: 4,
+      outcomes: { success: 65, partial: 25, blown: 10 },
+      heatOnBlown: 20, burnOnBlown: false,
+      internal: true,
+      rewards: {
+        success: function(s, a) {
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          var name = target ? target.name : 'the subject';
+          if (target && typeof Personnel !== 'undefined' && Personnel.removeById) {
+            Personnel.removeById(s, targetId);
+          }
+          s.bureauHeat = Math.min(100, (s.bureauHeat || 0) + 10); // Always adds heat, even on success
+          return { coins: 0, line: name + ' did not report for work this morning. Their desk has been cleared. No one asked why.' };
+        },
+        partial: function(s, a) {
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target && typeof Personnel !== 'undefined' && Personnel.addStress) {
+            Personnel.addStress(target, 3, 'Something happened. They won\'t say what.');
+          }
+          return { coins: 0, line: 'The subject survived. They look different now. Something happened, but they will not say what.' };
+        },
+        blown: function(s, a) {
+          // Blown neutralization — target becomes dissident + heat spike
+          var targetId = s.bureauTargetEmpId;
+          var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(s, targetId) : null;
+          if (target && typeof Personnel !== 'undefined') {
+            if (Personnel.markDissident) Personnel.markDissident(target, 'Survived a Bureau neutralization attempt. Now very angry.');
+          }
+          return { coins: 0, line: 'It went wrong. The subject knows. Everyone knows. The asset is compromised. Heat spikes.' };
+        }
+      }
     }
   ];
 
@@ -409,6 +589,8 @@
     if (typeof state.bureauBlown    !== 'number') state.bureauBlown = 0;
     if (typeof state.bureauHeat     !== 'number') state.bureauHeat = 0;
     if (typeof state.bureauCooldownUntil !== 'number') state.bureauCooldownUntil = 0;
+    // v3.23.349: target employee for internal ops
+    if (state.bureauTargetEmpId === undefined) state.bureauTargetEmpId = null;
   }
 
   function cooldownRemainingMs(state) {
@@ -525,6 +707,19 @@
     var loy = deriveLoyalty(emp);
     if (sen < (op.minSeniority || 1)) return { reason: 'Agent is S' + sen + '; op requires S' + op.minSeniority + '+.' };
     if (loy < (op.minLoyalty   || 1)) return { reason: 'Agent is L' + loy + '; op requires L' + op.minLoyalty   + '+.' };
+    // v3.23.349: Internal ops require a target employee
+    if (op.internal) {
+      if (!state.bureauTargetEmpId) return { reason: 'Select a target employee first.' };
+      var target = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(state, state.bureauTargetEmpId) : null;
+      if (!target) return { reason: 'Target employee not found on roster.' };
+      // Can't target yourself (the agent running the op)
+      if (state.bureauTargetEmpId === state.bureauAgents[slotId]) return { reason: 'Cannot target the agent running this operation.' };
+    }
+    // v3.23.349: Blackmail requires kompromat
+    if (op.requiresKompromat) {
+      var bTarget = (typeof Personnel !== 'undefined' && Personnel.findById) ? Personnel.findById(state, state.bureauTargetEmpId) : null;
+      if (!bTarget || !bTarget.kompromatGathered) return { reason: 'No kompromat on file for this employee. Run "Gather compromat" first.' };
+    }
     return null;
   }
 
@@ -644,6 +839,31 @@
   }
 
   // ---------------------------------------------------------------------------
+  // v3.23.349: Target selection for internal operations
+  // ---------------------------------------------------------------------------
+  function setTargetEmployee(state, empId) {
+    ensureState(state);
+    state.bureauTargetEmpId = empId || null;
+  }
+
+  function getTargetEmployee(state) {
+    ensureState(state);
+    if (!state.bureauTargetEmpId) return null;
+    return (typeof Personnel !== 'undefined' && Personnel.findById)
+      ? Personnel.findById(state, state.bureauTargetEmpId) : null;
+  }
+
+  // Get only internal operations (for separate UI section)
+  function getInternalOperations() {
+    return OPERATIONS.filter(function(op) { return !!op.internal; });
+  }
+
+  // Get only external operations (original ops)
+  function getExternalOperations() {
+    return OPERATIONS.filter(function(op) { return !op.internal; });
+  }
+
+  // ---------------------------------------------------------------------------
   // Export
   // ---------------------------------------------------------------------------
   window.Bureau = {
@@ -651,6 +871,8 @@
     HEAT_MAX: HEAT_MAX,
     getSlots:       function() { return BUREAU_SLOTS.slice(); },
     getOperations:  function() { return OPERATIONS.slice(); },
+    getExternalOperations: getExternalOperations,
+    getInternalOperations: getInternalOperations,
     getSlotById:    getSlotById,
     getOperationById: getOperationById,
     ensureState:    ensureState,
@@ -662,6 +884,8 @@
     returnAgent:    returnAgent,
     operationAvailability: operationAvailability,
     runOperation:   runOperation,
-    tenureDays:     tenureDays
+    tenureDays:     tenureDays,
+    setTargetEmployee: setTargetEmployee,
+    getTargetEmployee: getTargetEmployee
   };
 })();
