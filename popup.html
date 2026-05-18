@@ -235,6 +235,25 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 #houseBtn[data-tip], #galleryBtn[data-tip], #factoryBtn[data-tip], #brokerageBtn[data-tip], #ratiocinatoryBtn[data-tip] {
   transform: none !important;
   box-shadow: none !important;
+  position: relative;
+}
+#houseBtn[data-tip]::before, #galleryBtn[data-tip]::before, #factoryBtn[data-tip]::before, #brokerageBtn[data-tip]::before, #ratiocinatoryBtn[data-tip]::before {
+  content: '🔒';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: rgba(0,0,0,0.65);
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 2;
+}
+#houseBtn[data-tip]:hover::before, #galleryBtn[data-tip]:hover::before, #factoryBtn[data-tip]:hover::before, #brokerageBtn[data-tip]:hover::before, #ratiocinatoryBtn[data-tip]:hover::before {
+  opacity: 1;
 }
 
 /* Profile avatar + stats also get subtle hover */
@@ -816,7 +835,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 <!-- v3.23.118: Daily Quest — choose one of two -->
 <!-- v3.23.124: Quest card with Duolingo-style tile grid -->
 <style>
-.quest-tile{position:relative;min-width:70px;flex:1;aspect-ratio:1;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:default;user-select:none;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s;border:2px solid transparent;border-bottom:5px solid transparent;overflow:visible;}
+.quest-tile{position:relative;min-width:70px;max-width:120px;flex:1;aspect-ratio:1;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:default;user-select:none;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s;border:2px solid transparent;border-bottom:5px solid transparent;overflow:visible;}
 .quest-tile:hover{transform:translateY(-3px) scale(1.05);z-index:1;}
 .quest-tile:active{transform:translateY(1px) scale(0.96);}
 .qt-icon{font-size:22px;line-height:1;}
@@ -1030,7 +1049,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
         <input type="text" id="profileIdDisplay" readonly style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;color:#5aadff;font-family:monospace;font-size:12px;cursor:pointer;" title="Click to copy your Profile ID. Share this with friends so they can find you." />
         <button class="btn btn-small" id="copyProfileIdBtn" style="border-color:#5aadff;color:#5aadff;font-size:9px;padding:4px 8px;" title="Copy your Profile ID to clipboard.">COPY</button>
       </div>
-      <div style="font-size:9px;color:var(--text-dim);margin-top:3px;">Share this with friends so they can add you on <a href="#" id="profileLinkFromFriends" style="color:#5aadff;" target="_blank">your web profile</a>.</div>
+      <div style="font-size:9px;color:var(--text-dim);margin-top:3px;">Share this with friends so they can add you on <a href="#" id="profileLinkFromFriends" style="color:#5aadff;" target="totl_profile">your web profile</a>.</div>
     </div>
     <!-- Add friend by name or Profile ID -->
     <div style="margin-bottom:8px;">

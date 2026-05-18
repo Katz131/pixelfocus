@@ -1268,14 +1268,16 @@
     el.style.display = '';
 
     var html = '';
+    // Header
+    html += '<h2 style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#ff6b6b;margin-bottom:12px;letter-spacing:0.5px;">DISTRACTION TRACKER</h2>';
     // Stats row
     var cleanPct = data.totalSessions > 0 ? Math.round(data.cleanSessions / data.totalSessions * 100) : 0;
     html += '<div style="display:flex;gap:12px;justify-content:center;margin-bottom:10px;flex-wrap:wrap;">';
-    html += '<div style="text-align:center;"><div style="font-size:16px;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;">' + data.totalDistractions + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">TOTAL</div></div>';
-    html += '<div style="text-align:center;"><div style="font-size:16px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">' + cleanPct + '%</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">CLEAN</div></div>';
-    html += '<div style="text-align:center;"><div style="font-size:16px;color:#ff9f43;font-family:\'Press Start 2P\',monospace;">$' + data.totalPenalty + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">LOST</div></div>';
+    html += '<div style="text-align:center;" title="Total distractions logged across all focus sessions. Each time you tap a distraction button during a session, it counts here."><div style="font-size:16px;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;">' + data.totalDistractions + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">TOTAL</div></div>';
+    html += '<div style="text-align:center;" title="Percentage of focus sessions completed with zero distractions. ' + data.cleanSessions + ' clean out of ' + data.totalSessions + ' total sessions."><div style="font-size:16px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">' + cleanPct + '%</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">CLEAN</div></div>';
+    html += '<div style="text-align:center;" title="Total dollars deducted from session earnings due to distractions. Each distraction costs you money from that session\'s payout."><div style="font-size:16px;color:#ff9f43;font-family:\'Press Start 2P\',monospace;">$' + data.totalPenalty + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">LOST</div></div>';
     if (data.totalBonus > 0) {
-      html += '<div style="text-align:center;"><div style="font-size:16px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">$' + data.totalBonus + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">BONUS</div></div>';
+      html += '<div style="text-align:center;" title="Total bonus dollars earned from completing focus sessions with zero distractions. Clean sessions earn a 15% bonus on top of normal earnings."><div style="font-size:16px;color:#00ff88;font-family:\'Press Start 2P\',monospace;">$' + data.totalBonus + '</div><div style="font-size:7px;color:#5a5a7e;margin-top:2px;">BONUS</div></div>';
     }
     html += '</div>';
 
@@ -1307,7 +1309,7 @@
     wireWeeklyFocusNav();
     var lbBtn = document.getElementById('leaderboardBtn');
     if (lbBtn) lbBtn.addEventListener('click', function() {
-      window.open('https://todo-of-the-loom.web.app/', '_blank');
+      window.open('https://todo-of-the-loom.web.app/', 'totl_leaderboard');
     });
     load();
     try {

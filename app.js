@@ -814,6 +814,7 @@ try {
     questsAmbitiousCompleted: 0,// ambitious quests completed lifetime
     questDoubleTextile: false,  // if true, next session awards 2x textiles
     _questTilesLit: 0,          // number of tiles lit for current quest (for detecting new ones)
+    comboSessions: 0,           // v3.23.359: number of separate sessions in current combo (for combo quests)
     // v3.23.166: Friend challenge system
     friendChallenge: null,
     friendChallengeHistory: [],
@@ -1894,6 +1895,7 @@ try {
       const elapsed = Date.now() - state.lastBlockTime;
       if (elapsed > COMBO_TIMEOUT_MS && state.timerState !== 'running') {
         state.combo = 0;
+        state.comboSessions = 0; // v3.23.359: reset session-level combo too
         save();
       }
     }
@@ -2048,6 +2050,7 @@ try {
       state.todayXP = 0;
       state.maxComboToday = 0;
       state.combo = 0;
+      state.comboSessions = 0; // v3.23.359: reset session-level combo on day rollover
       // canvasSize must NOT be reset here — the user paid for their loom size and
       // should keep it across day boundaries. Canvas pixels were already saved
       // to gallery above, so the empty fresh canvas naturally appears at the
@@ -4574,7 +4577,7 @@ try {
   }
 
   function getGameLockReason() {
-    if (getActivePriorityTasks().length > 0) return 'Complete your priority tasks first.';
+    if (getActivePriorityTasks().length > 0) return 'Complete a focus timer to unlock.';
     if (state.timerState === 'running' || state.timerState === 'countdown') return 'Focus session in progress — finish or reset first.';
     return 'Complete a focus session to unlock.';
   }
@@ -8927,6 +8930,9 @@ try {
       });
       state._sessionStartedAt = 0;
     } catch (_) {}
+    // v3.23.359: Increment comboSessions once per completed session (not per block).
+    // Combo quests check this instead of state.combo to require multiple sessions.
+    state.comboSessions = (state.comboSessions || 0) + 1;
     for (var i = 0; i < reward.blocks; i++) {
       try { earnBlock(); } catch (e) { console.error(e); }
     }
@@ -12281,7 +12287,7 @@ try {
     },
     {
       id: 'combo_4', desc: 'Hit a 4x combo streak',
-      tipDesc: 'Chain focus sessions within 20 minutes of each other to build combos.',
+      tipDesc: 'Complete 4 separate focus sessions within 20 min of each other. Each session = 1 combo.',
       type: 'combo', tier: 'steady',
       genTarget: function() { return 4; },
       tiles: [
@@ -12378,7 +12384,7 @@ try {
     },
     {
       id: 'combo_6', desc: 'Hit a 6x combo streak',
-      tipDesc: 'Chain focus sessions within 20 minutes. 6x means over an hour of unbroken chains.',
+      tipDesc: 'Complete 6 separate focus sessions within 20 min of each other. Each session = 1 combo.',
       type: 'combo', tier: 'ambitious',
       genTarget: function() { return 6; },
       tiles: [
@@ -12426,7 +12432,7 @@ try {
     },
     {
       id: 'combo_8', desc: 'Hit an 8x combo streak',
-      tipDesc: 'Chain focus sessions within 20 minutes. 8x is elite-level consistency.',
+      tipDesc: 'Complete 8 separate focus sessions within 20 min of each other. Each session = 1 combo.',
       type: 'combo', tier: 'ambitious',
       genTarget: function() { return 8; },
       tiles: [
@@ -13426,7 +13432,7 @@ try {
 
     switch (quest.type) {
       case 'sessions': return todaySessions;
-      case 'combo': return state.combo || 0;
+      case 'combo': return state.comboSessions || 0; // v3.23.359: count sessions, not blocks
       case 'focusMin': return todayMin;
       case 'singleSessionMin':
         var maxMin = 0;
@@ -15393,7 +15399,7 @@ try {
         // v3.23.68: Wrap avatar+name in a clickable link to web profile
         var PROFILE_BASE = 'https://todo-of-the-loom.web.app/p/?id=';
         function profileLink(pid, innerHtml) {
-          return '<a href="' + PROFILE_BASE + escHtml(pid) + '" target="_blank" style="display:flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;" title="View profile">' + innerHtml + '</a>';
+          return '<a href="' + PROFILE_BASE + escHtml(pid) + '" target="totl_profile" style="display:flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;" title="View profile">' + innerHtml + '</a>';
         }
 
         // Render friends list — shows accepted friends and their permissions
