@@ -8266,7 +8266,10 @@ try {
                 // v3.23.353: PiP button only handles pause/resume.
                 // Starting new sessions or adding time must be done
                 // from the main popup — prevents accidental resets.
-                if (state.timerState === 'running' || state.timerState === 'paused') {
+                // v3.23.362: Also handle countdown — cancel the pre-start countdown.
+                if (state.timerState === 'countdown') {
+                  try { startTimer(); } catch (err) { console.error('PiP button startTimer (cancel countdown) failed:', err); }
+                } else if (state.timerState === 'running' || state.timerState === 'paused') {
                   try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
                 }
                 try { renderPopOutTimer(); } catch (_) {}
