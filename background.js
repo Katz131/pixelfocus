@@ -183,13 +183,23 @@ function _syncPenaltyTracking() {
 }
 
 // v3.23.35: SAFETY — never write pixelFocusState unless it has real data.
+// v3.23.366: Before writing full state, check if any page (popup, gallery,
+// brokerage, etc.) saved recently. If so, skip the write — BG's copy is stale
+// and would clobber the page's fresher data. BG will catch up next alarm cycle.
 function _safeSaveState(stateObj) {
   if (!stateObj || typeof stateObj !== 'object') return;
   if (!stateObj.profileId && !stateObj.xp && (!stateObj.tasks || Object.keys(stateObj.tasks).length <= 1)) {
     console.warn('[BG-Safety] BLOCKED write of empty/wiped state to pixelFocusState.');
     return;
   }
-  chrome.storage.local.set({ pixelFocusState: stateObj });
+  chrome.storage.local.get('_pageSaveAt', function(r) {
+    var pageSaveAt = r._pageSaveAt || 0;
+    if (Date.now() - pageSaveAt < 5000) {
+      console.log('[BG-Safety] Skipped write — page saved ' + (Date.now() - pageSaveAt) + 'ms ago.');
+      return;
+    }
+    chrome.storage.local.set({ pixelFocusState: stateObj });
+  });
 }
 
 // Restore on startup (service worker wake)
@@ -1142,7 +1152,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
       if (diff >= 0 && diff <= 5) {
         console.log('[Bedtime] Reminder triggered at ' + now.toLocaleTimeString());
         state.bedtimeLastReminderDate = today;
-        chrome.storage.local.set({ pixelFocusState: state });
+        _safeSaveState(state); // v3.23.368: was direct write, now uses _pageSaveAt guard
         chrome.windows.create({
           url: chrome.runtime.getURL('bedtime-reminder.html'),
           type: 'popup', width: 420, height: 600, focused: true,

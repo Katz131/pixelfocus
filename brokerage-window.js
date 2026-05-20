@@ -135,12 +135,14 @@
   // market engine state, bureau bonus, factory upgrades, or anything
   // else the popup wrote while we were open.
   function save(cb) {
+    _lastBrokerageSaveAt = Date.now();
     chrome.storage.local.get('pixelFocusState', function(r) {
       var latest = r.pixelFocusState || {};
       // Brokerage owns: coins and brokerage sub-object
       latest.coins = state.coins;
       latest.brokerage = state.brokerage;
       chrome.storage.local.set({ pixelFocusState: latest }, function() {
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
         // Sync our local state with whatever the popup changed
         state = latest;
         if (cb) cb();
@@ -150,10 +152,21 @@
 
   // Keep wallet display fresh when the popup modifies coins
   // (e.g. user earns coins from a focus session while brokerage is open)
+  var _lastBrokerageSaveAt = 0;
   chrome.storage.onChanged.addListener(function(changes, area) {
     if (area !== 'local' || !changes.pixelFocusState) return;
     var newState = changes.pixelFocusState.newValue || {};
-    // Only update coins from external changes; don't overwrite our brokerage data
+    // v3.23.367: Ignore stale writes from background.js that would clobber
+    // brokerage data (bond sales, stock trades, etc.)
+    if (Date.now() - _lastBrokerageSaveAt < 5000) {
+      // Only accept coins if they INCREASED (popup earned money)
+      if (typeof newState.coins === 'number' && newState.coins > state.coins) {
+        state.coins = newState.coins;
+      }
+      renderWalletBar();
+      return;
+    }
+    // Accept coins from external changes but NEVER overwrite local brokerage object
     if (typeof newState.coins === 'number') {
       state.coins = newState.coins;
     }

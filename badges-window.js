@@ -479,6 +479,7 @@
     if (changed) {
       state.badges = earned;
       chrome.storage.local.set({ pixelFocusState: state });
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
     }
 
     return earned;

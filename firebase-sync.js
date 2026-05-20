@@ -333,6 +333,7 @@
     if (needsSave) {
       try {
         chrome.storage.local.set({ pixelFocusState: state, pixelFocusProfileId: profileId });
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
       } catch (_) {}
     } else {
       try {

@@ -902,6 +902,7 @@ try {
     dyeReserve: 10000,
     waterReserve: 10000,
     silicaReserve: 10000,
+    resourceLedgerLevel: 0,   // purchased to reveal Resource Ledger panel
     // Supply Chain tree levels — Substitutes that bypass depleted pools.
     syntheticFramesLevel: 0,   // bypasses frames drain + penalty
     reclaimedGearsLevel: 0,    // bypasses gears drain + penalty
@@ -1276,7 +1277,16 @@ try {
         state.dailySessionLog = { date: _saveToday, sessions: [] };
       }
     } catch (_) {}
-    chrome.storage.local.set({ pixelFocusState: state });
+    // v3.23.368: Race-condition fix — stamp _pageSaveAt so background.js
+    // knows a page just saved and skips its next write (prevents clobbering).
+    var _saveNow = Date.now();
+    chrome.storage.local.set({ pixelFocusState: state, _pageSaveAt: _saveNow }, function() {
+      if (chrome.runtime.lastError) {
+        console.warn('[Save] storage write failed:', chrome.runtime.lastError.message);
+      }
+    });
+    if (!window._lastPopupSaveAt) window._lastPopupSaveAt = 0;
+    window._lastPopupSaveAt = _saveNow;
     // v3.23.34: Rolling auto-backup — keeps backup_safe fresh so recovery
     // always has recent data. Throttled to once per 5 minutes.
     try {
@@ -1296,6 +1306,69 @@ try {
   try {
     chrome.storage.onChanged.addListener(function(changes) {
       if (changes.pixelFocusState && changes.pixelFocusState.newValue) {
+        // v3.23.369: Smart merge — always accept incoming state, then reconcile.
+        // Never reject + re-save (that caused factory purchases to revert).
+        // Instead: adopt the incoming state wholesale, then overlay any local
+        // data that's definitively fresher (e.g. timer state if running).
+        var _incoming = changes.pixelFocusState.newValue;
+        // Accept the incoming state for ALL fields — this is the source of truth
+        // from whichever page just saved (factory, brokerage, gallery, etc.)
+        var _prevCoins = state.coins;
+        var _prevTimerState = state.timerState;
+        var _prevTimerEndsAt = state.timerEndsAt;
+        var _prevTimerRemaining = state.timerRemaining;
+        var _prevSessionDurationSec = state.sessionDurationSec;
+        var _prevDoubleDown = state.doubleDownActive;
+        var _prevPopOutTimerOpen = state.popOutTimerOpen;
+        // Preserve combo/session data — only popup manages these during active sessions
+        var _prevCombo = state.combo;
+        var _prevComboSessions = state.comboSessions;
+        var _prevMaxCombo = state.maxCombo;
+        var _prevMaxComboToday = state.maxComboToday;
+        var _prevLastBlockTime = state.lastBlockTime;
+        var _prevTodayBlocks = state.todayBlocks;
+        var _prevTodayXP = state.todayXP;
+        var _prevXP = state.xp;
+        var _prevSessionBlocks = state.sessionBlocks;
+        var _prevLifetimeFocusMinutes = state.lifetimeFocusMinutes;
+        var _prevLifetimeSessions = state.lifetimeSessions;
+        var _prevDailySessionLog = state.dailySessionLog;
+        var _prevSessionDistractions = state.sessionDistractions;
+        var _prevQuestChosen = state.questChosen;
+        var _prevQuestCompleted = state.questCompleted;
+        Object.keys(_incoming).forEach(function(k) {
+          state[k] = _incoming[k];
+        });
+        // Restore timer state if WE are the page running the timer
+        if (_prevTimerState === 'running' || _prevTimerState === 'countdown') {
+          state.timerState = _prevTimerState;
+          state.timerEndsAt = _prevTimerEndsAt;
+          state.timerRemaining = _prevTimerRemaining;
+          state.sessionDurationSec = _prevSessionDurationSec;
+          if (_prevDoubleDown) state.doubleDownActive = _prevDoubleDown;
+          if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
+          state.sessionBlocks = _prevSessionBlocks;
+          state.sessionDistractions = _prevSessionDistractions;
+        }
+        // Always preserve higher combo/session values — these only go up during a day
+        if ((_prevCombo || 0) > (state.combo || 0)) state.combo = _prevCombo;
+        if ((_prevComboSessions || 0) > (state.comboSessions || 0)) state.comboSessions = _prevComboSessions;
+        if ((_prevMaxCombo || 0) > (state.maxCombo || 0)) state.maxCombo = _prevMaxCombo;
+        if ((_prevMaxComboToday || 0) > (state.maxComboToday || 0)) state.maxComboToday = _prevMaxComboToday;
+        if ((_prevLastBlockTime || 0) > (state.lastBlockTime || 0)) state.lastBlockTime = _prevLastBlockTime;
+        if ((_prevTodayBlocks || 0) > (state.todayBlocks || 0)) state.todayBlocks = _prevTodayBlocks;
+        if ((_prevTodayXP || 0) > (state.todayXP || 0)) state.todayXP = _prevTodayXP;
+        if ((_prevXP || 0) > (state.xp || 0)) state.xp = _prevXP;
+        if ((_prevLifetimeFocusMinutes || 0) > (state.lifetimeFocusMinutes || 0)) state.lifetimeFocusMinutes = _prevLifetimeFocusMinutes;
+        if ((_prevLifetimeSessions || 0) > (state.lifetimeSessions || 0)) state.lifetimeSessions = _prevLifetimeSessions;
+        // Preserve dailySessionLog if ours has more sessions
+        if (_prevDailySessionLog && _prevDailySessionLog.sessions && (!state.dailySessionLog || !state.dailySessionLog.sessions || _prevDailySessionLog.sessions.length > state.dailySessionLog.sessions.length)) {
+          state.dailySessionLog = _prevDailySessionLog;
+        }
+        // Preserve quest progress — only goes forward
+        if (_prevQuestChosen && !state.questChosen) state.questChosen = _prevQuestChosen;
+        if (_prevQuestCompleted && !state.questCompleted) state.questCompleted = _prevQuestCompleted;
+        console.log('[StorageSync] Accepted incoming state (dollars: $' + _prevCoins + ' -> $' + state.coins + ')');
         var _newFH = changes.pixelFocusState.newValue.focusHistory;
         if (_newFH && typeof _newFH === 'object') {
           if (!state.focusHistory) state.focusHistory = {};
@@ -1328,6 +1401,26 @@ try {
             _drMerged = true;
           }
           if (_drMerged) console.log('[StorageSync] Merged dailyReminders from another page.');
+        }
+
+        // v3.23.368: Merge grace period, combo, and brokerage from other pages
+        var _inc = changes.pixelFocusState.newValue;
+        // Grace period — always take the later expiry
+        if (_inc.gameLockGraceUntil && (!state.gameLockGraceUntil || _inc.gameLockGraceUntil > state.gameLockGraceUntil)) {
+          state.gameLockGraceUntil = _inc.gameLockGraceUntil;
+          console.log('[StorageSync] Updated grace period from another page.');
+        }
+        // Combo — take higher value
+        if (typeof _inc.combo === 'number' && _inc.combo > (state.combo || 0)) {
+          state.combo = _inc.combo;
+        }
+        if (typeof _inc.comboSessions === 'number' && _inc.comboSessions > (state.comboSessions || 0)) {
+          state.comboSessions = _inc.comboSessions;
+        }
+        // Coins — take higher value (earnings should never decrease from valid saves)
+        if (typeof _inc.coins === 'number' && _inc.coins > (state.coins || 0)) {
+          state.coins = _inc.coins;
+          console.log('[StorageSync] Updated dollars from another page: $' + _inc.coins);
         }
       }
     });
@@ -1380,6 +1473,30 @@ try {
         if (!state._fixDoubleTextile145) {
           state._fixDoubleTextile145 = true;
           state.questDoubleTextile = false;
+        }
+
+        // v3.23.368: One-time grace period grant (user earned it)
+        if (!state._fixGrace368) {
+          state._fixGrace368 = true;
+          state.gameLockGraceUntil = Date.now() + (5 * 60 * 1000);
+          console.log('[v3.23.368] One-time grace period granted (5 min).');
+        }
+
+        // v3.23.369b: Another grace period (testing storage fix)
+        if (!state._fixGrace369b) {
+          state._fixGrace369b = true;
+          state.gameLockGraceUntil = Date.now() + (5 * 60 * 1000);
+          console.log('[v3.23.369b] Grace period granted (5 min).');
+        }
+
+        // v3.23.372: Reset ledgerRevealed — was triggered by race condition bug.
+        // Ledger is now purchase-only via factory upgrade.
+        if (!state._fixLedgerReset372) {
+          state._fixLedgerReset372 = true;
+          if (state.ledgerRevealed) {
+            state.ledgerRevealed = false;
+            console.log('[v3.23.372] Reset ledgerRevealed — now purchase-only.');
+          }
         }
 
         // v3.23.287: Clear stuck penaltyCountdownActive on load —
@@ -2670,23 +2787,11 @@ try {
   //  - any pool drops below 50% (visible damage)
   //  - MsgLog reports we're in tier 3+ (narrative gate)
   // Once revealed it stays revealed forever.
+  // v3.23.372: Ledger is now purchase-only (factory upgrade).
+  // Removed auto-reveal triggers — no more surprise appearances.
   function checkLedgerReveal() {
-    if (state.ledgerRevealed) return;
-    var shouldReveal = false;
-    for (var i = 0; i < RESOURCE_POOLS.length; i++) {
-      if (getPoolPercent(RESOURCE_POOLS[i].id) < 0.5) { shouldReveal = true; break; }
-    }
-    if (!shouldReveal) {
-      try {
-        if (typeof MsgLog !== 'undefined' && MsgLog && MsgLog.getTier && MsgLog.getTier() >= 3) {
-          shouldReveal = true;
-        }
-      } catch(_) {}
-    }
-    if (shouldReveal) {
-      state.ledgerRevealed = true;
-      fireDepletionLine('ledger', 'reveal');
-    }
+    // No-op. Ledger is revealed only by purchasing the Resource Ledger
+    // upgrade in the factory. state.ledgerRevealed is set by factory.js.
   }
 
   // Exposed so factory.html can read pool status for the ledger widget.
@@ -12031,6 +12136,37 @@ try {
                 } else {
                   _celebComboEl.style.display = 'none';
                 }
+              }
+              // Step 4b: Second Location multiplier (slides up)
+              var _slLvl = state.secondLocationLevel || 0;
+              if (_slLvl >= 1) {
+                _chainDelay += 300;
+                var _slDelay = _chainDelay;
+                var _slInfoEl = document.getElementById('celebSecondLoc');
+                if (!_slInfoEl) {
+                  _slInfoEl = document.createElement('div');
+                  _slInfoEl.id = 'celebSecondLoc';
+                  _slInfoEl.style.cssText = 'margin-top:10px;font-size:10px;font-family:"Press Start 2P",monospace;opacity:0;transition:opacity 0.4s,transform 0.4s ease-out;text-align:center;transform:translateY(8px);';
+                  var _slRef = document.getElementById('celebCombo') || $('celebMarketInfo');
+                  if (_slRef) _slRef.parentNode.insertBefore(_slInfoEl, _slRef.nextSibling);
+                  else if (celebCoinsEl) celebCoinsEl.parentNode.appendChild(_slInfoEl);
+                }
+                if (_slInfoEl) {
+                  var _slMult = getSecondLocationMult();
+                  var _slColor = _slMult >= 3.0 ? '#00ff88' : _slMult >= 1.5 ? '#ffd700' : '#4ecdc4';
+                  var _slHtml = '<div style="color:' + _slColor + ';padding:6px 10px;background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.2);border-radius:8px;cursor:help;" title="Second Location (L' + _slLvl + ') multiplies ALL textile and money output. Current multiplier: ' + _slMult.toFixed(1) + 'x. Upgrade at the Factory to increase.">';
+                  _slHtml += '<span style="font-size:12px;">&#x1F3ED;</span> SECOND LOCATION';
+                  _slHtml += '<div style="font-size:11px;color:' + _slColor + ';margin-top:4px;">' + _slMult.toFixed(1) + 'x all earnings</div>';
+                  _slHtml += '<div style="font-size:8px;color:#888;margin-top:2px;">Level ' + _slLvl + ' — textiles + dollars</div>';
+                  _slHtml += '</div>';
+                  _slInfoEl.innerHTML = _slHtml;
+                  _slInfoEl.style.transform = 'translateY(8px)';
+                  _slInfoEl.style.opacity = '0';
+                  setTimeout(function() { _slInfoEl.style.opacity = '1'; _slInfoEl.style.transform = 'translateY(0)'; _celebNote(440, 0.12, 0, 0.06); }, _slDelay);
+                }
+              } else {
+                var _oldSlInfo = document.getElementById('celebSecondLoc');
+                if (_oldSlInfo) _oldSlInfo.remove();
               }
               // Step 5: Distraction breakdown (slides up)
               _chainDelay += 300;

@@ -551,6 +551,7 @@
     if (!currentState.profileCreated) currentState.profileCreated = Date.now();
     try {
       chrome.storage.local.set({ pixelFocusState: currentState });
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
     } catch (_) {}
   }
 

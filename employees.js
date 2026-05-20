@@ -399,6 +399,7 @@
     // Save state
     try {
       chrome.storage.local.set({ pixelFocusState: state });
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
     } catch (_) {}
 
     // Show result
@@ -429,6 +430,7 @@
           // Persist the newly-hired employees.
           try {
             chrome.storage.local.set({ pixelFocusState: state });
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
           } catch (_) {}
         }
       }

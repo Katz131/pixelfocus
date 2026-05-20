@@ -84,6 +84,7 @@
         window.saveState();
       } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         chrome.storage.local.set({ pixelFocusState: s });
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
       }
     }
   }

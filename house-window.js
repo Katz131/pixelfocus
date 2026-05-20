@@ -2140,6 +2140,7 @@
       var patch = {};
       patch[STATE_KEY] = state;
       chrome.storage.local.set(patch);
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
     } catch (e) {}
   }
 
@@ -2506,6 +2507,7 @@
         var patch = {};
         patch[STATE_KEY] = state;
         chrome.storage.local.set(patch);
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
       } catch (e) {}
 
       // Close overlay and re-render
@@ -2863,6 +2865,7 @@
         var patch = {};
         patch[STATE_KEY] = state;
         chrome.storage.local.set(patch, function() {
+          chrome.storage.local.set({ _pageSaveAt: Date.now() });
           // Re-render after save
           render();
         });

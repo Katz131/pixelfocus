@@ -190,6 +190,7 @@
           if (consecutiveNos >= 3) {
             state.surveillanceConsecutiveNos = 0;
             chrome.storage.local.set({ pixelFocusState: state }, function() {
+              chrome.storage.local.set({ _pageSaveAt: Date.now() });
               updateScore();
               var questionEl = document.querySelector('.nag-question');
               if (questionEl) {
@@ -206,6 +207,7 @@
             });
           } else {
             chrome.storage.local.set({ pixelFocusState: state }, function() {
+              chrome.storage.local.set({ _pageSaveAt: Date.now() });
               updateScore();
               var shameMessages = consecutiveNos === 2
                 ? ['Last warning. One more and the promise timer starts.', 'Strike 2. Next NO triggers the countdown.', 'Almost there. One more NO = $300 on the line.']
@@ -321,9 +323,11 @@
             if (state.surveillanceConsecutiveNos >= 3) {
               state.surveillanceConsecutiveNos = 0;
               chrome.storage.local.set({ pixelFocusState: state });
+              chrome.storage.local.set({ _pageSaveAt: Date.now() });
               openPenaltyTimerWindow();
             } else {
               chrome.storage.local.set({ pixelFocusState: state });
+              chrome.storage.local.set({ _pageSaveAt: Date.now() });
             }
           });
         } catch(_) {}

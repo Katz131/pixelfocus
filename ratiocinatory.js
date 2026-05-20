@@ -124,7 +124,10 @@
 
   function save(cb) {
     try {
-      chrome.storage.local.set({ pixelFocusState: state }, function() { if (cb) cb(); });
+      chrome.storage.local.set({ pixelFocusState: state }, function() {
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
+        if (cb) cb();
+      });
     } catch (e) {
       if (cb) cb();
     }

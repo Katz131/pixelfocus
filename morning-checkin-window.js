@@ -69,6 +69,7 @@
 
   function save() {
     chrome.storage.local.set({ pixelFocusState: state });
+    chrome.storage.local.set({ _pageSaveAt: Date.now() });
   }
 
   function formatTime(h, m, use24) {

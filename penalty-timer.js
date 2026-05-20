@@ -106,6 +106,7 @@
       try { chrome.storage.local.get('pixelFocusState', function(r) {
         var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
         chrome.storage.local.set({ pixelFocusState: s });
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
       }); } catch(_) {}
     }
 
@@ -137,6 +138,7 @@
       try { chrome.storage.local.get('pixelFocusState', function(r) {
         var s = r.pixelFocusState || {}; s.penaltyCountdownActive = false;
         chrome.storage.local.set({ pixelFocusState: s });
+        chrome.storage.local.set({ _pageSaveAt: Date.now() });
       }); } catch(_) {}
     }
 

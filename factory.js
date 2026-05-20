@@ -389,14 +389,24 @@
     },
 
     // ================================================================
-    // SUPPLY CHAIN — Substitute upgrades for the depletion system.
-    // Each one bypasses the drain on one of the five resource pools
-    // AND floors the effective percentage used by the penalty curve,
-    // so buying a substitute progressively lifts the penalty even
-    // when the physical reserve is mostly gone. L5 fully solves the
-    // pool. The scars are permanent — the reserve number stays low —
-    // but the company adapts around it.
+    // SUPPLY CHAIN — Resource Ledger + Substitute upgrades.
+    // The ledger must be purchased first to see resource pool status.
+    // Then substitutes bypass drains on the five pools.
     // ================================================================
+    {
+      id: 'resourceLedgerLevel',
+      title: 'Resource Ledger',
+      tree: 'Supply',
+      desc: 'Commission a comprehensive audit of your raw material reserves. Reveals the Resource Ledger on the factory floor — a live dashboard showing depletion rates, penalty status, and reserve levels for all five resource pools. Recommended to keep track of your assets!',
+      effects: [
+        'Reveals the Resource Ledger panel'
+      ],
+      costs: [2500],
+      max: 1,
+      onBuy: function(state, level) {
+        state.ledgerRevealed = true;
+      }
+    },
     {
       id: 'syntheticFramesLevel',
       title: 'Synthetic Frames',
@@ -1534,6 +1544,12 @@
           || (s.aiLoomLevel || 0) >= 2;
     },
 
+    // --- Supply Chain: Resource Ledger (entry point to Supply tree)
+    resourceLedgerLevel: function(s) {
+      return (s.qualityControlLevel || 0) >= 1
+          || (s.lifetimeCoins || 0) >= 5000;
+    },
+
     // --- Supply Chain: gated by the physical reserve dropping below
     //     85% of its starting value — that's slightly before the first
     //     penalty threshold at 75%, so the substitute appears as a
@@ -1964,7 +1980,10 @@
   }
 
   function save(cb) {
-    chrome.storage.local.set({ pixelFocusState: state }, cb || function() {});
+    chrome.storage.local.set({ pixelFocusState: state }, function() {
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
+      if (cb) cb();
+    });
   }
 
   // Compact money formatter. Needs to reach into trillions and quadrillions
@@ -2465,6 +2484,10 @@
     }
     state.coins -= cost;
     state[u.id] = level + 1;
+    // Fire onBuy callback if the upgrade definition provides one.
+    if (typeof u.onBuy === 'function') {
+      try { u.onBuy(state, level + 1); } catch (_) {}
+    }
     // Purchasing a fresh upgrade also acknowledges the reveal.
     if (state.freshUpgrades && state.freshUpgrades[u.id]) delete state.freshUpgrades[u.id];
     SFX.purchase();
@@ -2928,4 +2951,3 @@
   });
 
 })();
-

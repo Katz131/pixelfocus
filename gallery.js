@@ -394,6 +394,7 @@
 
   function save() {
     chrome.storage.local.set({ pixelFocusState: state }, function() {
+      chrome.storage.local.set({ _pageSaveAt: Date.now() });
       updateDebug(state);
     });
   }
@@ -1726,11 +1727,16 @@
     // and its stale copy has an empty pixelCanvas, which would
     // clobber whatever the user is actively drawing.
     var localCanvas = state.pixelCanvas;
+    var localBlocks = state.blocks;
     var localHasPixels = localCanvas && Object.keys(localCanvas).length > 0;
     var incomingHasPixels = newState.pixelCanvas && Object.keys(newState.pixelCanvas).length > 0;
     state = newState;
+    // v3.23.366: Preserve BOTH pixelCanvas AND blocks when local canvas has work.
+    // Background.js race condition can restore stale (higher) blocks value while
+    // we keep local canvas — causing double-counted textiles.
     if (localHasPixels && !incomingHasPixels) {
       state.pixelCanvas = localCanvas;
+      state.blocks = localBlocks;
     }
     if (!state.pixelCanvas) state.pixelCanvas = {};
     if (!state.unlockedColors || state.unlockedColors.length === 0) state.unlockedColors = ['#00ff88'];
