@@ -12957,6 +12957,33 @@ try {
     try { _publishChallengeToFirestore(); } catch(_){}
   }
 
+
+  // v3.23.377: Poll opponent's Firestore social data for progress updates.
+  // Previously the ONLY way to get opponent progress was via inbox messages,
+  // but those only arrive if the opponent's popup tab is open. This reads
+  // their published social data directly — works even if they close the tab.
+  function _pollOpponentProgress() {
+    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    if (!state.profileId || !window.ProfileSync || !window.ProfileSync.getSocialData) return;
+    var ch = state.friendChallenge;
+    if (!ch.opponentId) return;
+    window.ProfileSync.getSocialData(ch.opponentId).then(function(social) {
+      if (!social || !social.activeChallenge) return;
+      var ac = social.activeChallenge;
+      // Only accept if it's the same challenge type targeting us
+      if (ac.opponentId !== state.profileId) return;
+      if (ac.type !== ch.type) return;
+      var newProg = parseInt(ac.myProgress) || 0;
+      var oldProg = ch.opponentProgress || 0;
+      if (newProg !== oldProg) {
+        console.log('[CHALLENGE-POLL] Opponent progress updated via Firestore: ' + oldProg + ' -> ' + newProg);
+        ch.opponentProgress = newProg;
+        save();
+        try { renderChallengeUI(); } catch(_){}
+      }
+    }).catch(function(){});
+  }
+
   function _checkChallengeExpiry() {
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
     var ch = state.friendChallenge;
@@ -16590,6 +16617,7 @@ try {
           setInterval(function() {
             try { _checkChallengeExpiry(); } catch(_){}
             try { _syncChallengeProgress(); } catch(_){}
+            try { _pollOpponentProgress(); } catch(_){} // v3.23.377: poll opponent Firestore data
           }, 60000);
         }
         try {
