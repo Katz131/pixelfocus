@@ -1306,6 +1306,13 @@ try {
   try {
     chrome.storage.onChanged.addListener(function(changes) {
       if (changes.pixelFocusState && changes.pixelFocusState.newValue) {
+        // v3.23.375: Skip ALL state merging while reward chain is active.
+        // The reward chain modifies 40+ fields; the preservation list only
+        // covers ~18. Any external save during the chain would wipe the rest.
+        if (_rewardChainActive) {
+          console.log('[StorageSync] BLOCKED — reward chain active, skipping merge to prevent state clobber');
+          return;
+        }
         // v3.23.369: Smart merge — always accept incoming state, then reconcile.
         // Never reject + re-save (that caused factory purchases to revert).
         // Instead: adopt the incoming state wholesale, then overlay any local
@@ -1336,6 +1343,8 @@ try {
         var _prevSessionDistractions = state.sessionDistractions;
         var _prevQuestChosen = state.questChosen;
         var _prevQuestCompleted = state.questCompleted;
+        // v3.23.374: Preserve challenge tracking — prevent onChanged from reverting mid-chain
+        var _prevFriendChallenge = state.friendChallenge ? JSON.parse(JSON.stringify(state.friendChallenge)) : null;
         Object.keys(_incoming).forEach(function(k) {
           state[k] = _incoming[k];
         });
@@ -1368,6 +1377,19 @@ try {
         // Preserve quest progress — only goes forward
         if (_prevQuestChosen && !state.questChosen) state.questChosen = _prevQuestChosen;
         if (_prevQuestCompleted && !state.questCompleted) state.questCompleted = _prevQuestCompleted;
+        // v3.23.374: Preserve challenge tracking — keep whichever has more progress
+        if (_prevFriendChallenge && _prevFriendChallenge.status === "active" && _prevFriendChallenge.tracking) {
+          var _incCh = state.friendChallenge;
+          if (!_incCh || !_incCh.tracking) {
+            state.friendChallenge = _prevFriendChallenge;
+          } else {
+            // Keep the one with higher tracking value for the active challenge type
+            var _chType = _prevFriendChallenge.type;
+            var _prevProg = (_prevFriendChallenge.tracking[_chType] || 0);
+            var _incProg = (_incCh.tracking && _incCh.tracking[_chType]) || 0;
+            if (_prevProg > _incProg) state.friendChallenge = _prevFriendChallenge;
+          }
+        }
         console.log('[StorageSync] Accepted incoming state (dollars: $' + _prevCoins + ' -> $' + state.coins + ')');
         var _newFH = changes.pixelFocusState.newValue.focusHistory;
         if (_newFH && typeof _newFH === 'object') {
@@ -4669,7 +4691,14 @@ try {
   // with "Yes"), the player gets a 5-minute grace window where the timer
   // lockout is suspended so they can visit the gallery/factory/profile as
   // a reward break. The grace period bypasses ALL lockout, including priorities.
-  var _gameLockGraceUntil = 0;  // ms epoch; 0 = no active grace (restored from state in load callback)
+  var _gameLockGraceUntil = 0;
+  // v3.23.375: Guard flag — blocks onChanged handler while the reward chain is
+  // actively mutating state. Without this, ANY external storage write (from
+  // background.js alarms, other tabs, etc.) during the ~100ms reward chain window
+  // triggers onChanged which bulk-replaces ALL state fields with stale data,
+  // wiping textiles, dollars, quest progress, bond ticks, and 30+ other fields.
+  // Only ~18 fields had preservation logic — everything else was silently lost.
+  var _rewardChainActive = false;
 
   function isGameLocked() {
     if (Date.now() < _gameLockGraceUntil) return false;
@@ -8580,6 +8609,7 @@ try {
 
   // ============== EARN BLOCK ==============
   function earnBlock() {
+    console.log('[REWARD-CHAIN] earnBlock() — combo:', state.combo, 'blocks:', state.todayBlocks, 'dailySessions:', state.dailySessionLog && state.dailySessionLog.sessions ? state.dailySessionLog.sessions.length : 0);
     // Increment combo
     state.combo++;
     if (state.combo > state.maxCombo) state.maxCombo = state.combo;
@@ -8762,7 +8792,9 @@ try {
       message: `+${xpGain} XP (${state.combo}x combo) | Total textiles today: ${state.todayBlocks}`
     });
 
-    save();
+    // v3.23.374: REMOVED save() — was causing save storm (3-9 intermediate writes per session).
+    // The caller (awardSessionReward) now saves once after the full reward chain completes.
+    // This eliminates onChanged flickering that reverted challenge/quest state.
   }
 
   // ============== FOCUS CONFIRMATION ==============
@@ -8923,6 +8955,9 @@ try {
           state._lastDoubleDownExtMin = Math.round((state.doubleDownExtensionSec || 0) / 60);
           notify('DOUBLE DOWN WON! +$' + _ddBonus + ' extension bonus!', '#ffd700');
         } catch(_ddErr) { console.error('[DoubleDown] bonus error:', _ddErr); }
+        // v3.23.376: Restore original session duration before clearing DD state
+        state.sessionDurationSec = state.doubleDownOriginalSec || state.sessionDurationSec;
+        state.timerRemaining = state.sessionDurationSec;
         resetDoubleDown();
       } else {
         state._lastDoubleDownBonus = 0;
@@ -8978,6 +9013,9 @@ try {
             notify('Double down failed! No bonus earned.', '#ff4466');
           }
         } catch(_) {}
+        // v3.23.376: Restore original session duration before clearing DD state
+        state.sessionDurationSec = state.doubleDownOriginalSec || state.sessionDurationSec;
+        state.timerRemaining = state.sessionDurationSec;
         resetDoubleDown();
       }
       // v3.23.337: Hold "FAILED ✗" in PiP for 5 seconds
@@ -8996,6 +9034,9 @@ try {
 
   // Award N earnBlock() calls (chains combos naturally) plus any commitment bonus.
   function awardSessionReward(reward, _celebSnapshotCoins) {
+    _rewardChainActive = true;
+    try {
+    console.log('[REWARD-CHAIN] awardSessionReward() ENTRY — reward:', JSON.stringify(reward), 'combo:', state.combo, 'quest:', state.questChosen, 'challenge:', state.friendChallenge ? state.friendChallenge.type : 'none');
     // v3.23.335: _celebSnapshotCoins passed from caller — coins BEFORE session rewards
     if (typeof _celebSnapshotCoins !== 'number') _celebSnapshotCoins = state.coins || 0;
     // Track lifetime focus minutes for the profile page. Uses the session
@@ -9123,6 +9164,15 @@ try {
         }
       }
     } catch (_) {}
+    // v3.23.374: Single consolidated save after the ENTIRE reward chain.
+    // Previously earnBlock() called save() per block (3-9x per session),
+    // triggering onChanged storms that reverted challenge/quest state.
+    save();
+    console.log("[REWARD-CHAIN] awardSessionReward complete — single save issued.");
+    } finally {
+      _rewardChainActive = false;
+      console.log("[REWARD-CHAIN] Guard released.");
+    }
   }
 
   // ============== RECURRING TASKS (v3.20.21) ==============
@@ -12744,6 +12794,7 @@ try {
   }
 
   function _updateChallengeOnSessionComplete(sessionMinutes) {
+    console.log('[REWARD-CHAIN] _updateChallengeOnSessionComplete() — challenge:', state.friendChallenge ? JSON.stringify({type: state.friendChallenge.type, progress: state.friendChallenge.tracking}) : 'none');
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
     var ch = state.friendChallenge;
     if (!ch.tracking) ch.tracking = {};
@@ -12754,14 +12805,15 @@ try {
     } else if (type === 'session_count') {
       ch.tracking[type] = (ch.tracking[type] || 0) + 1;
     } else if (type === 'best_combo') {
-      var currentCombo = state.comboMultiplier || 1;
+      var currentCombo = state.combo || 1; // v3.23.374: was comboMultiplier (nonexistent)
       ch.tracking[type] = Math.max(ch.tracking[type] || 0, currentCombo);
     } else if (type === 'focus_marathon') {
       ch.tracking[type] = Math.max(ch.tracking[type] || 0, sessionMinutes || 0);
     } else if (type === 'total_xp') {
-      // XP tracking done via separate increment
+      // v3.23.374: Track total XP (was empty — never incremented)
+      ch.tracking[type] = state.xp || 0;
     } else if (type === 'textiles_woven') {
-      ch.tracking[type] = state.textilesWoven || 0;
+      ch.tracking[type] = state.totalLifetimeBlocks || 0; // v3.23.374: was textilesWoven (nonexistent)
     }
     _syncChallengeProgress();
     save();
@@ -13835,6 +13887,7 @@ try {
   }
 
   function checkQuestCompletion() {
+    console.log('[REWARD-CHAIN] checkQuestCompletion() — chosen:', state.questChosen, 'completed:', state.questCompleted);
     if (!state.questChosen || state.questCompleted) return;
     var quest = state.questChosen === 'steady' ? state.questSteady : state.questAmbitious;
     if (!quest) return;

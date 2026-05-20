@@ -186,10 +186,18 @@ function _syncPenaltyTracking() {
 // v3.23.366: Before writing full state, check if any page (popup, gallery,
 // brokerage, etc.) saved recently. If so, skip the write — BG's copy is stale
 // and would clobber the page's fresher data. BG will catch up next alarm cycle.
-function _safeSaveState(stateObj) {
+function _safeSaveState(stateObj, force) {
   if (!stateObj || typeof stateObj !== 'object') return;
   if (!stateObj.profileId && !stateObj.xp && (!stateObj.tasks || Object.keys(stateObj.tasks).length <= 1)) {
     console.warn('[BG-Safety] BLOCKED write of empty/wiped state to pixelFocusState.');
+    return;
+  }
+  // v3.23.377: force=true bypasses cooldown for critical writes (penalties).
+  // Without this, penalty deductions were silently dropped whenever the popup
+  // happened to save() within 5 seconds before the penalty alarm fired.
+  if (force) {
+    chrome.storage.local.set({ pixelFocusState: stateObj });
+    console.log('[BG-Safety] FORCED write (penalty/critical).');
     return;
   }
   chrome.storage.local.get('_pageSaveAt', function(r) {
@@ -429,7 +437,7 @@ function applyPromisePenalty() {
     state.coins = Math.max(0, prevCoins - PROMISE_PENALTY);
     state.penaltyCountdownActive = false;
     state.promiseDeadlineAt = 0;
-    _safeSaveState(state);
+    _safeSaveState(state, true); // v3.23.377: force — penalty must always write
     console.log('[PromiseTimer] PENALTY APPLIED: $' + PROMISE_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
     // v3.23.155: Log penalty to house feed
@@ -441,7 +449,7 @@ function applyPromisePenalty() {
       ts: Date.now()
     });
     if (state.houseFeedLog.length > 30) state.houseFeedLog = state.houseFeedLog.slice(-30);
-    _safeSaveState(state);
+    _safeSaveState(state, true); // v3.23.377: force — penalty must always write
 
     try {
       chrome.notifications.create('promise-penalty-' + Date.now(), {
@@ -514,7 +522,7 @@ function applyPenaltyTimerPenalty() {
     state.coins = Math.max(0, prevCoins - PENALTY_TIMER_PENALTY);
     state.penaltyCountdownActive = false;
     state.promiseDeadlineAt = 0;
-    _safeSaveState(state);
+    _safeSaveState(state, true); // v3.23.377: force — penalty must always write
     console.log('[PenaltyTimer] PENALTY APPLIED: $' + PENALTY_TIMER_PENALTY + ' deducted. Coins: ' + prevCoins + ' → ' + state.coins);
 
     try {
