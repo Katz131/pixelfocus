@@ -290,7 +290,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 .task-item.drop-before { border-top:2px solid var(--accent3); box-shadow:0 -2px 6px rgba(78,205,196,0.25); }
 .task-item.drop-after { border-bottom:2px solid var(--accent3); box-shadow:0 2px 6px rgba(78,205,196,0.25); }
 .task-checkbox { width:16px; height:16px; min-width:16px; border:2px solid var(--border); border-radius:3px; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; }
-.task-checkbox:hover { border-color:var(--accent); }
+.task-checkbox:hover { border-color:var(--accent); transform:scale(1.25); }
 .task-checkbox.checked { background:var(--accent); border-color:var(--accent); }
 .task-checkbox.checked::after { content:'\2713'; color:var(--bg); font-size:10px; font-weight:bold; }
 .task-text { flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -671,9 +671,10 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
     <div id="btWizardBody" style="padding:14px 18px;">
       <!-- Steps rendered dynamically by JS -->
     </div>
-    <div id="btWizardFooter" style="padding:10px 18px;border-top:1px solid rgba(255,107,107,0.15);display:flex;justify-content:space-between;align-items:center;">
-      <button id="btUndoBtn" style="display:none;background:none;border:1px solid #5a5a7e;color:#5a5a7e;font-family:'Press Start 2P',monospace;font-size:8px;padding:5px 10px;border-radius:4px;cursor:pointer;">&#8630; UNDO</button>
-      <div id="btStepLabel" style="font-family:'Courier New',monospace;font-size:10px;color:#5a5a7e;"></div>
+    <div id="btWizardFooter" style="padding:10px 18px;border-top:1px solid rgba(255,107,107,0.15);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <button id="btRemoveBtn" style="display:none;background:none;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'Press Start 2P',monospace;font-size:7px;padding:5px 10px;border-radius:4px;cursor:pointer;">REMOVE</button>
+      <div id="btSummary" style="font-family:'Courier New',monospace;font-size:10px;color:#ff6b6b;flex:1;"></div>
+      <button id="btSaveBtn" style="background:linear-gradient(135deg,#ff6b6b,#ff8c8c);color:#fff;border:none;font-family:'Press Start 2P',monospace;font-size:8px;padding:7px 14px;border-radius:4px;cursor:pointer;letter-spacing:0.5px;">SAVE</button>
     </div>
   </div>
 </div>

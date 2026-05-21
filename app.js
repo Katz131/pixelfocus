@@ -4010,28 +4010,12 @@ try {
     });
   })();
 
-  // ===== Blocked-Out Time System (v3.21.30) =====
-  // Wizard steps: 1) pick hour → 2) pick minute offset → 3) prep time →
-  // 4) duration → 5) optional extra minutes on 1h+ durations → done.
-  // Each step has UNDO to go back.
+  // ===== Blocked-Out Time System (v3.21.30, redesigned v3.23.390) =====
+  // All-at-once settings panel (matching Sleep Time modal style).
+  // Shows hour, minutes, prep time, and duration grids simultaneously
+  // with highlighted selections, live summary, and SAVE/REMOVE footer.
 
-  var _btWizard = { step: 0, hour: 0, min: 0, prepMin: 0, durMin: 0, extraMin: 0 };
-
-  function openBlockedTimeWizard() {
-    _btWizard = { step: 0, hour: 0, min: 0, prepMin: 0, durMin: 0, extraMin: 0 };
-    var modal = document.getElementById('blockedTimeModal');
-    if (modal) modal.style.display = 'flex';
-    _renderBTStep();
-  }
-  function closeBlockedTimeWizard() {
-    var modal = document.getElementById('blockedTimeModal');
-    if (modal) modal.style.display = 'none';
-  }
-
-  function _btStepLabel() {
-    var labels = ['Pick hour', 'Pick minutes past', 'Prep + travel time', 'How long is it?', 'Extra minutes?'];
-    return labels[_btWizard.step] || '';
-  }
+  var _btSel = { hour: 12, min: 0, prepMin: 0, durMin: 60, editId: null };
 
   function _fmtHrFull(h) {
     h = h % 24;
@@ -4048,125 +4032,150 @@ try {
     return dh + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
   }
 
-  function _renderBTStep() {
+  function openBlockedTimeWizard(editId) {
+    if (editId) {
+      // Editing existing block — populate from it
+      var blocks = state.blockedTimes || [];
+      for (var i = 0; i < blocks.length; i++) {
+        if (blocks[i].id === editId) {
+          var b = blocks[i];
+          var evStart = new Date(b.eventStartMs);
+          _btSel.hour = evStart.getHours();
+          _btSel.min = evStart.getMinutes();
+          _btSel.prepMin = b.prepMin || 0;
+          _btSel.durMin = b.durationMin || 60;
+          _btSel.editId = editId;
+          break;
+        }
+      }
+    } else {
+      // New block — defaults
+      var nowH = new Date().getHours();
+      _btSel = { hour: (nowH + 1) % 24, min: 0, prepMin: 0, durMin: 60, editId: null };
+    }
+    var modal = document.getElementById('blockedTimeModal');
+    if (modal) modal.style.display = 'flex';
+    _renderBTPanel();
+  }
+  function closeBlockedTimeWizard() {
+    var modal = document.getElementById('blockedTimeModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function _renderBTPanel() {
     var body = document.getElementById('btWizardBody');
-    var footer = document.getElementById('btStepLabel');
-    var undoBtn = document.getElementById('btUndoBtn');
+    var summaryEl = document.getElementById('btSummary');
+    var removeBtn = document.getElementById('btRemoveBtn');
     if (!body) return;
-    if (footer) footer.textContent = 'Step ' + (_btWizard.step + 1) + '/5 — ' + _btStepLabel();
-    if (undoBtn) undoBtn.style.display = _btWizard.step > 0 ? 'inline-block' : 'none';
+
+    var btnStyle = 'background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 5px;border-radius:4px;cursor:pointer;min-width:38px;text-align:center;';
+    var selStyle = 'background:#ff6b6b;border:1px solid #ff6b6b;color:#fff;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 5px;border-radius:4px;cursor:pointer;min-width:38px;text-align:center;';
+    var prepBtnStyle = 'background:#1a1a3a;border:1px solid #ffb64c;color:#ffb64c;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+    var prepSelStyle = 'background:#ffb64c;border:1px solid #ffb64c;color:#fff;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+    var durBtnStyle = 'background:#1a1a3a;border:1px solid #ff8c8c;color:#ff8c8c;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
+    var durSelStyle = 'background:#ff8c8c;border:1px solid #ff8c8c;color:#fff;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;';
 
     var html = '';
-    if (_btWizard.step === 0) {
-      // Step 1: Pick hour
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">What hour does it start?</div>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
-      for (var h = 0; h < 24; h++) {
-        var label = state.use24Hour ? (h < 10 ? '0' : '') + h + ':00' : _fmtHrFull(h).replace(':00 ', '').replace('AM', 'a').replace('PM', 'p');
-        html += '<button class="bt-pick" data-val="' + h + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:7px;padding:6px 5px;border-radius:4px;cursor:pointer;min-width:38px;text-align:center;">' + label + '</button>';
-      }
-      html += '</div>';
-    } else if (_btWizard.step === 1) {
-      // Step 2: Minute offset
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Starting at <span style="color:#ff6b6b;font-weight:bold;">' + _fmtHrFull(_btWizard.hour) + '</span></div>';
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">How many minutes past the hour?</div>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
-      for (var m = 0; m < 60; m += 5) {
-        var lbl = m === 0 ? ':00' : ':' + (m < 10 ? '0' : '') + m;
-        html += '<button class="bt-pick" data-val="' + m + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + lbl + '</button>';
-      }
-      html += '</div>';
-    } else if (_btWizard.step === 2) {
-      // Step 3: Prep + travel time
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Event at <span style="color:#ff6b6b;font-weight:bold;">' + _fmtTime(_btWizard.hour, _btWizard.min) + '</span></div>';
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">How long to prepare + get there? (blocked before start)</div>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
-      var prepOpts = [0, 5, 10, 15, 20, 30, 45, 60, 90];
-      for (var p = 0; p < prepOpts.length; p++) {
-        var v = prepOpts[p];
-        var txt = v === 0 ? 'NONE' : v < 60 ? v + 'min' : (v / 60) + 'h';
-        html += '<button class="bt-pick" data-val="' + v + '" style="background:#1a1a3a;border:1px solid #ffb64c;color:#ffb64c;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + txt + '</button>';
-      }
-      html += '</div>';
-    } else if (_btWizard.step === 3) {
-      // Step 4: Duration
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Event at <span style="color:#ff6b6b;font-weight:bold;">' + _fmtTime(_btWizard.hour, _btWizard.min) + '</span>' + (_btWizard.prepMin > 0 ? ' (prep: ' + _btWizard.prepMin + 'min before)' : '') + '</div>';
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">How long is the event itself?</div>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
-      var durOpts = [
-        { v: 5, l: '5min' }, { v: 10, l: '10min' }, { v: 15, l: '15min' },
-        { v: 20, l: '20min' }, { v: 30, l: '30min' }, { v: 45, l: '45min' },
-        { v: 60, l: '1hr' }, { v: 120, l: '2hr' }
-      ];
-      for (var d = 0; d < durOpts.length; d++) {
-        html += '<button class="bt-pick" data-val="' + durOpts[d].v + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + durOpts[d].l + '</button>';
-      }
-      html += '</div>';
-    } else if (_btWizard.step === 4) {
-      // Step 5: Extra minutes (only for 1h+ durations)
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Duration: <span style="color:#ff6b6b;font-weight:bold;">' + _btWizard.durMin + ' min</span></div>';
-      html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:10px;">Add extra minutes? (e.g. 1hr + 15min)</div>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
-      var extraOpts = [0, 5, 10, 15, 20, 25, 30, 45];
-      for (var x = 0; x < extraOpts.length; x++) {
-        var ex = extraOpts[x];
-        var etxt = ex === 0 ? 'SKIP' : '+' + ex + 'min';
-        html += '<button class="bt-pick" data-val="' + ex + '" style="background:#1a1a3a;border:1px solid #ff6b6b;color:#ff6b6b;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:7px 8px;border-radius:4px;cursor:pointer;min-width:42px;text-align:center;">' + etxt + '</button>';
-      }
-      html += '</div>';
+
+    // Hour picker
+    html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Start hour:</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;">';
+    for (var h = 0; h < 24; h++) {
+      var label = state.use24Hour ? (h < 10 ? '0' : '') + h + ':00' : _fmtHrFull(h).replace(':00 ', '').replace('AM', 'a').replace('PM', 'p');
+      var isSelH = h === _btSel.hour;
+      html += '<button class="bt-hour" data-val="' + h + '" style="' + (isSelH ? selStyle : btnStyle) + '">' + label + '</button>';
     }
+    html += '</div>';
+
+    // Minute picker
+    html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Minutes past:</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">';
+    for (var m = 0; m < 60; m += 5) {
+      var lbl = m === 0 ? ':00' : ':' + (m < 10 ? '0' : '') + m;
+      var isSelM = m === _btSel.min;
+      html += '<button class="bt-min" data-val="' + m + '" style="' + (isSelM ? selStyle : btnStyle) + '">' + lbl + '</button>';
+    }
+    html += '</div>';
+
+    // Duration picker (expanded options — no extra-minutes step needed)
+    html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">How long?</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">';
+    var durOpts = [
+      { v: 5, l: '5min' }, { v: 10, l: '10min' }, { v: 15, l: '15min' },
+      { v: 20, l: '20min' }, { v: 30, l: '30min' }, { v: 45, l: '45min' },
+      { v: 60, l: '1h' }, { v: 75, l: '1h15' }, { v: 90, l: '1.5h' },
+      { v: 120, l: '2h' }, { v: 150, l: '2.5h' }, { v: 180, l: '3h' },
+      { v: 240, l: '4h' }, { v: 360, l: '6h' }
+    ];
+    for (var d = 0; d < durOpts.length; d++) {
+      var isSelD = durOpts[d].v === _btSel.durMin;
+      html += '<button class="bt-dur" data-val="' + durOpts[d].v + '" style="' + (isSelD ? durSelStyle : durBtnStyle) + '">' + durOpts[d].l + '</button>';
+    }
+    html += '</div>';
+
+    // Prep/travel time picker
+    html += '<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#e0e0e0;margin-bottom:6px;">Prep + travel before:</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+    var prepOpts = [0, 5, 10, 15, 20, 30, 45, 60, 90, 120];
+    for (var p = 0; p < prepOpts.length; p++) {
+      var v = prepOpts[p];
+      var txt = v === 0 ? 'NONE' : v < 60 ? v + 'min' : v === 60 ? '1h' : (v >= 120 ? (v / 60) + 'h' : v + 'min');
+      var isSelP = v === _btSel.prepMin;
+      html += '<button class="bt-prep" data-val="' + v + '" style="' + (isSelP ? prepSelStyle : prepBtnStyle) + '">' + txt + '</button>';
+    }
+    html += '</div>';
+
     body.innerHTML = html;
 
-    // Wire pick buttons
-    var picks = body.querySelectorAll('.bt-pick');
-    for (var i = 0; i < picks.length; i++) {
-      picks[i].addEventListener('click', function() {
-        var val = parseInt(this.getAttribute('data-val'), 10);
-        _btAdvance(val);
-      });
+    // Summary in footer
+    if (summaryEl) {
+      var timeStr = _fmtTime(_btSel.hour, _btSel.min);
+      var durH = Math.floor(_btSel.durMin / 60);
+      var durM = _btSel.durMin % 60;
+      var durStr = durH > 0 ? (durM > 0 ? durH + 'h' + durM + 'm' : durH + 'h') : _btSel.durMin + 'min';
+      summaryEl.textContent = timeStr + ' • ' + durStr + (_btSel.prepMin > 0 ? ' • ' + _btSel.prepMin + 'min prep' : '');
     }
-  }
 
-  function _btAdvance(val) {
-    if (_btWizard.step === 0) { _btWizard.hour = val; _btWizard.step = 1; }
-    else if (_btWizard.step === 1) { _btWizard.min = val; _btWizard.step = 2; }
-    else if (_btWizard.step === 2) { _btWizard.prepMin = val; _btWizard.step = 3; }
-    else if (_btWizard.step === 3) {
-      _btWizard.durMin = val;
-      // Only show extra-minutes step for durations >= 60
-      if (val >= 60) { _btWizard.step = 4; }
-      else { _btWizard.extraMin = 0; _finishBlockedTime(); return; }
-    }
-    else if (_btWizard.step === 4) {
-      _btWizard.extraMin = val;
-      _finishBlockedTime();
-      return;
-    }
-    _renderBTStep();
-  }
+    // Show remove button only when editing
+    if (removeBtn) removeBtn.style.display = _btSel.editId ? 'inline-block' : 'none';
 
-  function _btUndo() {
-    if (_btWizard.step <= 0) return;
-    _btWizard.step--;
-    _renderBTStep();
+    // Wire clicks — each click updates selection + re-renders
+    function _btPick(cls, key) {
+      var btns = body.querySelectorAll('.' + cls);
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function() {
+          _btSel[key] = parseInt(this.getAttribute('data-val'), 10);
+          _renderBTPanel();
+        });
+      }
+    }
+    _btPick('bt-hour', 'hour');
+    _btPick('bt-min', 'min');
+    _btPick('bt-dur', 'durMin');
+    _btPick('bt-prep', 'prepMin');
   }
 
   function _finishBlockedTime() {
     var now = new Date();
     var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    var eventStartMs = dayStart + (_btWizard.hour * 3600000) + (_btWizard.min * 60000);
-    var totalDurMin = _btWizard.durMin + _btWizard.extraMin;
+    var eventStartMs = dayStart + (_btSel.hour * 3600000) + (_btSel.min * 60000);
+    var totalDurMin = _btSel.durMin;
     var eventEndMs = eventStartMs + (totalDurMin * 60000);
-    var prepStartMs = eventStartMs - (_btWizard.prepMin * 60000);
+    var prepStartMs = eventStartMs - (_btSel.prepMin * 60000);
+
+    // If editing, remove old block first
+    if (_btSel.editId && state.blockedTimes) {
+      state.blockedTimes = state.blockedTimes.filter(function(b) { return b.id !== _btSel.editId; });
+    }
 
     var block = {
-      id: 'bt_' + Date.now(),
+      id: _btSel.editId || ('bt_' + Date.now()),
       startMs: prepStartMs,
       endMs: eventEndMs,
       eventStartMs: eventStartMs,
-      prepMin: _btWizard.prepMin,
+      prepMin: _btSel.prepMin,
       durationMin: totalDurMin,
-      label: _fmtTime(_btWizard.hour, _btWizard.min) + ' (' + totalDurMin + 'min)',
+      label: _fmtTime(_btSel.hour, _btSel.min) + ' (' + totalDurMin + 'min)',
       createdAt: Date.now()
     };
 
@@ -4175,7 +4184,7 @@ try {
     save();
     closeBlockedTimeWizard();
     renderFocusTimeline();
-    notify('Blocked out ' + block.label + (_btWizard.prepMin > 0 ? ' + ' + _btWizard.prepMin + 'min prep' : ''), '#ff6b6b');
+    notify('Blocked out ' + block.label + (_btSel.prepMin > 0 ? ' + ' + _btSel.prepMin + 'min prep' : ''), '#ff6b6b');
   }
 
   function removeBlockedTime(id) {
@@ -4185,7 +4194,7 @@ try {
     renderFocusTimeline();
   }
 
-  // Wire wizard open/close/undo
+  // Wire panel open/close/save/remove
   (function() {
     var openBtn = document.getElementById('addBlockedTimeBtn');
     if (openBtn) openBtn.addEventListener('click', function() {
@@ -4198,10 +4207,17 @@ try {
     if (modal) modal.addEventListener('click', function(e) {
       if (e.target === modal) closeBlockedTimeWizard();
     });
-    var undoBtn = document.getElementById('btUndoBtn');
-    if (undoBtn) undoBtn.addEventListener('click', function() {
+    var saveBtn = document.getElementById('btSaveBtn');
+    if (saveBtn) saveBtn.addEventListener('click', function() {
       try { SFX.click && SFX.click(); } catch (_) {}
-      _btUndo();
+      _finishBlockedTime();
+    });
+    var removeBtn = document.getElementById('btRemoveBtn');
+    if (removeBtn) removeBtn.addEventListener('click', function() {
+      if (_btSel.editId) {
+        removeBlockedTime(_btSel.editId);
+        closeBlockedTimeWizard();
+      }
     });
   })();
 
@@ -5098,19 +5114,31 @@ try {
   function renderTimer() {
     const dur = state.sessionDurationSec || 600;
 
-    // v3.23.352: Show 00:00 while completed (celebration modal up).
-    // Once modal closes, transition to idle but keep timerRemaining at 0
-    // so user sees 00:00 until they interact with the timer.
+    // v3.23.388: Safety net for stuck 'completed' state. Only fires if
+    // the timer has been in completed state for >10 seconds with no
+    // confirmation modal visible. Previously this fired immediately on
+    // any render() call, which killed the confirmation before the 300ms
+    // delay in showFocusConfirmation() could display the modal.
     if (state.timerState === 'completed') {
       var _confModal = document.getElementById('focusConfirmModal');
       if (!_confModal || _confModal.style.display !== 'flex') {
-        console.log('[Timer] Safety net: timerState was stuck at completed — resetting to idle.');
-        state.timerState = 'idle';
-        state.timerRemaining = 0; // v3.23.352: stay at 0, not full duration
-        state.timerEndsAt = 0;
-        save();
+        if (!window._completedSafetyNetAt) {
+          window._completedSafetyNetAt = Date.now();
+        } else if (Date.now() - window._completedSafetyNetAt > 10000) {
+          console.log('[Timer] Safety net: timerState stuck at completed for 10s — resetting to idle.');
+          state.timerState = 'idle';
+          state.timerRemaining = 0;
+          state.timerEndsAt = 0;
+          window._completedSafetyNetAt = 0;
+          save();
+        }
+      } else {
+        window._completedSafetyNetAt = 0;
       }
+    } else {
+      window._completedSafetyNetAt = 0;
     }
+
 
     // During the pre-start countdown, the display shows the grace-period
     // seconds ticking down ("GET READY 00:15" -> "00:01") instead of the
@@ -7832,6 +7860,7 @@ try {
   let pipWindow = null;
   // v3.23.337: Hold completion/failure state in PiP for 5 seconds after YES/NO
   var _pipResultState = null; // 'success' or 'failure'
+  var _pipShowCelebration = false; // v3.23.389: set when success flash ends
   var _pipResultUntil = 0;   // timestamp when hold expires
 
   function buildPipMarkup() {
@@ -8440,6 +8469,20 @@ try {
     var btnIcon = doc.getElementById('pipBtnIcon');
     if (!clock || !label || !fill) return;
 
+    // v3.23.389: Clean up celebration overlay if timer is no longer idle or celebration not active
+    if (state.timerState !== 'idle' || !_pipShowCelebration) {
+      var _oldCeleb = doc.getElementById('pipCelebOverlay');
+      if (_oldCeleb) {
+        _oldCeleb.remove();
+        var _rc = doc.querySelector('.pip-card');
+        var _rb = doc.querySelector('.pip-bar');
+        if (_rc) _rc.style.display = '';
+        if (_rb) _rb.style.display = '';
+        var _rd = doc.getElementById('distPanel');
+        if (_rd) _rd.style.display = '';
+      }
+    }
+
     // Reset state classes on clock / fill / button each tick.
     clock.classList.remove('countdown', 'paused', 'done');
     fill.classList.remove('countdown', 'done');
@@ -8467,6 +8510,8 @@ try {
       if (btnIcon) btnIcon.innerHTML = PIP_ICON_STOP;
       return;
     } else if (_pipResultState && Date.now() >= _pipResultUntil) {
+      // v3.23.389: When success flash ends, trigger PiP celebration
+      if (_pipResultState === 'success') _pipShowCelebration = true;
       _pipResultState = null;
       _pipResultUntil = 0;
       // Reset label color
@@ -8518,11 +8563,65 @@ try {
         if (btnIcon) btnIcon.innerHTML = PIP_ICON_PAUSE;
         if (btn) btn.title = 'Pause';
       } else {
-        // v3.23.352: If timerRemaining is 0 (just completed), show COMPLETE not READY
-        if (state.timerRemaining === 0) {
+        // v3.23.384: If timerRemaining is 0 (just completed), show celebration + RETURN TO DASHBOARD
+        if (_pipShowCelebration) {
           label.textContent = 'COMPLETE';
           label.style.color = '#00ff88';
           clock.textContent = '00:00';
+          // Build celebration overlay in PiP if not already present
+          var _pipCeleb = doc.getElementById('pipCelebOverlay');
+          if (!_pipCeleb) {
+            _pipCeleb = doc.createElement('div');
+            _pipCeleb.id = 'pipCelebOverlay';
+            _pipCeleb.style.cssText = 'text-align:center;padding:8px 10px 10px;';
+            var _pcTop = doc.createElement('div');
+            _pcTop.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:6px;';
+            var _pcIcon = doc.createElement('span');
+            _pcIcon.style.cssText = 'font-size:18px;';
+            _pcIcon.textContent = '\u2705';
+            _pcTop.appendChild(_pcIcon);
+            var _pcTitle = doc.createElement('span');
+            _pcTitle.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:#ffd700;letter-spacing:1px;';
+            _pcTitle.textContent = 'SESSION COMPLETE';
+            _pcTop.appendChild(_pcTitle);
+            _pipCeleb.appendChild(_pcTop);
+            var _pcBtn = doc.createElement('button');
+            _pcBtn.type = 'button';
+            _pcBtn.textContent = 'RETURN TO DASHBOARD';
+            _pcBtn.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#fff;background:linear-gradient(180deg,#58cc02,#4baa02);border:none;border-bottom:3px solid #3d8a01;border-radius:6px;padding:8px 14px;cursor:pointer;letter-spacing:0.5px;transition:all 0.15s;width:100%;';
+            _pcBtn.addEventListener('mouseenter', function() { this.style.transform='translateY(-2px)'; this.style.filter='brightness(1.1)'; });
+            _pcBtn.addEventListener('mouseleave', function() { this.style.transform=''; this.style.filter=''; });
+            _pcBtn.addEventListener('mousedown', function() { this.style.transform='translateY(1px)'; this.style.borderBottomWidth='1px'; });
+            _pcBtn.addEventListener('mouseup', function() { this.style.transform='translateY(-2px)'; this.style.borderBottomWidth='3px'; });
+            _pcBtn.addEventListener('click', function() {
+              // Close PiP and focus main popup
+              _pipShowCelebration = false;
+              try { pipWindow.close(); } catch(_){}
+              pipWindow = null;
+              state.popOutTimerOpen = false;
+              save();
+              // Focus existing popup tab
+              try {
+                chrome.runtime.sendMessage({ type: 'pf-open', path: 'popup.html' });
+              } catch(_){}
+            });
+            _pipCeleb.appendChild(_pcBtn);
+            // Hide pip-card and pip-bar, show celebration
+            var _pipCard = doc.querySelector ? doc.querySelector('.pip-card') : null;
+            var _pipBar = doc.querySelector ? doc.querySelector('.pip-bar') : null;
+            if (_pipCard) _pipCard.style.display = 'none';
+            if (_pipBar) _pipBar.style.display = 'none';
+            // Also hide distraction panel
+            var _distPanel = doc.getElementById('distPanel');
+            if (_distPanel) _distPanel.style.display = 'none';
+            var _pipWrap = doc.querySelector ? doc.querySelector('.pip-wrap') : null;
+            if (_pipWrap) _pipWrap.appendChild(_pipCeleb);
+            else doc.body.appendChild(_pipCeleb);
+            // Resize PiP to fit celebration content
+            try { pipWindow.resizeTo(240, 130); } catch(_){}
+          }
+          // Skip normal button/bar updates
+          return;
         } else {
           label.textContent = (dur / 60) + '-MIN READY';
           label.style.color = ''; // v3.23.337: clear any held success/failure color
@@ -9164,6 +9263,14 @@ try {
         }
       }
     } catch (_) {}
+    // v3.23.387: Minimum session payout floor. If the entire reward chain
+    // produced zero dollars (e.g. single 10-min block with no combo), award
+    // a small base amount so the celebration never shows $0.
+    var _totalEarned = Math.round(Math.max(0, (state.coins || 0) - (_celebSnapshotCoins || 0)));
+    if (_totalEarned <= 0) {
+      var _minPayout = Math.max(5, Math.round((state.sessionDurationSec || 600) / 60));
+      awardCoins(_minPayout, 'Session base pay');
+    }
     // v3.23.374: Single consolidated save after the ENTIRE reward chain.
     // Previously earnBlock() called save() per block (3-9x per session),
     // triggering onChanged storms that reverted challenge/quest state.
@@ -10883,6 +10990,24 @@ try {
       dragHandle.style.cssText = 'cursor:grab;color:#886655;font-size:11px;flex-shrink:0;user-select:none;padding:0 2px;';
       row.appendChild(dragHandle);
 
+      // v3.23.384: Checkbox on left — matches regular task list style
+      var cb = document.createElement('div');
+      cb.className = 'task-checkbox' + (hasOpenAqueducts ? '' : '');
+      cb.title = hasOpenAqueducts ? 'Complete aqueduct stages first.' : (t.sourceType ? 'Mark done (also completes the source task).' : 'Mark this task complete.');
+      if (hasOpenAqueducts) {
+        cb.style.cssText = 'opacity:0.3;cursor:not-allowed;';
+      }
+      (function(taskId, cbEl) {
+        cbEl.addEventListener('click', function(e) {
+          e.stopPropagation();
+          completeTodayTask(taskId);
+        });
+        cbEl.addEventListener('mouseenter', function() {
+          try { if (typeof SFX !== 'undefined' && SFX.hover) SFX.hover(); } catch(_){}
+        });
+      })(t.id, cb);
+      row.appendChild(cb);
+
       (function(taskId) {
         row.addEventListener('dragstart', function(e) {
           _draggedTodayId = taskId;
@@ -10975,17 +11100,7 @@ try {
       aqBtn.addEventListener('click', function() { showIncrementalizeModal(t.id); });
       row.appendChild(aqBtn);
 
-      var doneBtn = document.createElement('button');
-      doneBtn.type = 'button'; doneBtn.textContent = '\u25A1';
-      if (hasOpenAqueducts) {
-        doneBtn.title = 'Complete aqueduct stages first.';
-        doneBtn.style.cssText = 'background:#1a1a1a;color:#555;border:1px solid #333;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:not-allowed;opacity:0.4;';
-      } else {
-        doneBtn.title = t.sourceType ? 'Mark done (also completes the source task).' : 'Mark done.';
-        doneBtn.style.cssText = 'background:#2a5a2a;color:#b8ffb8;border:1px solid #4a8a4a;border-radius:4px;padding:3px 8px;font-family:"Press Start 2P",monospace;font-size:10px;cursor:pointer;';
-      }
-      doneBtn.addEventListener('click', function() { completeTodayTask(t.id); });
-      row.appendChild(doneBtn);
+      // v3.23.384: doneBtn removed — replaced by left-side checkbox
 
       var removeBtn = document.createElement('button');
       removeBtn.type = 'button'; removeBtn.textContent = '\u2715';
@@ -14951,6 +15066,16 @@ try {
       // or every 60s. Fixes quest not appearing if tab left open overnight.
       function _checkMidnightRollover() {
         try {
+          // v3.23.386: SKIP rollover while timer is active or rewards are being calculated.
+          // If rollover fires mid-session, it zeroes combo/marathon counters before
+          // awardSessionReward() runs, causing $0 earnings on midnight-crossing sessions.
+          // The full rollover will run on the NEXT check after the session completes and
+          // rewards are collected.
+          var _ts = state.timerState || 'idle';
+          if (_ts === 'running' || _ts === 'countdown' || _ts === 'completed' || _ts === 'paused' || _rewardChainActive) {
+            console.log('[MidnightRollover] Deferred — timer is ' + _ts + ', rewardChain=' + _rewardChainActive);
+            return;
+          }
           var today = todayStr();
           if (state.lastActiveDate && state.lastActiveDate !== today) {
             console.log('[MidnightRollover] Day changed: ' + state.lastActiveDate + ' -> ' + today);
