@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>CK Buddy Alert</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: #0a0a14;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+.card {
+  text-align: center;
+  padding: 24px 28px;
+  max-width: 340px;
+  width: 100%;
+}
+.icon { font-size: 42px; margin-bottom: 10px; }
+.title {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.amount {
+  font-family: 'Courier New', monospace;
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+.reason {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #aaa;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+.dismiss {
+  background: transparent;
+  border: 1px solid #555;
+  color: #999;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  padding: 6px 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+.dismiss:hover { border-color: #aaa; color: #eee; }
+.countdown {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: #555;
+  margin-top: 8px;
+}
+
+/* Penalty styling */
+body.penalty { border: 2px solid #ff4444; }
+body.penalty .title { color: #ff6b6b; }
+body.penalty .amount { color: #ff4444; }
+
+/* Bonus styling */
+body.bonus { border: 2px solid #e879f9; }
+body.bonus .title { color: #e879f9; }
+body.bonus .amount { color: #00ff88; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon" id="icon"></div>
+  <div class="title" id="title"></div>
+  <div class="amount" id="amount"></div>
+  <div class="reason" id="reason"></div>
+  <button class="dismiss" id="dismissBtn">OK</button>
+  <div class="countdown" id="countdown"></div>
+</div>
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var type = params.get('type') || 'penalty'; // 'penalty' or 'bonus'
+  var amount = params.get('amount') || '0';
+  var reason = params.get('reason') || '';
+  var autoClose = parseInt(params.get('autoclose') || '6', 10); // seconds
+
+  var iconEl = document.getElementById('icon');
+  var titleEl = document.getElementById('title');
+  var amountEl = document.getElementById('amount');
+  var reasonEl = document.getElementById('reason');
+  var countdownEl = document.getElementById('countdown');
+  var dismissBtn = document.getElementById('dismissBtn');
+
+  if (type === 'bonus') {
+    document.body.classList.add('bonus');
+    iconEl.textContent = '⭐'; // star
+    titleEl.textContent = 'Q-BANK BONUS';
+    amountEl.textContent = '+$' + amount;
+    reasonEl.textContent = reason || 'Fast block completion!';
+  } else {
+    document.body.classList.add('penalty');
+    iconEl.textContent = '⚠️'; // warning
+    titleEl.textContent = 'Q-BANK PENALTY';
+    amountEl.textContent = '-$' + amount;
+    reasonEl.textContent = reason || 'Too slow between answers.';
+  }
+
+  // Auto-close countdown
+  var remaining = autoClose;
+  function tick() {
+    countdownEl.textContent = 'Auto-close in ' + remaining + 's';
+    if (remaining <= 0) {
+      window.close();
+      return;
+    }
+    remaining--;
+    setTimeout(tick, 1000);
+  }
+  tick();
+
+  dismissBtn.addEventListener('click', function() {
+    window.close();
+  });
+
+  // Play a sound
+  try {
+    var ctx = new AudioContext();
+    if (type === 'bonus') {
+      // Happy ascending arpeggio
+      [0, 100, 200].forEach(function(delay, i) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = [523, 659, 784][i]; // C5, E5, G5
+        gain.gain.value = 0.12;
+        osc.start(ctx.currentTime + delay / 1000);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay / 1000 + 0.3);
+        osc.stop(ctx.currentTime + delay / 1000 + 0.35);
+      });
+    } else {
+      // Warning descending tone
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 440;
+      osc.frequency.linearRampToValueAtTime(220, ctx.currentTime + 0.4);
+      gain.gain.value = 0.15;
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.55);
+    }
+  } catch(_) {}
+})();
+</script>
+</body>
+</html>

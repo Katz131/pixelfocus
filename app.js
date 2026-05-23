@@ -745,6 +745,10 @@ try {
     dailySessionLog: { date: '', sessions: [] }, // { date:'YYYY-MM-DD', sessions:[{start:ms,end:ms,min:N}] }
     // v3.21.15: Cold Turkey integration (off by default)
     coldTurkeyEnabled: false,
+    ckBuddyEnabled: false,           // cross-extension bridge with CK Buddy (Q-bank review)
+    ckBuddyIdlePenalty: 50,          // base idle penalty in dollars
+    ckBuddyLog: [],                  // recent CK Buddy events for display
+    ckBuddyPendingRewards: [],       // [{type:'bonus'|'penalty', amount:N, reason:'...', ts:ms}] — shown on popup return
     coldTurkeyBlockName: '111 claude blocker',
     coldTurkeyDailyPrompt: false,   // show "open Cold Turkey" popup once per day
     coldTurkeyLastPromptDate: '',   // YYYY-MM-DD of last prompt shown
@@ -1349,7 +1353,11 @@ try {
           state[k] = _incoming[k];
         });
         // Restore timer state if WE are the page running the timer
-        if (_prevTimerState === 'running' || _prevTimerState === 'countdown') {
+        // v3.23.395: Also preserve 'paused' and 'completed' — these are still
+        // our session. Without this, any external save (background.js, factory,
+        // gallery) during a pause would overwrite timerState back to idle,
+        // making the pause button appear to reset the timer.
+        if (_prevTimerState === 'running' || _prevTimerState === 'countdown' || _prevTimerState === 'paused' || _prevTimerState === 'completed') {
           state.timerState = _prevTimerState;
           state.timerEndsAt = _prevTimerEndsAt;
           state.timerRemaining = _prevTimerRemaining;
@@ -2265,6 +2273,8 @@ try {
   function notify(msg, color, opts) {
     // opts.sticky = true → stays until clicked
     // opts.duration = ms → custom auto-dismiss time (default 2000)
+    console.log('[NOTIFY] called with msg="' + msg + '" color=' + color + ' notifShowing=' + notifShowing + ' queueLen=' + notifQueue.length);
+    console.log('[NOTIFY] notification elem=', notification, 'exists=' + !!notification);
     notifQueue.push({ msg, color, opts: opts || {} });
     if (!notifShowing) showNextNotif();
     // Mirror important notifications into the loom console.
@@ -2279,10 +2289,12 @@ try {
     if (notifQueue.length === 0) { notifShowing = false; return; }
     notifShowing = true;
     const { msg, color, opts } = notifQueue.shift();
+    console.log('[NOTIFY] showNextNotif: msg="' + msg + '" notification elem=', notification, 'zIndex=' + (notification ? notification.style.zIndex : 'N/A'));
     notification.textContent = msg;
     notification.style.background = color || 'var(--accent)';
     notification.style.color = color ? '#fff' : 'var(--bg)';
     notification.classList.add('show');
+    console.log('[NOTIFY] Added .show class. classList=', notification.classList.toString(), 'computedTop=', window.getComputedStyle(notification).top);
     if (opts && opts.sticky) {
       // Click-to-dismiss
       notification.style.cursor = 'pointer';
@@ -3450,17 +3462,14 @@ try {
     for (var i = 0; i < sessions.length; i++) {
       var s = sessions[i];
 
-      // v3.23.297: Use s.min as the authoritative duration when timestamps are shorter.
-      // The end time (Date.now() at completion) is reliable; the start may be wrong
-      // if the extension reloaded mid-session and _sessionStartedAt was reset.
-      var rawStart = s.start;
+      // v3.23.391: ALWAYS use s.min as the authoritative duration.
+      // end timestamp is reliable (Date.now() at completion).
+      // start timestamp is UNRELIABLE — _sessionStartedAt can be set hours before
+      // the timer actually runs (e.g. user opens extension, browses, starts later).
+      // So always recompute start = end - (min * 60000).
       var rawEnd = s.end;
-      var rawSpanMs = rawEnd - rawStart;
       var minSpanMs = (s.min || 0) * 60000;
-      if (minSpanMs > rawSpanMs * 1.5 && minSpanMs > 0) {
-        // Timestamps are too short — recompute start from end minus actual duration
-        rawStart = rawEnd - minSpanMs;
-      }
+      var rawStart = minSpanMs > 0 ? (rawEnd - minSpanMs) : s.start;
 
       // Clip session to window
       var sStart = Math.max(rawStart, windowStartMs);
@@ -13077,26 +13086,84 @@ try {
   // Previously the ONLY way to get opponent progress was via inbox messages,
   // but those only arrive if the opponent's popup tab is open. This reads
   // their published social data directly — works even if they close the tab.
+  // v3.23.395: Compute opponent focus_minutes from their actual focusHistory
+  // instead of trusting their published myProgress (which may be wrong on
+  // older extension versions that publish lifetimeFocusMinutes).
+  function _calcFocusMinutesFromHistory(focusHistory, dailySessionLog, sinceMs) {
+    var total = 0;
+    var startDate = new Date(sinceMs);
+    startDate.setHours(0,0,0,0);
+    if (focusHistory && typeof focusHistory === 'object') {
+      var keys = Object.keys(focusHistory);
+      for (var i = 0; i < keys.length; i++) {
+        var parts = keys[i].split('-');
+        var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        if (d >= startDate) {
+          total += (focusHistory[keys[i]] || 0);
+        }
+      }
+    }
+    // Add today from their dailySessionLog if not yet in focusHistory
+    if (dailySessionLog && dailySessionLog.date && dailySessionLog.sessions && dailySessionLog.sessions.length > 0) {
+      var todayStr = dailySessionLog.date;
+      var tp = todayStr.split('-');
+      var td = new Date(parseInt(tp[0]), parseInt(tp[1]) - 1, parseInt(tp[2]));
+      if (td >= startDate) {
+        if (!focusHistory || !focusHistory[todayStr]) {
+          for (var j = 0; j < dailySessionLog.sessions.length; j++) {
+            total += (dailySessionLog.sessions[j].min || 0);
+          }
+        }
+      }
+    }
+    return Math.round(total);
+  }
+
   function _pollOpponentProgress() {
-    if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
-    if (!state.profileId || !window.ProfileSync || !window.ProfileSync.getSocialData) return;
+    // v3.23.395: Also poll during 'pending' so user can verify opponent progress
+    if (!state.friendChallenge || (state.friendChallenge.status !== 'active' && state.friendChallenge.status !== 'pending')) return;
+    if (!state.profileId || !window.ProfileSync || !window.ProfileSync.getProfile) return;
     var ch = state.friendChallenge;
     if (!ch.opponentId) return;
-    window.ProfileSync.getSocialData(ch.opponentId).then(function(social) {
-      if (!social || !social.activeChallenge) return;
-      var ac = social.activeChallenge;
-      // Only accept if it's the same challenge type targeting us
-      if (ac.opponentId !== state.profileId) return;
-      if (ac.type !== ch.type) return;
-      var newProg = parseInt(ac.myProgress) || 0;
+    // v3.23.395: Fetch their full profile to get focusHistory, then compute
+    // their challenge progress ourselves — same formula we use for our own.
+    window.ProfileSync.getProfile(ch.opponentId).then(function(profile) {
+      if (!profile) return;
+      var newProg;
+      if (ch.type === 'focus_minutes' && ch.startedAt) {
+        // Compute from their focusHistory — authoritative source
+        newProg = _calcFocusMinutesFromHistory(
+          profile.focusHistory,
+          profile.dailySessionLog,
+          ch.startedAt
+        );
+        console.log('[CHALLENGE-POLL] Computed opponent focus_minutes from their focusHistory: ' + newProg);
+      } else {
+        // For non-focus_minutes challenges, fall back to their published social data
+        // (need a separate getSocialData call for that)
+        return window.ProfileSync.getSocialData(ch.opponentId).then(function(social) {
+          if (!social || !social.activeChallenge) return;
+          var ac = social.activeChallenge;
+          if (ac.opponentId !== state.profileId) return;
+          if (ac.type !== ch.type) return;
+          newProg = parseInt(ac.myProgress) || 0;
+          var oldProg = ch.opponentProgress || 0;
+          if (newProg !== oldProg) {
+            console.log('[CHALLENGE-POLL] Opponent progress updated via social data: ' + oldProg + ' -> ' + newProg);
+            ch.opponentProgress = newProg;
+            save();
+            try { renderChallengeUI(); } catch(_){}
+          }
+        });
+      }
       var oldProg = ch.opponentProgress || 0;
       if (newProg !== oldProg) {
-        console.log('[CHALLENGE-POLL] Opponent progress updated via Firestore: ' + oldProg + ' -> ' + newProg);
+        console.log('[CHALLENGE-POLL] Opponent progress updated: ' + oldProg + ' -> ' + newProg);
         ch.opponentProgress = newProg;
         save();
         try { renderChallengeUI(); } catch(_){}
       }
-    }).catch(function(){});
+    }).catch(function(e){ console.log('[CHALLENGE-POLL] Error: ' + e); });
   }
 
   function _checkChallengeExpiry() {
@@ -13112,6 +13179,7 @@ try {
     if (!ch) return;
     var myProgress = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
     var theirProgress = ch.opponentProgress || 0;
+
     var pool = CHALLENGE_POOL.filter(function(c){return c.id === ch.type;})[0];
     var tier = pool ? pool.tier : 'standard';
     var reward = CHALLENGE_REWARDS[tier];
@@ -13534,6 +13602,7 @@ try {
           myProg = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
         }
         var theirProg = ch.opponentProgress || 0;
+
         var pool = CHALLENGE_POOL.filter(function(c){return c.id === ch.type;})[0];
         var unit = pool ? pool.unit : '';
         var remaining = Math.max(0, ch.endsAt - Date.now());
@@ -16608,9 +16677,15 @@ try {
                       try { _publishChallengeToFirestore(); } catch(_){}
                       try { showToast('Challenge is now active! Game on!', 'success'); } catch(_){}
                     }
-                    state.friendChallenge.opponentProgress = parseInt(msg.progress) || 0;
-                    save();
-                    try { renderChallengeUI(); } catch(_){}
+                    // v3.23.395: For focus_minutes, ignore their self-reported number
+                    // and fetch their profile to compute from their actual focusHistory.
+                    if (state.friendChallenge.type === 'focus_minutes') {
+                      try { _pollOpponentProgress(); } catch(_) {}
+                    } else {
+                      state.friendChallenge.opponentProgress = parseInt(msg.progress) || 0;
+                      save();
+                      try { renderChallengeUI(); } catch(_){}
+                    }
                   }
                 } else if (msg.type === 'morse_message') {
                   // v3.23.257: Morse code message — dedup by Firestore doc ID
@@ -16647,8 +16722,24 @@ try {
                   // Opponent sent us their final result
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.opponentId === msg.fromId) {
-                    state.friendChallenge.opponentProgress = parseInt(msg.myScore) || 0;
-                    _resolveChallenge();
+                    // v3.23.395: For focus_minutes, compute from their profile
+                    if (state.friendChallenge.type === 'focus_minutes' && window.ProfileSync && window.ProfileSync.getProfile) {
+                      window.ProfileSync.getProfile(msg.fromId).then(function(profile) {
+                        if (profile && profile.focusHistory && state.friendChallenge && state.friendChallenge.startedAt) {
+                          state.friendChallenge.opponentProgress = _calcFocusMinutesFromHistory(
+                            profile.focusHistory, profile.dailySessionLog, state.friendChallenge.startedAt);
+                        } else {
+                          state.friendChallenge.opponentProgress = parseInt(msg.myScore) || 0;
+                        }
+                        _resolveChallenge();
+                      }).catch(function() {
+                        state.friendChallenge.opponentProgress = parseInt(msg.myScore) || 0;
+                        _resolveChallenge();
+                      });
+                    } else {
+                      state.friendChallenge.opponentProgress = parseInt(msg.myScore) || 0;
+                      _resolveChallenge();
+                    }
                   }
                 }
               });
@@ -17134,7 +17225,306 @@ try {
         });
       }
 
-      // v3.23.19: Distraction watchlist on/off toggle
+      // v3.23.405: CK Buddy block reward celebration — fires on popup return if pending rewards exist
+      function showCkBuddyCelebration() {
+        var rewards = state.ckBuddyPendingRewards;
+        if (!rewards || !rewards.length) return;
+
+        var overlay = $('ckBuddyCelebOverlay');
+        if (!overlay) return;
+
+        // Sum up bonuses and penalties
+        var totalBonus = 0, totalPenalty = 0;
+        rewards.forEach(function(r) {
+          if (r.type === 'bonus') totalBonus += (r.amount || 0);
+          else if (r.type === 'penalty') totalPenalty += (r.amount || 0);
+        });
+        var net = totalBonus - totalPenalty;
+        var bonusCount = rewards.filter(function(r) { return r.type === 'bonus'; }).length;
+        var penaltyCount = rewards.filter(function(r) { return r.type === 'penalty'; }).length;
+
+        // Build UI
+        var iconEl = $('ckBuddyCelebIcon');
+        var titleEl = $('ckBuddyCelebTitle');
+        var itemsEl = $('ckBuddyCelebItems');
+        var netEl = $('ckBuddyCelebNet');
+        var balanceEl = $('ckBuddyCelebBalance');
+
+        if (iconEl) iconEl.textContent = net >= 0 ? '\u2B50' : '\u26A0\uFE0F';
+        if (titleEl) {
+          titleEl.textContent = 'Q-BANK REVIEW RESULTS';
+          titleEl.style.color = net >= 0 ? '#e879f9' : '#ff6b6b';
+        }
+
+        // List each event
+        if (itemsEl) {
+          itemsEl.innerHTML = '';
+          rewards.forEach(function(r) {
+            var row = document.createElement('div');
+            row.style.cssText = 'font-family:"Courier New",monospace;font-size:12px;line-height:1.5;';
+            if (r.type === 'bonus') {
+              row.style.color = '#00ff88';
+              row.textContent = '\u2B50 +$' + r.amount + ' \u2014 ' + (r.reason || 'Block bonus');
+            } else if (r.type === 'complete') {
+              row.style.color = '#e879f9';
+              row.textContent = '\u2705 Block complete \u2014 ' + (r.reason || 'No speed bonus');
+            } else {
+              row.style.color = '#ff6b6b';
+              row.textContent = '\u26A0 -$' + r.amount + ' \u2014 ' + (r.reason || 'Idle penalty');
+            }
+            itemsEl.appendChild(row);
+          });
+        }
+
+        // Net result
+        if (netEl) {
+          if (net > 0) {
+            netEl.textContent = 'NET: +$' + net;
+            netEl.style.color = '#00ff88';
+          } else if (net < 0) {
+            netEl.textContent = 'NET: -$' + Math.abs(net);
+            netEl.style.color = '#ff6b6b';
+          } else {
+            netEl.textContent = 'NET: $0';
+            netEl.style.color = '#ffd700';
+          }
+        }
+
+        // Before → After balance display
+        if (balanceEl) {
+          // Check if any reward has prevDollars recorded
+          var _prevD = null;
+          rewards.forEach(function(r) { if (r.prevDollars != null) _prevD = r.prevDollars; });
+          if (_prevD != null) {
+            balanceEl.textContent = 'Balance: $' + _prevD + '  \u2192  $' + Math.floor(state.coins || 0);
+            balanceEl.style.color = (state.coins || 0) > _prevD ? '#00ff88' : (state.coins || 0) < _prevD ? '#ff6b6b' : 'var(--text-dim)';
+          } else {
+            balanceEl.textContent = 'Current balance: $' + Math.floor(state.coins || 0);
+          }
+        }
+
+        // Clear pending rewards
+        state.ckBuddyPendingRewards = [];
+        save();
+
+        // Show overlay
+        overlay.style.display = 'flex';
+        setTimeout(function() { overlay.style.opacity = '1'; }, 30);
+
+        // Particles
+        var particlesEl = $('ckBuddyCelebParticles');
+        if (particlesEl) {
+          particlesEl.innerHTML = '';
+          var colors = net >= 0 ? ['#e879f9','#00ff88','#ffd700','#4ecdc4'] : ['#ff6b6b','#ff4444','#cc3333','#993333'];
+          for (var pi = 0; pi < 30; pi++) {
+            var p = document.createElement('div');
+            var sz = 4 + Math.random() * 8;
+            p.style.cssText = 'position:absolute;width:' + sz + 'px;height:' + sz + 'px;background:' + colors[pi % colors.length] + ';border-radius:50%;opacity:0.8;left:' + Math.random() * 100 + '%;top:-10px;';
+            p.style.animation = 'ckCelebFall ' + (2 + Math.random() * 3) + 's linear ' + (Math.random() * 2) + 's infinite';
+            particlesEl.appendChild(p);
+          }
+          // Inject keyframes if not present
+          if (!document.getElementById('ckCelebFallStyle')) {
+            var styleEl = document.createElement('style');
+            styleEl.id = 'ckCelebFallStyle';
+            styleEl.textContent = '@keyframes ckCelebFall { 0% { transform:translateY(-10px) rotate(0deg); opacity:0.8; } 100% { transform:translateY(110vh) rotate(720deg); opacity:0; } }';
+            document.head.appendChild(styleEl);
+          }
+        }
+
+        // Sound
+        try {
+          var ctx = new AudioContext();
+          if (net >= 0) {
+            [0, 120, 240, 360].forEach(function(delay, i) {
+              var osc = ctx.createOscillator();
+              var gain = ctx.createGain();
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.frequency.value = [523, 659, 784, 1047][i];
+              gain.gain.value = 0.1;
+              osc.start(ctx.currentTime + delay / 1000);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay / 1000 + 0.3);
+              osc.stop(ctx.currentTime + delay / 1000 + 0.35);
+            });
+          } else {
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.value = 330; osc.frequency.linearRampToValueAtTime(165, ctx.currentTime + 0.5);
+            gain.gain.value = 0.12;
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+            osc.start(); osc.stop(ctx.currentTime + 0.65);
+          }
+        } catch(_) {}
+
+        // Dismiss handler
+        var dismissBtn = $('ckBuddyCelebDismiss');
+        function _ckDismiss() {
+          overlay.style.opacity = '0';
+          setTimeout(function() { overlay.style.display = 'none'; }, 500);
+        }
+        if (dismissBtn) dismissBtn.addEventListener('click', _ckDismiss);
+        overlay.addEventListener('click', function(e) {
+          if (e.target === overlay) _ckDismiss();
+        });
+
+        console.log('[CK-BRIDGE] Celebration shown: ' + bonusCount + ' bonuses (+$' + totalBonus + '), ' + penaltyCount + ' penalties (-$' + totalPenalty + '), net=$' + net);
+      }
+
+            // v3.23.401: CK Buddy cross-extension bridge toggle + live dot + test buttons
+      var ckBuddyToggle = $('ckBuddyToggle');
+      var ckBuddyStatus = $('ckBuddyStatus');
+      var ckBuddyDot = $('ckBuddyDot');
+      var ckBuddyDotLabel = $('ckBuddyDotLabel');
+      console.log('[CK-BRIDGE] Wiring CK Buddy settings. toggle=', ckBuddyToggle, 'dot=', ckBuddyDot, 'dotLabel=', ckBuddyDotLabel, 'status=', ckBuddyStatus);
+      function _updateCkDot(on) {
+        if (ckBuddyDot) {
+          ckBuddyDot.style.background = on ? '#00ff88' : '#ff4444';
+          ckBuddyDot.style.boxShadow = on ? '0 0 8px #00ff88' : '0 0 8px #ff4444';
+        }
+        if (ckBuddyDotLabel) {
+          ckBuddyDotLabel.textContent = on ? 'ACTIVE' : 'OFF';
+          ckBuddyDotLabel.style.color = on ? '#00ff88' : '#ff4444';
+        }
+      }
+      if (ckBuddyToggle) {
+        ckBuddyToggle.checked = !!state.ckBuddyEnabled;
+        _updateCkDot(!!state.ckBuddyEnabled);
+        ckBuddyToggle.addEventListener('change', function() {
+          state.ckBuddyEnabled = ckBuddyToggle.checked;
+          save();
+          _updateCkDot(state.ckBuddyEnabled);
+          if (ckBuddyStatus) {
+            ckBuddyStatus.textContent = state.ckBuddyEnabled ? 'CK Buddy bridge active. Q-bank activity will affect your dollars.' : 'CK Buddy bridge disabled.';
+            ckBuddyStatus.style.color = state.ckBuddyEnabled ? '#e879f9' : 'var(--text-dim)';
+            setTimeout(function() { if (ckBuddyStatus) ckBuddyStatus.textContent = ''; }, 4000);
+          }
+        });
+      }
+      // Test buttons — simulate penalty/bonus notifications
+      var ckTestPenalty = $('ckBuddyTestPenalty');
+      var ckTestBonus = $('ckBuddyTestBonus');
+      console.log('[CK-BRIDGE] Test button wiring: penalty elem=', ckTestPenalty, 'bonus elem=', ckTestBonus);
+      console.log('[CK-BRIDGE] ckBuddyStatus elem=', ckBuddyStatus);
+      console.log('[CK-BRIDGE] notify function exists=', typeof notify);
+      if (ckTestPenalty) {
+        console.log('[CK-BRIDGE] Attaching click listener to TEST PENALTY button');
+        ckTestPenalty.addEventListener('click', function(e) {
+          console.log('[CK-BRIDGE] TEST PENALTY clicked! event=', e.type, 'target=', e.target.id);
+          console.log('[CK-BRIDGE] About to call notify()...');
+          try {
+            notify('-$50 (TEST: Q-bank idle penalty)', '#ff6b6b');
+            console.log('[CK-BRIDGE] notify() returned successfully');
+          } catch(err) {
+            console.error('[CK-BRIDGE] notify() threw error:', err);
+          }
+          // Also fire OS-level Chrome notification
+          try {
+            chrome.notifications.create('ckrb-test-penalty-' + Date.now(), {
+              type: 'basic', iconUrl: 'icons/icon128.png',
+              title: 'Todo of the Loom — TEST Penalty',
+              message: '-$50 (TEST: Q-bank idle penalty)', priority: 2
+            });
+          } catch(_) {}
+          if (ckBuddyStatus) {
+            ckBuddyStatus.textContent = 'Test penalty notification fired.';
+            ckBuddyStatus.style.color = '#ff6b6b';
+            console.log('[CK-BRIDGE] Updated status text to penalty confirmation');
+            setTimeout(function() { if (ckBuddyStatus) ckBuddyStatus.textContent = ''; }, 3000);
+          }
+        });
+      } else {
+        console.warn('[CK-BRIDGE] TEST PENALTY button NOT FOUND in DOM!');
+      }
+      if (ckTestBonus) {
+        console.log('[CK-BRIDGE] Attaching click listener to TEST BONUS button');
+        ckTestBonus.addEventListener('click', function(e) {
+          console.log('[CK-BRIDGE] TEST BONUS clicked! event=', e.type, 'target=', e.target.id);
+          console.log('[CK-BRIDGE] About to call notify()...');
+          try {
+            notify('+$100 (TEST: Q-bank fast block bonus)', '#e879f9');
+            console.log('[CK-BRIDGE] notify() returned successfully');
+          } catch(err) {
+            console.error('[CK-BRIDGE] notify() threw error:', err);
+          }
+          // Also fire OS-level Chrome notification
+          try {
+            chrome.notifications.create('ckrb-test-bonus-' + Date.now(), {
+              type: 'basic', iconUrl: 'icons/icon128.png',
+              title: 'Todo of the Loom — TEST Bonus!',
+              message: '+$100 (TEST: Q-bank fast block bonus)', priority: 2
+            });
+          } catch(_) {}
+          if (ckBuddyStatus) {
+            ckBuddyStatus.textContent = 'Test bonus notification fired.';
+            ckBuddyStatus.style.color = '#e879f9';
+            console.log('[CK-BRIDGE] Updated status text to bonus confirmation');
+            setTimeout(function() { if (ckBuddyStatus) ckBuddyStatus.textContent = ''; }, 3000);
+          }
+        });
+      } else {
+        console.warn('[CK-BRIDGE] TEST BONUS button NOT FOUND in DOM!');
+      }
+      // Listen for CKRB penalty/bonus messages from background.js and show notification
+      // v3.23.408: Also trigger celebration overlay when popup is already open
+      chrome.runtime.onMessage.addListener(function(msg) {
+        if (msg.type === 'CKRB_PENALTY' && msg.amount) {
+          var _penAmt = msg.amount || 0;
+          console.log('[CK-BRIDGE] Received CKRB_PENALTY in popup, amount=$' + _penAmt);
+          // Apply penalty directly to popup's in-memory state (avoids race with background.js save)
+          var _penPrevDollars = Math.floor(state.coins || 0);
+          state.coins = Math.max(0, (state.coins || 0) - _penAmt);
+          notify('-$' + _penAmt + ' Q-bank idle penalty!', '#ff6b6b');
+          // Build pending reward entry directly
+          if (!state.ckBuddyPendingRewards) state.ckBuddyPendingRewards = [];
+          state.ckBuddyPendingRewards.push({
+            type: 'penalty',
+            amount: _penAmt,
+            reason: msg.reason || 'Idle penalty',
+            ts: Date.now(),
+            prevDollars: _penPrevDollars
+          });
+          save();
+          render();
+          console.log('[CK-BRIDGE] Dollars: $' + _penPrevDollars + ' -> $' + Math.floor(state.coins) + ' (penalty applied in popup)');
+          // Show celebration overlay
+          setTimeout(function() {
+            try { showCkBuddyCelebration(); } catch(e) { console.warn('[CK-BRIDGE] Celebration error:', e); }
+          }, 400);
+          // (Legacy storage read path removed — popup handles bonuses/penalties directly now)
+        } else if (msg.type === 'CKRB_BONUS') {
+          var _ckAmt = msg.amount || 0;
+          console.log('[CK-BRIDGE] Received CKRB_BONUS in popup, amount=$' + _ckAmt);
+          // Apply bonus directly to popup's in-memory state (avoids race with background.js save)
+          var _ckPrevDollars = Math.floor(state.coins || 0);
+          if (_ckAmt > 0) {
+            state.coins = (state.coins || 0) + _ckAmt;
+            state.lifetimeCoins = (state.lifetimeCoins || 0) + _ckAmt;
+            state.coinsEarnedToday = (state.coinsEarnedToday || 0) + _ckAmt;
+            notify('+$' + _ckAmt + ' Q-bank bonus!', '#e879f9');
+          } else {
+            notify('Q-bank block complete!', '#e879f9');
+          }
+          // Build pending reward entry directly (don't wait for background storage)
+          if (!state.ckBuddyPendingRewards) state.ckBuddyPendingRewards = [];
+          state.ckBuddyPendingRewards.push({
+            type: _ckAmt > 0 ? 'bonus' : 'complete',
+            amount: _ckAmt,
+            reason: msg.reason || 'Q-bank block',
+            ts: Date.now(),
+            prevDollars: _ckPrevDollars
+          });
+          save();
+          render();
+          console.log('[CK-BRIDGE] Dollars: $' + _ckPrevDollars + ' -> $' + Math.floor(state.coins) + ' (applied directly in popup)');
+          // Show celebration overlay immediately
+          setTimeout(function() {
+            try { showCkBuddyCelebration(); } catch(e) { console.warn('[CK-BRIDGE] Celebration error:', e); }
+          }, 400);
+        }
+      });
+
+            // v3.23.19: Distraction watchlist on/off toggle
       var siteNagToggle = $('siteNagToggle');
       var siteNagToggleLabel = $('siteNagToggleLabel');
       if (siteNagToggle) {
@@ -18916,6 +19306,15 @@ try {
       }
     } catch (_) {}
   }, 3200);
+
+  // v3.23.405: CK Buddy reward celebration on popup return
+  setTimeout(function() {
+    try {
+      if (state.ckBuddyPendingRewards && state.ckBuddyPendingRewards.length > 0) {
+        showCkBuddyCelebration();
+      }
+    } catch (_) {}
+  }, 3600);
 
   if (!state.mirrorMode) {
     setTimeout(function() {

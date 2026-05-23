@@ -1,7 +1,7 @@
 # Todo of the Loom — Claude Handoff Document
 
-**Current version:** 3.23.363
-**Last updated:** 2026-05-19
+**Current version:** 3.23.409
+**Last updated:** 2026-05-23
 
 ---
 
@@ -37,6 +37,16 @@ ALWAYS give click-by-click instructions with exact file/folder locations. Assume
 - The user often relays instructions to Giulia (who cannot code) — keep ELI5 instructions simple and copy-paste ready
 - User prefers military/24-hour time
 - When giving numbered steps, format as a proper numbered list so the user can copy-paste it
+
+
+### 6. Bridge Protocol with CK Buddy
+Read **`BRIDGE.md`** in this folder BEFORE touching any CK Buddy integration code. It documents the cross-extension messaging protocol, reward thresholds, celebration overlay, and known pitfalls (like the race condition between background.js storage writes and popup's in-memory state).
+
+If you modify ANY bridge-related code (`CKRB_*` handlers in background.js or app.js, `showCkBuddyCelebration()`, reward thresholds, `externally_connectable`, etc.), you MUST:
+
+1. Update `BRIDGE.md` in THIS folder
+2. Copy the updated `BRIDGE.md` to the CK Buddy project folder
+3. Note the change in the changelog table at the bottom of BRIDGE.md
 
 ---
 

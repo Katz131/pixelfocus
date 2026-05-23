@@ -14,7 +14,7 @@
 
   // ===== Color shop (mirrors app.js — colors are PURCHASED with BOTH textiles AND money $) =====
   // Green is the starter color (free). Every other color costs textiles, and
-  // most also cost money ($, shown as coins in state). Textiles come from
+  // most also cost money ($, stored as state.coins internally). Textiles come from
   // focus sessions; money comes from streaks/combos/marathons/employees.
   //
   // Pink is the deliberate TEACHING PURCHASE (v3.19.13): 30 textiles, zero
@@ -187,7 +187,7 @@
       if (typeof state.totalLifetimeBlocks !== 'number') state.totalLifetimeBlocks = 0;
       // v3.19.15: loom sell + profile picture. profilePicture is a
       // stand-alone snapshot copy of a saved artwork so selling/deleting
-      // the source doesn't wipe the avatar. loomsSold + coinsFromLoomSales
+      // the source doesn't wipe the avatar. loomsSold + dollarsFromLoomSales
       // are lifetime stats for future leaderboard / achievement use.
       if (typeof state.loomsSold !== 'number') state.loomsSold = 0;
       if (typeof state.coinsFromLoomSales !== 'number') state.coinsFromLoomSales = 0;
@@ -536,8 +536,8 @@
 
   function renderStats() {
     document.getElementById('availableBlocks').textContent = state.blocks;
-    var coinEl = document.getElementById('availableCoins');
-    if (coinEl) coinEl.textContent = (state.coins || 0).toLocaleString();
+    var dollarEl = document.getElementById('availableCoins');
+    if (dollarEl) dollarEl.textContent = (state.coins || 0).toLocaleString();
     document.getElementById('canvasPixels').textContent = Object.keys(state.pixelCanvas).length;
     document.getElementById('canvasDim').textContent = state.canvasSize + 'x' + state.canvasSize;
     var sizeLabel = document.getElementById('sizeLabel');
@@ -578,9 +578,9 @@
       var isNext = !owned && idx === firstUnownedIdx;
       var locked = !owned && !isNext;
       var haveBlocks = state.blocks || 0;
-      var haveCoins = state.coins || 0;
+      var haveDollars = state.coins || 0;
       var dollarCost = m.dollarCost || 0;
-      var canAfford = isNext && haveBlocks >= m.cost && haveCoins >= dollarCost;
+      var canAfford = isNext && haveBlocks >= m.cost && haveDollars >= dollarCost;
 
       // Cost phrasing helpers — colors with zero dollarCost (e.g. the Pink
       // teaching purchase at 200 textiles + $0) shouldn't show "$0" in
@@ -603,10 +603,10 @@
         rowTip = m.name + ' \u2014 READY to buy. Click to spend ' + costLong + ' to add this color to your palette.';
       } else if (isNext) {
         var needBlocks = Math.max(0, m.cost - haveBlocks);
-        var needCoins = Math.max(0, dollarCost - haveCoins);
+        var needDollars = Math.max(0, dollarCost - haveDollars);
         rowTip = m.name + ' \u2014 next color in line. Costs ' + costShort + '.';
         if (needBlocks > 0) rowTip += ' Need ' + needBlocks.toLocaleString() + ' more textiles.';
-        if (needCoins > 0) rowTip += ' Need $' + needCoins.toLocaleString() + ' more money.';
+        if (needDollars > 0) rowTip += ' Need $' + needDollars.toLocaleString() + ' more money.';
       } else {
         rowTip = 'LOCKED color \u2014 buy the previous tier first. Future cost: ' + costShort + '.';
       }
@@ -647,20 +647,23 @@
       el.appendChild(swatch);
       el.appendChild(info);
 
-      // Progress bar for "next" tier only. Shows the LIMITING currency so the
-      // user sees which resource is furthest from letting them buy this color.
-      if (isNext && (m.cost > 0 || dollarCost > 0)) {
-        var blockPct = m.cost > 0 ? (haveBlocks / m.cost) : 1;
-        var coinPct = dollarCost > 0 ? (haveCoins / dollarCost) : 1;
-        var limiting = Math.min(blockPct, coinPct);
-        var pct = Math.min(100, limiting * 100);
+      // Progress bar for "next" tier only. Shows textile progress toward
+      // affording the next color (textiles are the primary currency here).
+      if (isNext && m.cost > 0) {
+        var blockPct = Math.min(1, haveBlocks / m.cost);
+        var pct = Math.min(100, blockPct * 100);
         var bar = document.createElement('div');
         bar.className = 'milestone-bar';
-        bar.setAttribute('title', pct.toFixed(1) + '% of the way to affording this color (limited by your ' + (blockPct < coinPct ? 'textiles' : 'money') + ').');
+        bar.setAttribute('title', pct.toFixed(1) + '% of the textiles needed for this color.');
         var fill = document.createElement('div');
         fill.className = 'milestone-bar-fill';
         fill.style.width = pct + '%';
         bar.appendChild(fill);
+        // v3.23.398: Textile-only progress label
+        var barLabel = document.createElement('div');
+        barLabel.className = 'milestone-bar-label';
+        barLabel.textContent = haveBlocks + ' / ' + m.cost + ' tex';
+        bar.appendChild(barLabel);
         el.appendChild(bar);
       }
 
@@ -726,8 +729,8 @@
       var effectiveCost = applyDyeDiscount(u.cost);
       var dollarCost = u.dollarCost || 0;
       var haveBlocks = state.blocks || 0;
-      var haveCoins = state.coins || 0;
-      var canAfford = haveBlocks >= effectiveCost && haveCoins >= dollarCost;
+      var haveDollars = state.coins || 0;
+      var canAfford = haveBlocks >= effectiveCost && haveDollars >= dollarCost;
 
       var el = document.createElement('div');
       el.className = 'upgrade-btn' + (owned ? ' owned' : '') + (nextUp && canAfford ? ' available' : '');
@@ -742,7 +745,7 @@
         rowTip = u.label + ' \u2014 READY to buy. Click to spend ' + effectiveCost.toLocaleString() + ' textiles + $' + dollarCost.toLocaleString() + ' and grow your canvas to ' + u.size + 'x' + u.size + '.';
       } else {
         var needB = Math.max(0, effectiveCost - haveBlocks);
-        var needC = Math.max(0, dollarCost - haveCoins);
+        var needC = Math.max(0, dollarCost - haveDollars);
         rowTip = u.label + ' \u2014 costs ' + effectiveCost.toLocaleString() + ' textiles + $' + dollarCost.toLocaleString() + '.';
         if (needB > 0) rowTip += ' Need ' + needB.toLocaleString() + ' more textiles.';
         if (needC > 0) rowTip += ' Need $' + needC.toLocaleString() + ' more money.';

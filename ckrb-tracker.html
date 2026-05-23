@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Q-Bank Live Tracker</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: #0a0a14;
+  color: #e0e0e0;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  border: 1px solid #2a2a3a;
+}
+.tracker {
+  text-align: center;
+  padding: 12px 16px;
+  width: 100%;
+}
+.label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #888;
+  margin-bottom: 4px;
+}
+.balance {
+  font-size: 32px;
+  font-weight: bold;
+  color: #e879f9;
+  transition: color 0.3s;
+  position: relative;
+}
+.balance.flash-green { color: #00ff88; }
+.balance.flash-red { color: #ff4444; }
+
+/* Floating +/- delta animation */
+.delta {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  font-weight: bold;
+  opacity: 1;
+  pointer-events: none;
+  animation: floatUp 1.8s ease-out forwards;
+  white-space: nowrap;
+}
+.delta.bonus { color: #00ff88; }
+.delta.penalty { color: #ff4444; }
+
+@keyframes floatUp {
+  0% { opacity: 1; top: -5px; }
+  70% { opacity: 0.8; }
+  100% { opacity: 0; top: -50px; }
+}
+
+.stats {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #666;
+  line-height: 1.5;
+}
+.stats .bonus-total { color: #00ff88; }
+.stats .penalty-total { color: #ff6b6b; }
+.stats .net { color: #e879f9; font-weight: bold; }
+
+.block-info {
+  font-size: 9px;
+  color: #555;
+  margin-top: 6px;
+  letter-spacing: 1px;
+}
+
+/* Pulse ring on update */
+.pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  pointer-events: none;
+  opacity: 0;
+}
+.pulse-ring.fire {
+  animation: pulseOut 0.6s ease-out;
+}
+.pulse-ring.green { border-color: #00ff88; }
+.pulse-ring.red { border-color: #ff4444; }
+
+@keyframes pulseOut {
+  0% { transform: scale(0.5); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+.timer-row {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #aaa;
+  letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+<div class="tracker">
+  <div class="label">Q-BANK BALANCE</div>
+  <div style="position:relative;display:inline-block;">
+    <div class="balance" id="balance">$0</div>
+    <div class="pulse-ring" id="pulse"></div>
+    <div id="deltaContainer" style="position:relative;height:0;"></div>
+  </div>
+  <div class="stats">
+    <span class="bonus-total" id="bonusTotal">+$0</span>
+    &nbsp;/&nbsp;
+    <span class="penalty-total" id="penaltyTotal">-$0</span>
+    &nbsp;&rarr;&nbsp;
+    <span class="net" id="netDisplay">$0</span>
+  </div>
+  <div class="timer-row" id="elapsed">00:00</div>
+  <div class="block-info" id="blockInfo">WAITING FOR QUIZ...</div>
+</div>
+
+<script>
+(function() {
+  var startBalance = 0;
+  var currentBalance = 0;
+  var totalBonuses = 0;
+  var totalPenalties = 0;
+  var questionsAnswered = 0;
+  var blockSize = 0;
+  var startTime = Date.now();
+  var elapsedInterval = null;
+
+  var balanceEl = document.getElementById('balance');
+  var pulseEl = document.getElementById('pulse');
+  var deltaContainer = document.getElementById('deltaContainer');
+  var bonusTotalEl = document.getElementById('bonusTotal');
+  var penaltyTotalEl = document.getElementById('penaltyTotal');
+  var netEl = document.getElementById('netDisplay');
+  var blockInfoEl = document.getElementById('blockInfo');
+  var elapsedEl = document.getElementById('elapsed');
+
+  // Read initial balance from URL params
+  var params = new URLSearchParams(window.location.search);
+  startBalance = parseInt(params.get('balance') || '0', 10);
+  currentBalance = startBalance;
+  blockSize = parseInt(params.get('blockSize') || '0', 10);
+  balanceEl.textContent = '$' + currentBalance.toLocaleString();
+  if (blockSize > 0) {
+    blockInfoEl.textContent = '0/' + blockSize + ' QUESTIONS';
+  }
+
+  // Elapsed timer
+  elapsedInterval = setInterval(function() {
+    var secs = Math.floor((Date.now() - startTime) / 1000);
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    elapsedEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }, 1000);
+
+  function updateDisplay() {
+    balanceEl.textContent = '$' + currentBalance.toLocaleString();
+    bonusTotalEl.textContent = '+$' + totalBonuses;
+    penaltyTotalEl.textContent = '-$' + totalPenalties;
+    var net = totalBonuses - totalPenalties;
+    if (net >= 0) {
+      netEl.textContent = '+$' + net;
+      netEl.style.color = '#00ff88';
+    } else {
+      netEl.textContent = '-$' + Math.abs(net);
+      netEl.style.color = '#ff6b6b';
+    }
+    if (blockSize > 0) {
+      blockInfoEl.textContent = questionsAnswered + '/' + blockSize + ' QUESTIONS';
+    }
+  }
+
+  function showDelta(amount, isBonus) {
+    // Float up animation
+    var d = document.createElement('div');
+    d.className = 'delta ' + (isBonus ? 'bonus' : 'penalty');
+    d.textContent = (isBonus ? '+' : '-') + '$' + amount;
+    deltaContainer.appendChild(d);
+    setTimeout(function() { d.remove(); }, 2000);
+
+    // Pulse ring
+    pulseEl.className = 'pulse-ring ' + (isBonus ? 'green' : 'red') + ' fire';
+    setTimeout(function() { pulseEl.className = 'pulse-ring'; }, 700);
+
+    // Flash balance color
+    balanceEl.classList.add(isBonus ? 'flash-green' : 'flash-red');
+    setTimeout(function() {
+      balanceEl.classList.remove('flash-green', 'flash-red');
+    }, 400);
+
+    // Sound
+    try {
+      var ctx = new AudioContext();
+      if (isBonus) {
+        // Quick ascending blip
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 660;
+        osc.frequency.linearRampToValueAtTime(880, ctx.currentTime + 0.1);
+        gain.gain.value = 0.1;
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+        osc.start(); osc.stop(ctx.currentTime + 0.25);
+      } else {
+        // Quick descending buzz
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 440;
+        osc.frequency.linearRampToValueAtTime(220, ctx.currentTime + 0.15);
+        gain.gain.value = 0.12;
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.start(); osc.stop(ctx.currentTime + 0.3);
+      }
+    } catch(_) {}
+  }
+
+  // Listen for messages from background.js
+  chrome.runtime.onMessage.addListener(function(msg) {
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'CKRB_TRACKER_PENALTY') {
+      var amt = msg.amount || 0;
+      totalPenalties += amt;
+      currentBalance -= amt;
+      showDelta(amt, false);
+      updateDisplay();
+
+    } else if (msg.type === 'CKRB_TRACKER_BONUS') {
+      var amt = msg.amount || 0;
+      totalBonuses += amt;
+      currentBalance += amt;
+      showDelta(amt, true);
+      updateDisplay();
+
+    } else if (msg.type === 'CKRB_TRACKER_QUESTION') {
+      questionsAnswered = msg.questionIndex || (questionsAnswered + 1);
+      updateDisplay();
+
+    } else if (msg.type === 'CKRB_TRACKER_COMPLETE') {
+      // Block finished — show final state
+      blockInfoEl.textContent = 'BLOCK COMPLETE!';
+      blockInfoEl.style.color = '#e879f9';
+      clearInterval(elapsedInterval);
+      // Auto-close after 8 seconds (celebration fires on popup)
+      setTimeout(function() { window.close(); }, 8000);
+    }
+  });
+})();
+</script>
+</body>
+</html>

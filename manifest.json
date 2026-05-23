@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Todo of the Loom",
-  "version": "3.23.390",
-  "description": "v3.23.390 - Redesign Block Out Time modal to match Sleep Time panel style",
+  "version": "3.23.409",
+  "description": "v3.23.409 - CK Buddy: direct state mutation for money persistence + before/after balance",
   "permissions": [
     "storage",
     "alarms",
@@ -27,5 +27,10 @@
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "externally_connectable": {
+    "ids": [
+      "eanjidgieollmmocppapogfkldkegdpi"
+    ]
   }
 }

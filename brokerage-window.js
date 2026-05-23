@@ -1438,6 +1438,24 @@
   // Wire deposit/withdraw
   document.getElementById('depositBtn').addEventListener('click', deposit);
   document.getElementById('withdrawBtn').addEventListener('click', withdraw);
+  // v3.23.391: Deposit ALL — one-click dumps entire wallet into brokerage
+  document.getElementById('depositAllBtn').addEventListener('click', function() {
+    freshState(function() {
+      var b = getB();
+      var amt = Math.floor(state.coins || 0);
+      if (amt < 1) {
+        SFX.lose();
+        showNews('Wallet is empty — nothing to deposit.');
+        return;
+      }
+      state.coins -= amt;
+      b.cash += amt;
+      b.totalDeposited += amt;
+      SFX.buy();
+      showNews('Deposited ALL $' + fmt(amt) + ' into brokerage.');
+      save(function() { renderWalletBar(); });
+    });
+  });
 
   // Back buttons (top + bottom)
   function _closeTab() {

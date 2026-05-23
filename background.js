@@ -630,6 +630,11 @@ chrome.storage.onChanged.addListener(function(changes, area) {
 // and applyPenaltyTimerPenalty now check timerState themselves, but we also
 // read storage here first to avoid even calling them unnecessarily.
 chrome.windows.onRemoved.addListener(function(windowId) {
+  // v3.23.408: Clear tracker window ID when closed
+  if (windowId === _ckrbTrackerWindowId) {
+    _ckrbTrackerWindowId = null;
+    console.log('[CK-BRIDGE] Tracker window closed.');
+  }
   // v3.23.280: Clear nag memory when window closes — but DON'T clear storage here.
   // During extension reload, Chrome closes our windows and onRemoved fires in the
   // dying service worker, which would wipe storage before the new SW can read it.
@@ -1921,6 +1926,182 @@ chrome.storage.onChanged.addListener(function(changes, area) {
       setupBedtimeAlarm();
     }
   }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CK Buddy Cross-Extension Bridge (v3.23.400 → v3.23.408)
+// ══════════════════════════════════════════════════════════════════
+// Receives messages from CK Buddy (Chrome Knowledge Review Buddy).
+// Deducts dollars on idle warnings, awards bonus on fast block completion.
+// Gated by state.ckBuddyEnabled toggle in settings.
+var CK_BUDDY_ID = 'eanjidgieollmmocppapogfkldkegdpi';
+var CKRB_IDLE_PENALTY = [0, 50, 100, 200];  // escalating per-block idle penalties
+var CKRB_COMPLETION_BONUS_FAST = 100;        // bonus for fast avg answer time
+var CKRB_COMPLETION_BONUS_OK = 25;           // bonus for reasonable avg time
+var CKRB_FAST_THRESHOLD_MS = 45000;          // <45s avg = fast
+var CKRB_OK_THRESHOLD_MS = 90000;            // <90s avg = ok
+var _ckrbIdleCount = 0;  // escalates within a block
+var _ckrbTrackerWindowId = null;  // v3.23.408: live Q-Bank balance tracker pop-out
+
+// v3.23.408: Helper to send message to tracker window
+function _sendToTracker(msg) {
+  if (!_ckrbTrackerWindowId) return;
+  chrome.runtime.sendMessage(msg).catch(function() {});
+}
+
+chrome.runtime.onMessageExternal.addListener(function(msg, sender, sendResponse) {
+  if (!sender || sender.id !== CK_BUDDY_ID) return;
+  if (!msg || !msg.type) return;
+
+  // v3.23.400: CKRB_PING — let CK Buddy check if bridge is enabled
+  if (msg.type === 'CKRB_PING') {
+    chrome.storage.local.get('pixelFocusState', function(result) {
+      var st = result.pixelFocusState || {};
+      sendResponse({ ok: true, enabled: !!st.ckBuddyEnabled, version: st.version || '?' });
+    });
+    return true;
+  }
+
+  chrome.storage.local.get('pixelFocusState', function(result) {
+    var state = result.pixelFocusState || {};
+    if (!state.ckBuddyEnabled) {
+      console.log('[CK-BRIDGE] Received ' + msg.type + ' but ckBuddyEnabled is off — ignoring');
+      sendResponse({ ok: false, enabled: false });
+      return;
+    }
+
+    var changed = false;
+
+    if (msg.type === 'CKRB_BLOCK_STARTED') {
+      // Reset idle escalation for new block
+      _ckrbIdleCount = 0;
+      console.log('[CK-BRIDGE] Block started: ' + (msg.blockSize || '?') + ' questions on ' + (msg.site || '?'));
+      // v3.23.408: Open live Q-Bank balance tracker
+      try {
+        var _trackerUrl = chrome.runtime.getURL('ckrb-tracker.html?balance=' + Math.floor(state.coins || 0) + '&blockSize=' + (msg.blockSize || 0));
+        // Close old tracker if still open
+        if (_ckrbTrackerWindowId) {
+          try { chrome.windows.remove(_ckrbTrackerWindowId); } catch(_) {}
+          _ckrbTrackerWindowId = null;
+        }
+        chrome.windows.create({
+          url: _trackerUrl,
+          type: 'popup', width: 280, height: 180, focused: false,
+          top: 60, left: Math.round((screen.availWidth || 1200) - 320)
+        }, function(w) {
+          if (w) _ckrbTrackerWindowId = w.id;
+          console.log('[CK-BRIDGE] Tracker window opened, id=' + (w ? w.id : 'null'));
+        });
+      } catch(e) { console.warn('[CK-BRIDGE] Failed to open tracker:', e); }
+
+    } else if (msg.type === 'CKRB_QUESTION_ANSWERED') {
+      // Reset idle count on each answer (they are actively working)
+      _ckrbIdleCount = 0;
+      console.log('[CK-BRIDGE] Q' + (msg.questionIndex || '?') + ' answered in ' + Math.round((msg.elapsedMs || 0) / 1000) + 's — ' + (msg.correct ? 'correct' : 'wrong'));
+      // v3.23.408: Forward question progress to tracker
+      _sendToTracker({ type: 'CKRB_TRACKER_QUESTION', questionIndex: msg.questionIndex || 0 });
+
+    } else if (msg.type === 'CKRB_IDLE_WARNING' || msg.type === 'CKRB_QUESTION_IDLE') {
+      // Deduct dollars — escalates with each consecutive idle warning
+      var tier = Math.min(_ckrbIdleCount, CKRB_IDLE_PENALTY.length - 1);
+      var penalty = CKRB_IDLE_PENALTY[tier];
+      _ckrbIdleCount++;
+      if (penalty > 0) {
+        state.coins = (state.coins || 0) - penalty;
+        if (state.coins < 0) state.coins = 0;
+        changed = true;
+        if (!state.ckBuddyPendingRewards) state.ckBuddyPendingRewards = [];
+        state.ckBuddyPendingRewards.push({ type: 'penalty', amount: penalty, reason: 'Idle ' + Math.round((msg.idleMs || 0) / 1000) + 's between answers', ts: Date.now() });
+        console.log('[CK-BRIDGE] IDLE penalty -$' + penalty + ' (idle ' + Math.round((msg.idleMs || 0) / 1000) + 's, tier ' + tier + ')');
+        // Send notification to popup if open
+        chrome.runtime.sendMessage({ type: 'CKRB_PENALTY', amount: penalty, reason: 'Q-bank idle (' + Math.round((msg.idleMs || 0) / 1000) + 's)' }).catch(function() {});
+        // v3.23.408: Forward penalty to tracker
+        _sendToTracker({ type: 'CKRB_TRACKER_PENALTY', amount: penalty });
+        // OS-level notification — visible no matter what tab/window is focused
+        try {
+          chrome.notifications.create('ckrb-penalty-' + Date.now(), {
+            type: 'basic',
+            iconUrl: 'icons/icon128.png',
+            title: 'Todo of the Loom — Q-Bank Penalty!',
+            message: '-$' + penalty + ' for taking too long between answers (' + Math.round((msg.idleMs || 0) / 1000) + 's idle).',
+            priority: 2
+          });
+        } catch (_) {}
+        // Pop-out alert window
+        try {
+          var _penReason = encodeURIComponent('Idle ' + Math.round((msg.idleMs || 0) / 1000) + 's between answers (tier ' + tier + ')');
+          chrome.windows.create({
+            url: 'ckrb-alert.html?type=penalty&amount=' + penalty + '&reason=' + _penReason + '&autoclose=6',
+            type: 'popup', width: 360, height: 280, focused: true,
+            top: 60, left: Math.round((screen.availWidth || 1200) - 400)
+          });
+        } catch (_) {}
+      }
+
+    } else if (msg.type === 'CKRB_BLOCK_COMPLETED') {
+      // Award bonus based on average answer speed
+      var total = msg.totalQuestions || 1;
+      var totalMs = msg.totalMs || msg.totalTimeMs || 0;  // CK Buddy sends totalMs
+      var avgMs = totalMs / total;
+      var bonus = 0;
+      if (avgMs <= CKRB_FAST_THRESHOLD_MS) {
+        bonus = CKRB_COMPLETION_BONUS_FAST;
+      } else if (avgMs <= CKRB_OK_THRESHOLD_MS) {
+        bonus = CKRB_COMPLETION_BONUS_OK;
+      }
+      // Award coins if bonus earned
+      if (bonus > 0) {
+        state.coins = (state.coins || 0) + bonus;
+        state.lifetimeCoins = (state.lifetimeCoins || 0) + bonus;
+        state.coinsEarnedToday = (state.coinsEarnedToday || 0) + bonus;
+      }
+      // ALWAYS queue for celebration on popup return — even if $0 bonus
+      changed = true;
+      if (!state.ckBuddyPendingRewards) state.ckBuddyPendingRewards = [];
+      var _rewardType = bonus > 0 ? 'bonus' : 'complete';
+      state.ckBuddyPendingRewards.push({ type: _rewardType, amount: bonus, reason: (msg.correctCount || 0) + '/' + total + ' correct, avg ' + Math.round(avgMs / 1000) + 's/q', ts: Date.now() });
+      console.log('[CK-BRIDGE] Block complete! ' + (msg.correctCount || 0) + '/' + total + ' correct, avg ' + Math.round(avgMs / 1000) + 's — ' + (bonus > 0 ? '+$' + bonus + ' bonus' : 'no speed bonus'));
+      chrome.runtime.sendMessage({ type: 'CKRB_BONUS', amount: bonus, reason: 'Q-bank block (' + (msg.correctCount || 0) + '/' + total + ', avg ' + Math.round(avgMs / 1000) + 's)' }).catch(function() {});
+      // v3.23.408: Forward bonus + complete to tracker
+      if (bonus > 0) _sendToTracker({ type: 'CKRB_TRACKER_BONUS', amount: bonus });
+      _sendToTracker({ type: 'CKRB_TRACKER_COMPLETE' });
+      // OS-level notification — ALWAYS visible no matter what tab/window is focused
+      try {
+        var _notifTitle = bonus > 0 ? 'Todo of the Loom — Q-Bank Bonus!' : 'Todo of the Loom — Q-Bank Complete';
+        var _notifMsg = bonus > 0
+          ? '+$' + bonus + ' for finishing block! ' + (msg.correctCount || 0) + '/' + total + ' correct, avg ' + Math.round(avgMs / 1000) + 's per question.'
+          : 'Block finished! ' + (msg.correctCount || 0) + '/' + total + ' correct, avg ' + Math.round(avgMs / 1000) + 's per question.';
+        chrome.notifications.create('ckrb-bonus-' + Date.now(), {
+          type: 'basic',
+          iconUrl: 'icons/icon128.png',
+          title: _notifTitle,
+          message: _notifMsg,
+          priority: 2
+        });
+      } catch (_) {}
+      // ALWAYS open Loom popup tab — creates tangible connection between extensions
+      try { openPixelFocusWindow('popup.html'); } catch (_) {}
+      // Pop-out alert window if bonus earned
+      if (bonus > 0) {
+        try {
+          var _bonReason = encodeURIComponent((msg.correctCount || 0) + '/' + total + ' correct, avg ' + Math.round(avgMs / 1000) + 's/question.');
+          chrome.windows.create({
+            url: 'ckrb-alert.html?type=bonus&amount=' + bonus + '&reason=' + _bonReason + '&autoclose=6',
+            type: 'popup', width: 360, height: 280, focused: true,
+            top: 60, left: Math.round((screen.availWidth || 1200) - 400)
+          });
+        } catch (_) {}
+      }
+      _ckrbIdleCount = 0;
+    }
+
+    if (changed) {
+      chrome.storage.local.set({ pixelFocusState: state });
+    }
+  });
+
+  sendResponse({ ok: true });
+  return true;  // async response
 });
 
 // Wire into browser events that wake the service worker

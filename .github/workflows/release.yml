@@ -72,12 +72,14 @@ jobs:
                    penalty-timer.html penalty-timer.js \
                    bureau.html bureau.js bureau-window.js \
                    challenge.html challenge-window.js \
+                   ckrb-alert.html ckrb-tracker.html \
                    timeline.html timeline-window.js \
                    preview-daily-tasks.html preview-profile.html \
                    resize-icon.html \
                    badges.html badges-window.js \
                    bedtime-reminder.html bedtime-window.js \
                    block-alert.html \
+                   block-alert-window.js \
                    brokerage.html brokerage-window.js \
                    market-engine.js market-events.js \
                    morning-checkin.html morning-checkin-window.js \
