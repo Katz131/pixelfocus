@@ -73,6 +73,7 @@ jobs:
                    bureau.html bureau.js bureau-window.js \
                    challenge.html challenge-window.js \
                    ckrb-alert.html ckrb-tracker.html \
+                   about-the-loom.html \
                    timeline.html timeline-window.js \
                    preview-daily-tasks.html preview-profile.html \
                    resize-icon.html \

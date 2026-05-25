@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v1.1 - Main Application Logic
+// PixelFocus v3.23.437 - Main Application Logic
 try {
 (() => {
   // ============== MILESTONE COLOR UNLOCKS ==============
@@ -733,6 +733,23 @@ try {
     coinsFromLoomSales: 0,
     // v3.21.34: Do Now tracking
     doNowTask: null, // { taskId, text, startMs, durationMin, endMs } or null
+
+    // v3.23.414: Phase mode
+    phaseModeEnabled: false,         // toggle state
+    phases: [],                      // [{ name, durationSec, color }]
+    currentPhaseIndex: -1,           // -1 = not in phased session
+    phaseStartedAt: 0,               // epoch ms when current phase started
+    phaseTransitioning: false,       // true during 60s transition
+    phaseTransitionEndsAt: 0,        // epoch ms
+    phaseTtsAnnounced: {},           // { '120': true, '30': true, '10': true } per phase
+    phaseTimeBonus: {},              // v3.23.436: { phaseIndex: bonusSec } — extra time from done-early redistribution
+    phaseSandboxSec: 0,             // v3.23.436: accumulated sandbox time (added as final phase)
+    phaseEarlyDoneCount: 0,         // v3.23.436: how many phases finished early this session
+    phaseHistory: [],                  // past phase names for autocomplete memory
+    taskTags: {},                        // v3.23.427: { 'tagName': ['task1', 'task2', ...] }
+    tagBundles: [],                      // v3.23.427: [{ id, name, tasks: [{name, durationSec}] }]
+    phaseTtsMuted: false,              // v3.23.427: mute TTS voice (banners still show)
+
     taskDurations: {}, // { 'normalized task text': minutes } — remembered for recurring
     // v3.21.31: Time format
     use24Hour: false,
@@ -1120,6 +1137,7 @@ try {
   // a beat to shift their eyes, grab their drink, close other tabs, etc.
   let countdownInterval = null;
   let countdownRemaining = 0;
+  let _countdownCancelled = false;
   const COUNTDOWN_SECONDS = 15;
 
   // ============== ROTATING TAB DISPLAY ORDER ==============
@@ -1345,6 +1363,9 @@ try {
         var _prevLifetimeSessions = state.lifetimeSessions;
         var _prevDailySessionLog = state.dailySessionLog;
         var _prevSessionDistractions = state.sessionDistractions;
+        // v3.23.435: Preserve phase TTS announced flags — without this, onChanged clobbers
+        // the announced object back to {} causing TTS warnings to repeat ~5 times
+        var _prevPhaseTtsAnnounced = state.phaseTtsAnnounced;
         var _prevQuestChosen = state.questChosen;
         var _prevQuestCompleted = state.questCompleted;
         // v3.23.374: Preserve challenge tracking — prevent onChanged from reverting mid-chain
@@ -1366,6 +1387,10 @@ try {
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
+          // v3.23.435: Restore phase TTS flags to prevent repeat announcements
+          if (_prevPhaseTtsAnnounced && Object.keys(_prevPhaseTtsAnnounced).length > 0) {
+            state.phaseTtsAnnounced = _prevPhaseTtsAnnounced;
+          }
         }
         // Always preserve higher combo/session values — these only go up during a day
         if ((_prevCombo || 0) > (state.combo || 0)) state.combo = _prevCombo;
@@ -5112,6 +5137,7 @@ try {
     save();
     renderTimer();
     renderFocusTimeline(); // v3.23.6: update preview
+    if (typeof onSessionDurationChangeForPhases === 'function') onSessionDurationChangeForPhases(); // v3.23.414: rebalance phases
     try {
       if (typeof MsgLog !== 'undefined') {
         var label = (sec / 60) + '-minute';
@@ -6502,6 +6528,7 @@ try {
       countdownInterval = null;
     }
     countdownRemaining = 0;
+    _countdownCancelled = true;
   }
 
   // Start (or restart) the 1 Hz timer tick that reads state.timerEndsAt and
@@ -6519,6 +6546,582 @@ try {
   // sound repeatedly and calling showFocusConfirmation multiple times.
   var _sessionCompletionFired = false;
 
+
+  // ═══════════════════════════════════════════════════════════════
+  // v3.23.414: PHASE MODE — tick logic, progress bar, transitions, TTS
+  // ═══════════════════════════════════════════════════════════════
+  // v3.23.433: CRITICAL — these must be at IIFE scope, not inside init().
+  // getPhaseBoundaries() and tickPhaseMode() run at this scope level.
+  // Previously declared inside init() → undefined here → NaN boundaries → nothing worked.
+  var PHASE_TRANSITION_SEC = 60;  // seconds of transition time between phases
+  var PHASE_MIN_SEC = 60;         // minimum phase duration
+  var PHASE_TTS_LINES = {
+    warn120: [
+      'Worker, 2 minutes remain on your assigned quota.',
+      'The floor manager notes you have 2 minutes left at this station.',
+      'Attention: 2 minutes until mandatory station rotation.',
+    ],
+    warn30: [
+      '30 seconds. Prepare to vacate your station.',
+      'Final 30 seconds. Begin wrapping up your current output.',
+      '30 seconds remain. The transition bell approaches.',
+    ],
+    warn10: [
+      '10 seconds. Tools down.',
+      '10 seconds. Cease all operations at this station.',
+      'Final countdown. 10 seconds.',
+    ],
+    transition: function(nextName) {
+      var lines = [
+        'Report to next station: ' + nextName + '. You have 60 seconds to comply.',
+        'Station change. Proceed to: ' + nextName + '. 60 seconds.',
+        'Mandatory rotation. Your next assignment: ' + nextName + '.',
+      ];
+      return lines[Math.floor(Math.random() * lines.length)];
+    },
+    start: function(name) {
+      var lines = [
+        'Station assigned: ' + name + '. Begin your work.',
+        'First assignment: ' + name + '. The loom is watching.',
+        'Report to your station: ' + name + '. Production begins now.',
+      ];
+      return lines[Math.floor(Math.random() * lines.length)];
+    },
+    final: [
+      'All stations complete. Prepare for final inspection.',
+      'Final phase complete. The loom awaits your output.',
+    ]
+  };
+
+  function speakPhaseAnnouncement(text) {
+    console.log('[PHASE-DBG-TTS] Speaking: ' + (typeof arguments[0] === 'string' ? arguments[0] : JSON.stringify(arguments[0])));
+    try {
+      // v3.23.423: Show text on screen as a banner
+      _showTtsBanner(text);
+      if (state.phaseTtsMuted) return; // muted — banner only
+      if (!window.speechSynthesis) return;
+      var utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 0.9;
+      utter.pitch = 1.0;  // v3.23.423: raised from 0.8 for clarity
+      utter.volume = 0.85;
+      // Pick a clear voice — prefer natural-sounding ones
+      var voices = window.speechSynthesis.getVoices();
+      var preferred = voices.find(function(v) { return v.name.indexOf('Daniel') !== -1 || v.name.indexOf('David') !== -1 || v.name.indexOf('Male') !== -1; });
+      if (preferred) utter.voice = preferred;
+      window.speechSynthesis.cancel(); // cancel any prior
+      window.speechSynthesis.speak(utter);
+    } catch(e) { console.warn('[PhaseMode] TTS error:', e); }
+  }
+
+  // v3.23.423: On-screen text banner for TTS announcements
+  function _showTtsBanner(text) {
+    try {
+      var existing = document.getElementById('ttsBanner');
+      if (existing) existing.remove();
+      var banner = document.createElement('div');
+      banner.id = 'ttsBanner';
+      banner.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(10,10,18,0.92);border:1px solid rgba(78,205,196,0.5);border-radius:8px;padding:12px 24px;font-family:inherit;font-size:13px;color:#4ECDC4;letter-spacing:0.5px;text-align:center;max-width:80%;box-shadow:0 4px 20px rgba(0,0,0,0.5);animation:ttsBannerIn 0.3s ease-out;pointer-events:none;';
+      banner.textContent = text;
+      document.body.appendChild(banner);
+      // Add animation keyframes if not present
+      if (!document.getElementById('ttsBannerStyle')) {
+        var style = document.createElement('style');
+        style.id = 'ttsBannerStyle';
+        style.textContent = '@keyframes ttsBannerIn{from{opacity:0;transform:translateX(-50%) translateY(-10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}} @keyframes ttsBannerOut{from{opacity:1;}to{opacity:0;}}';
+        document.head.appendChild(style);
+      }
+      setTimeout(function() {
+        banner.style.animation = 'ttsBannerOut 0.5s ease-in forwards';
+        setTimeout(function() { banner.remove(); }, 600);
+      }, 4000);
+    } catch(e) {}
+  }
+
+  function getPhaseElapsedSec() {
+    if (!state.phases || state.phases.length === 0) return 0;
+    var sessionElapsed = ((state.sessionDurationSec || 600) - (state.timerRemaining || 0));
+    return sessionElapsed;
+  }
+
+  // Debug helper — log full phase layout once on session start
+  var _phaseLayoutLogged = false;
+  function _logPhaseLayout() {
+    if (_phaseLayoutLogged) return;
+    _phaseLayoutLogged = true;
+    var bounds = getPhaseBoundaries();
+    var phases = state.phases || [];
+    console.log('[PHASE-DBG] === SESSION PHASE LAYOUT ===');
+    console.log('[PHASE-DBG] sessionDurationSec=' + state.sessionDurationSec + ' phases=' + phases.length + ' PHASE_TRANSITION_SEC=' + PHASE_TRANSITION_SEC);
+    for (var pi = 0; pi < bounds.length; pi++) {
+      var pb = bounds[pi];
+      console.log('[PHASE-DBG] Phase ' + pi + ' "' + phases[pi].name + '": origDur=' + phases[pi].durationSec + ' effectiveDur=' + (pb.effectiveDurationSec || '?') + 's start=' + pb.startSec + ' end=' + pb.endSec + ' transStart=' + pb.transStartSec + ' transEnd=' + pb.transEndSec);
+    }
+    var lastB = bounds[bounds.length - 1];
+    console.log('[PHASE-DBG] Total boundary coverage: ' + (lastB ? lastB.transEndSec : 0) + 's vs session ' + state.sessionDurationSec + 's');
+    // Check if boundaries exceed session — this would be the bug
+    if (lastB && lastB.transEndSec > state.sessionDurationSec) {
+      console.error('[PHASE-DBG] !!! BOUNDARIES EXCEED SESSION !!! boundary=' + lastB.transEndSec + ' > session=' + state.sessionDurationSec + ' — transitions consume ' + (lastB.transEndSec - state.sessionDurationSec) + 's MORE than session allows. Phase transitions will NEVER be reached if elapsed maxes out at sessionDurationSec!');
+    }
+  }
+
+
+  function getPhaseBoundaries() {
+    // v3.23.432: Returns array of { startSec, endSec, transStartSec, transEndSec, effectiveDurationSec }
+    // CRITICAL FIX: Transition time is now budgeted WITHIN sessionDurationSec.
+    // Previously transitions were added ON TOP, causing boundaries to exceed the session
+    // and later phases/transitions to be unreachable by elapsed time.
+    var phases = state.phases || [];
+    var boundaries = [];
+    if (phases.length === 0) return boundaries;
+    var sessionSec = state.sessionDurationSec || 600;
+    var numTrans = Math.max(0, phases.length - 1);
+    // Cap transition time so it never exceeds half the session
+    var effectiveTransSec = PHASE_TRANSITION_SEC;
+    var totalTransTime = numTrans * effectiveTransSec;
+    if (totalTransTime >= sessionSec * 0.5 && numTrans > 0) {
+      effectiveTransSec = Math.max(5, Math.floor((sessionSec * 0.4) / numTrans));
+      totalTransTime = numTrans * effectiveTransSec;
+    }
+    var availableForPhases = sessionSec - totalTransTime;
+    var totalPhaseDur = 0;
+    for (var i = 0; i < phases.length; i++) totalPhaseDur += (phases[i].durationSec || 60);
+    var scale = totalPhaseDur > 0 ? (availableForPhases / totalPhaseDur) : 1;
+    var cursor = 0;
+    var allocated = 0;
+    for (var i = 0; i < phases.length; i++) {
+      var effectiveDur;
+      if (i === phases.length - 1) {
+        // Last phase gets whatever remains to avoid rounding drift
+        effectiveDur = availableForPhases - allocated;
+      } else {
+        effectiveDur = Math.max(30, Math.round((phases[i].durationSec || 60) * scale));
+        allocated += effectiveDur;
+      }
+      var start = cursor;
+      var end = cursor + effectiveDur;
+      var transStart = end;
+      var transEnd = (i < phases.length - 1) ? end + effectiveTransSec : end;
+      boundaries.push({ startSec: start, endSec: end, transStartSec: transStart, transEndSec: transEnd, effectiveDurationSec: effectiveDur });
+      cursor = transEnd;
+    }
+    console.log('[PHASE-DBG] getPhaseBoundaries: session=' + sessionSec + ' totalTrans=' + totalTransTime + ' availPhases=' + availableForPhases + ' scale=' + scale.toFixed(3) + ' lastBoundEnd=' + (boundaries.length > 0 ? boundaries[boundaries.length - 1].transEndSec : 0));
+    return boundaries;
+  }
+
+  function tickPhaseMode(timerRemaining) {
+    var phases = state.phases;
+    if (!phases || phases.length === 0 || state.currentPhaseIndex < 0) {
+      console.log('[PHASE-DBG] tickPhaseMode SKIPPED: phases=' + (phases ? phases.length : 'null') + ' idx=' + state.currentPhaseIndex);
+      return;
+    }
+
+    var elapsed = getPhaseElapsedSec();
+    var bounds = getPhaseBoundaries();
+    var idx = state.currentPhaseIndex;
+    var b = bounds[idx];
+    if (!b) { console.log('[PHASE-DBG] NO BOUNDS for idx=' + idx + ' bounds.length=' + bounds.length); return; }
+
+    var phaseElapsed = elapsed - b.startSec;
+    var phaseRemaining = b.endSec - elapsed;
+
+    // Debug: log every 5 seconds
+    if (Math.floor(elapsed) % 5 === 0) {
+      console.log('[PHASE-DBG] idx=' + idx + '/' + phases.length + ' elapsed=' + elapsed + ' phaseName=' + phases[idx].name + ' phaseRem=' + phaseRemaining + ' transStart=' + b.transStartSec + ' transEnd=' + b.transEndSec + ' transitioning=' + state.phaseTransitioning);
+    }
+
+    // Check if we're in transition zone
+    if (elapsed >= b.transStartSec && idx < phases.length - 1) {
+      if (!state.phaseTransitioning) {
+        // Enter transition
+        state.phaseTransitioning = true;
+        state.phaseTransitionEndsAt = Date.now() + (PHASE_TRANSITION_SEC * 1000);
+        // TTS: announce transition
+        var nextName = phases[idx + 1] ? phases[idx + 1].name : 'next station';
+        console.log('[PHASE-DBG] >>> ENTERING TRANSITION at elapsed=' + elapsed + ' nextPhase=' + nextName);
+        speakPhaseAnnouncement(PHASE_TTS_LINES.transition(nextName));
+        save();
+      }
+      // Render transition overlay
+      renderPhaseTransition();
+
+      // Check if transition period is over
+      if (elapsed >= b.transEndSec) {
+        // Move to next phase
+        console.log('[PHASE-DBG] >>> ADVANCING TO PHASE ' + (idx + 1) + ' (' + (phases[idx+1] ? phases[idx+1].name : '???') + ') at elapsed=' + elapsed);
+        state.currentPhaseIndex = idx + 1;
+        state.phaseStartedAt = Date.now();
+        state.phaseTransitioning = false;
+        state.phaseTransitionEndsAt = 0;
+        state.phaseTtsAnnounced = {};
+        // v3.23.424: Announce the new phase starting
+        try {
+          var newPhaseName = phases[idx + 1] ? phases[idx + 1].name : 'next station';
+          speakPhaseAnnouncement(PHASE_TTS_LINES.start(newPhaseName));
+        } catch(_) {}
+        var pto = document.getElementById('phaseTransitionOverlay');
+        if (pto) pto.style.display = 'none';
+        save();
+      }
+    } else {
+      // Normal phase running — check TTS warnings
+      // v3.23.424: Widened windows from 1s to 5s so throttled ticks can't miss them
+      var announced = state.phaseTtsAnnounced || {};
+      if (phaseRemaining <= 125 && phaseRemaining > 110) {
+        console.log('[PHASE-DBG-WARN] 2min window: phaseRem=' + phaseRemaining + ' announced120=' + !!announced['120']);
+      }
+      if (phaseRemaining <= 35 && phaseRemaining > 20) {
+        console.log('[PHASE-DBG-WARN] 30s window: phaseRem=' + phaseRemaining + ' announced30=' + !!announced['30']);
+      }
+      if (phaseRemaining <= 15 && phaseRemaining > 0) {
+        console.log('[PHASE-DBG-WARN] 10s window: phaseRem=' + phaseRemaining + ' announced10=' + !!announced['10']);
+      }
+      if (phaseRemaining <= 120 && phaseRemaining > 115 && !announced['120']) {
+        var lines120 = PHASE_TTS_LINES.warn120;
+        speakPhaseAnnouncement(lines120[Math.floor(Math.random() * lines120.length)]);
+        announced['120'] = true;
+        state.phaseTtsAnnounced = announced;
+      }
+      if (phaseRemaining <= 30 && phaseRemaining > 25 && !announced['30']) {
+        var lines30 = PHASE_TTS_LINES.warn30;
+        speakPhaseAnnouncement(lines30[Math.floor(Math.random() * lines30.length)]);
+        announced['30'] = true;
+        state.phaseTtsAnnounced = announced;
+      }
+      if (phaseRemaining <= 10 && phaseRemaining > 5 && !announced['10']) {
+        var lines10 = PHASE_TTS_LINES.warn10;
+        speakPhaseAnnouncement(lines10[Math.floor(Math.random() * lines10.length)]);
+        announced['10'] = true;
+        state.phaseTtsAnnounced = announced;
+      }
+      // Hide transition overlay if visible
+      var pto2 = document.getElementById('phaseTransitionOverlay');
+      if (pto2) pto2.style.display = 'none';
+    }
+
+    // Render phase progress bar
+    renderPhaseProgressBar(elapsed, bounds);
+    // v3.23.427: Update phase overview bar to highlight active phase
+    _updatePhaseBarHighlight();
+    // v3.23.436: Show/hide done-early button
+    _updateDoneEarlyButton();
+  }
+
+  // v3.23.436: ═══════ DONE EARLY — finish current phase, redistribute leftover time ═══════
+  function completePhaseEarly() {
+    if (state.timerState !== 'running') return;
+    if (!state.phaseModeEnabled || !state.phases || state.phases.length === 0) return;
+    if (state.phaseTransitioning) return; // already transitioning
+    var idx = state.currentPhaseIndex;
+    if (idx < 0 || idx >= state.phases.length) return;
+
+    var elapsed = getPhaseElapsedSec();
+    var bounds = getPhaseBoundaries();
+    var b = bounds[idx];
+    if (!b) return;
+
+    var phaseRemaining = Math.max(0, Math.floor(b.endSec - elapsed));
+    if (phaseRemaining < 5) {
+      // Less than 5 seconds left — just let it transition naturally
+      notify('Almost done — let it finish!', 'var(--warning)');
+      return;
+    }
+
+    console.log('[PHASE-EARLY] Phase ' + idx + ' (' + state.phases[idx].name + ') done early with ' + phaseRemaining + 's remaining');
+    
+    // TTS announcement
+    speakPhaseAnnouncement('Task complete. ' + phaseRemaining + ' seconds reclaimed.');
+
+    // Show the redistribution picker
+    _showEarlyDonePicker(phaseRemaining, idx);
+  }
+
+  function _showEarlyDonePicker(bonusSec, fromIdx) {
+    // Remove any existing picker
+    var existing = document.getElementById('earlyDonePicker');
+    if (existing) existing.remove();
+
+    var phases = state.phases || [];
+    var overlay = document.createElement('div');
+    overlay.id = 'earlyDonePicker';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(6,6,18,0.92);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease-out;';
+
+    var card = document.createElement('div');
+    card.style.cssText = 'background:linear-gradient(180deg,#12121e,#0a0a14);border:2px solid var(--accent3,#4ecdc4);border-radius:16px;padding:20px 24px;max-width:360px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.6);';
+
+    // Header
+    var header = document.createElement('div');
+    header.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:10px;color:#ffd700;margin-bottom:4px;letter-spacing:1px;';
+    header.textContent = '\u2713 TASK COMPLETE';
+    card.appendChild(header);
+
+    var sub = document.createElement('div');
+    sub.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#aaa;margin-bottom:14px;';
+    var bm = Math.floor(bonusSec / 60);
+    var bs = bonusSec % 60;
+    sub.textContent = bm + 'm ' + bs + 's reclaimed — where should it go?';
+    card.appendChild(sub);
+
+    var btnContainer = document.createElement('div');
+    btnContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+
+    // Buttons for each remaining phase (after fromIdx)
+    for (var i = fromIdx + 1; i < phases.length; i++) {
+      (function(targetIdx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        var pName = phases[targetIdx].name;
+        var truncName = pName.length > 25 ? pName.substring(0, 23) + '..' : pName;
+        btn.innerHTML = '\u27A1 <span style="color:#fff;">' + truncName.replace(/</g, '&lt;') + '</span>';
+        btn.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:' + (phases[targetIdx].color || '#4ecdc4') + ';background:rgba(255,255,255,0.05);border:1px solid ' + (phases[targetIdx].color || '#4ecdc4') + ';border-bottom:3px solid rgba(0,0,0,0.3);border-radius:8px;padding:10px 14px;cursor:pointer;text-align:left;transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);';
+        btn.title = 'Add ' + bm + 'm ' + bs + 's to: ' + pName;
+        btn.addEventListener('mouseenter', function() { this.style.transform='translateY(-2px)'; this.style.background='rgba(255,255,255,0.1)'; });
+        btn.addEventListener('mouseleave', function() { this.style.transform=''; this.style.background='rgba(255,255,255,0.05)'; });
+        btn.addEventListener('click', function() {
+          _applyEarlyDoneRedistribution(bonusSec, fromIdx, targetIdx);
+          overlay.remove();
+        });
+        btnContainer.appendChild(btn);
+      })(i);
+    }
+
+    // Sandbox button (always last)
+    var sandboxBtn = document.createElement('button');
+    sandboxBtn.type = 'button';
+    sandboxBtn.id = 'phaseSandboxBtn';
+    sandboxBtn.innerHTML = '\u23F3 <span style="color:#fff;">SANDBOX (free time)</span>';
+    sandboxBtn.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:8px;color:#ffd700;background:rgba(255,215,0,0.08);border:1px solid #ffd700;border-bottom:3px solid rgba(0,0,0,0.3);border-radius:8px;padding:10px 14px;cursor:pointer;text-align:left;transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);margin-top:4px;';
+    sandboxBtn.title = 'Pool ' + bm + 'm ' + bs + 's into a free sandbox phase at the end of your session';
+    sandboxBtn.addEventListener('mouseenter', function() { this.style.transform='translateY(-2px)'; this.style.background='rgba(255,215,0,0.15)'; });
+    sandboxBtn.addEventListener('mouseleave', function() { this.style.transform=''; this.style.background='rgba(255,215,0,0.08)'; });
+    sandboxBtn.addEventListener('click', function() {
+      _applyEarlyDoneRedistribution(bonusSec, fromIdx, -1); // -1 = sandbox
+      overlay.remove();
+    });
+    btnContainer.appendChild(sandboxBtn);
+
+    card.appendChild(btnContainer);
+
+    // Cancel button
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'CANCEL';
+    cancelBtn.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#666;background:transparent;border:none;padding:8px;cursor:pointer;margin-top:10px;';
+    cancelBtn.title = 'Keep working on this task for the remaining time';
+    cancelBtn.addEventListener('click', function() { overlay.remove(); });
+    card.appendChild(cancelBtn);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+  }
+
+  function _applyEarlyDoneRedistribution(bonusSec, fromIdx, targetIdx) {
+    // targetIdx = -1 means sandbox, otherwise = specific phase index
+    var phases = state.phases;
+    
+    if (targetIdx === -1) {
+      // Add to sandbox
+      state.phaseSandboxSec = (state.phaseSandboxSec || 0) + bonusSec;
+      console.log('[PHASE-EARLY] +' + bonusSec + 's to sandbox (total: ' + state.phaseSandboxSec + 's)');
+      
+      // Create or update sandbox phase at end if not already there
+      var lastPhase = phases[phases.length - 1];
+      if (lastPhase && lastPhase._isSandbox) {
+        // Update existing sandbox duration
+        lastPhase.durationSec += bonusSec;
+      } else {
+        // Create new sandbox phase
+        phases.push({
+          name: 'Sandbox',
+          durationSec: bonusSec,
+          color: '#ffd700',
+          _isSandbox: true
+        });
+      }
+      notify('+' + Math.floor(bonusSec / 60) + 'm ' + (bonusSec % 60) + 's added to Sandbox!', '#ffd700');
+    } else {
+      // Add to specific phase
+      var bonus = state.phaseTimeBonus || {};
+      bonus[targetIdx] = (bonus[targetIdx] || 0) + bonusSec;
+      state.phaseTimeBonus = bonus;
+      phases[targetIdx].durationSec += bonusSec;
+      console.log('[PHASE-EARLY] +' + bonusSec + 's to phase ' + targetIdx + ' (' + phases[targetIdx].name + ')');
+      notify('+' + Math.floor(bonusSec / 60) + 'm ' + (bonusSec % 60) + 's added to ' + phases[targetIdx].name + '!', phases[targetIdx].color || '#4ecdc4');
+    }
+
+    // Truncate current phase: reduce its duration so it ends NOW
+    var elapsed = getPhaseElapsedSec();
+    var bounds = getPhaseBoundaries();
+    var b = bounds[fromIdx];
+    if (b) {
+      var actualUsed = Math.max(30, Math.ceil(elapsed - b.startSec));
+      phases[fromIdx].durationSec = actualUsed;
+    }
+
+    state.phaseEarlyDoneCount = (state.phaseEarlyDoneCount || 0) + 1;
+    state.phaseTtsAnnounced = {};
+
+    // Now trigger transition to next phase
+    if (fromIdx < phases.length - 1) {
+      state.phaseTransitioning = true;
+      state.phaseTransitionEndsAt = Date.now() + (PHASE_TRANSITION_SEC * 1000);
+      var nextName = phases[fromIdx + 1] ? phases[fromIdx + 1].name : 'next';
+      speakPhaseAnnouncement(PHASE_TTS_LINES.transition(nextName));
+    } else {
+      // Was the last phase — session continues with remaining overall time
+      // but phase mode effectively ends
+      state.currentPhaseIndex = phases.length; // past the end
+    }
+
+    save();
+  }
+
+  // v3.23.436: Show/hide the DONE EARLY button on main popup
+  function _updateDoneEarlyButton() {
+    var btn = document.getElementById('phaseEarlyDoneBtn');
+    if (!btn) return;
+    var show = state.phaseModeEnabled && state.timerState === 'running' && 
+               state.currentPhaseIndex >= 0 && !state.phaseTransitioning &&
+               state.phases && state.currentPhaseIndex < state.phases.length;
+    btn.style.display = show ? 'inline-block' : 'none';
+  }
+
+  function skipPhaseTransition() {
+    if (!state.phaseTransitioning) return;
+    var phases = state.phases;
+    var idx = state.currentPhaseIndex;
+    if (idx >= phases.length - 1) return;
+    // Advance to next phase immediately
+    state.currentPhaseIndex = idx + 1;
+    state.phaseStartedAt = Date.now();
+    state.phaseTransitioning = false;
+    state.phaseTransitionEndsAt = 0;
+    state.phaseTtsAnnounced = {};
+    var pto = document.getElementById('phaseTransitionOverlay');
+    if (pto) pto.style.display = 'none';
+    // Recalculate timerEndsAt to skip remaining transition time
+    // (transition counts as session time, so we don't adjust timerEndsAt)
+    save();
+  }
+
+  function renderPhaseTransition() {
+    var overlay = document.getElementById('phaseTransitionOverlay');
+    var timerEl = document.getElementById('phaseTransitionTimer');
+    var nextEl = document.getElementById('phaseTransitionNext');
+    if (!overlay) { console.warn('[PHASE-DBG-TRANS] phaseTransitionOverlay NOT FOUND in DOM!'); return; }
+    overlay.style.display = 'block';
+    var remaining = Math.max(0, Math.ceil((state.phaseTransitionEndsAt - Date.now()) / 1000));
+    if (timerEl) timerEl.textContent = '0:' + (remaining < 10 ? '0' : '') + remaining;
+    var nextPhase = (state.phases || [])[state.currentPhaseIndex + 1];
+    if (nextEl && nextPhase) {
+      nextEl.innerHTML = 'Report to next station: <strong>' + (nextPhase.name || '').replace(/</g, '&lt;') + '</strong>';
+    }
+  }
+
+  // v3.23.432: Lightweight updater for the phase overview bar during running sessions
+  // Uses CSS classes (seg-active, seg-done, seg-transition) so CSS animations work
+  function _updatePhaseBarHighlight() {
+    var bar = document.getElementById('phaseBar');
+    if (!bar) return;
+    var segs = bar.querySelectorAll('.phase-bar-seg');
+    for (var i = 0; i < segs.length; i++) {
+      var isActive = (state.currentPhaseIndex === i && !state.phaseTransitioning);
+      var isDone = (state.currentPhaseIndex > i);
+      var isTrans = (state.currentPhaseIndex === i && state.phaseTransitioning);
+      segs[i].classList.toggle('seg-active', isActive);
+      segs[i].classList.toggle('seg-done', isDone);
+      segs[i].classList.toggle('seg-transition', isTrans);
+      // Clear inline styles that would override CSS
+      segs[i].style.opacity = '';
+      segs[i].style.border = '';
+      segs[i].style.boxShadow = '';
+    }
+  }
+
+  function renderPhaseProgressBar(elapsed, bounds) {
+    var container = document.getElementById('phaseProgressContainer');
+    var bar = document.getElementById('phaseProgressBar');
+    var label = document.getElementById('phaseCurrentLabel');
+    if (!container || !bar) { if (Math.floor(elapsed) % 10 === 0) console.log('[PHASE-DBG] renderPhaseProgressBar: container=' + !!container + ' bar=' + !!bar + ' — MISSING DOM'); return; }
+
+    var phases = state.phases || [];
+    if (phases.length === 0) { container.style.display = 'none'; return; }
+    container.style.display = 'block';
+
+    var html = '';
+    for (var i = 0; i < phases.length; i++) {
+      var b = bounds[i];
+      var isDone = elapsed >= b.endSec;
+      var isActive = (i === state.currentPhaseIndex && !state.phaseTransitioning);
+      var cls = 'phase-progress-seg' + (isDone ? ' done' : '') + (isActive ? ' active' : '');
+      var shortName = phases[i].name.length > 12 ? phases[i].name.substring(0, 10) + '..' : phases[i].name;
+      html += '<div class="' + cls + '" style="flex:' + phases[i].durationSec + ';background:' + phases[i].color + ';">';
+      html += (isDone ? '&#10003; ' : '') + shortName.replace(/</g, '&lt;');
+      html += '</div>';
+      // Add transition segment between phases (except after last)
+      if (i < phases.length - 1) {
+        var transActive = (i === state.currentPhaseIndex && state.phaseTransitioning);
+        html += '<div class="phase-progress-transition' + (transActive ? ' active' : '') + '">';
+        html += '&#8644;';
+        html += '</div>';
+      }
+    }
+    bar.innerHTML = html;
+
+    // Current phase label
+    if (Math.floor(elapsed) % 10 === 0) console.log('[PHASE-DBG-RENDER] label=' + !!label + ' curr=' + !!(phases[state.currentPhaseIndex]) + ' transitioning=' + state.phaseTransitioning + ' elapsed=' + elapsed);
+    if (label) {
+      var curr = phases[state.currentPhaseIndex];
+      if (curr && !state.phaseTransitioning) {
+        var phaseRemain = Math.max(0, bounds[state.currentPhaseIndex].endSec - elapsed);
+        var m = Math.floor(phaseRemain / 60);
+        var s = phaseRemain % 60;
+        label.textContent = 'Phase ' + (state.currentPhaseIndex + 1) + ': ' + curr.name + ' — ' + m + 'm ' + s + 's left';
+      } else if (state.phaseTransitioning) {
+        label.textContent = 'Transitioning to next phase...';
+      }
+    }
+
+    // v3.23.426: Phase countdown bar — per-task bar with tooltip
+    if (Math.floor(elapsed) % 10 === 0) console.log('[PHASE-DBG-COUNTDOWN] About to render countdown bar');
+    var phaseCountdownBar = document.getElementById('phaseCountdownBar');
+    if (!phaseCountdownBar) {
+      phaseCountdownBar = document.createElement('div');
+      phaseCountdownBar.id = 'phaseCountdownBar';
+      phaseCountdownBar.style.cssText = 'height:8px;border-radius:4px;margin:4px 0 2px;overflow:hidden;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);cursor:help;';
+      var phaseCountdownFill = document.createElement('div');
+      phaseCountdownFill.id = 'phaseCountdownFill';
+      phaseCountdownFill.style.cssText = 'height:100%;border-radius:4px;transition:width 0.9s linear, background 0.5s;';
+      phaseCountdownBar.appendChild(phaseCountdownFill);
+      container.appendChild(phaseCountdownBar);
+    }
+    var phaseCountdownFill = document.getElementById('phaseCountdownFill');
+    if (phaseCountdownFill) {
+      var curr2 = phases[state.currentPhaseIndex];
+      var b2 = bounds[state.currentPhaseIndex];
+      if (curr2 && b2 && !state.phaseTransitioning) {
+        phaseCountdownBar.style.display = '';
+        var phaseDur = b2.effectiveDurationSec || curr2.durationSec; // v3.23.432: use boundary-scaled duration
+        var phaseRem2 = Math.max(0, b2.endSec - elapsed);
+        // v3.23.435: Show REMAINING proportion (100% → 0%) — time left / total phase time
+        var phaseElapsed2 = Math.max(0, elapsed - b2.startSec);
+        var pct2 = phaseDur > 0 ? Math.min(100, Math.max(0, (phaseRem2 / phaseDur) * 100)) : 0;
+        var phaseM2 = Math.floor(phaseRem2 / 60);
+        var phaseS2 = phaseRem2 % 60;
+        phaseCountdownFill.style.width = pct2 + '%';
+        phaseCountdownFill.style.background = phaseRem2 <= 30 ? '#ff4466' : (curr2.color || '#58cc02');
+        phaseCountdownBar.title = 'Current task: ' + curr2.name + ' — ' + phaseM2 + 'm ' + phaseS2 + 's remaining (' + Math.round(pct2) + '% left). This bar tracks the current phase only; the main timer above shows total session time.';
+      } else if (state.phaseTransitioning) {
+        phaseCountdownBar.style.display = '';
+        phaseCountdownFill.style.width = '100%';
+        phaseCountdownFill.style.background = '#ffd700';
+        phaseCountdownBar.title = 'Transitioning between tasks — take a short break before the next phase.';
+      } else {
+        phaseCountdownBar.style.display = 'none';
+      }
+    }
+  }
+
+
   function armTimerTick() {
     if (timerInterval) clearInterval(timerInterval);
     _sessionCompletionFired = false; // reset for new session
@@ -6531,6 +7134,7 @@ try {
         var remaining = Math.max(0, Math.ceil(remainingMs / 1000));
         if (remaining > 0) {
           if (remaining !== state.timerRemaining) {
+            if (remaining % 30 === 0) console.log('[PHASE-DBG-TICK] Timer tick: remaining=' + remaining + ' timerState=' + state.timerState + ' phaseMode=' + state.phaseModeEnabled + ' phaseIdx=' + state.currentPhaseIndex);
             state.timerRemaining = remaining;
             if (lastRenderedSec > 0 && Math.floor(lastRenderedSec / 60) > Math.floor(remaining / 60)) {
               try { SFX.tick(); } catch (_) {}
@@ -6539,8 +7143,27 @@ try {
             save();
             renderTimer();
             renderBlockProgress();
+            // v3.23.414: Phase mode tick
+            if (state.phaseModeEnabled && state.currentPhaseIndex >= 0) {
+              tickPhaseMode(remaining);
+            } else if (state.phaseModeEnabled) {
+              console.warn('[PHASE-DBG-GATE] phaseModeEnabled=true BUT currentPhaseIndex=' + state.currentPhaseIndex + ' — tick SKIPPED! phases=' + (state.phases ? state.phases.length : 'null'));
+            } else if (state.phases && state.phases.length > 0) {
+              console.warn('[PHASE-DBG-GATE] Has ' + state.phases.length + ' phases BUT phaseModeEnabled=' + state.phaseModeEnabled + ' — tick SKIPPED!');
+            }
           }
         } else {
+          // v3.23.414: Clean up phase state on session end
+          console.log('[PHASE-DBG-END] Session timer hit 0. currentPhaseIndex=' + state.currentPhaseIndex);
+          if (state.currentPhaseIndex >= 0) {
+            console.log('[PHASE-DBG-END] Cleaning up phase state — resetting to -1');
+            state.currentPhaseIndex = -1;
+            state.phaseTransitioning = false;
+            var ppc = document.getElementById('phaseProgressContainer');
+            if (ppc) ppc.style.display = 'none';
+            var pto = document.getElementById('phaseTransitionOverlay');
+            if (pto) pto.style.display = 'none';
+          }
           clearInterval(timerInterval);
           timerInterval = null;
           // v3.23.132: One-shot completion guard
@@ -7393,6 +8016,8 @@ try {
     SFX.startTimer();
     // v3.23.311: Clear distraction counts for the new session
     state.sessionDistractions = {};
+    // v3.23.412: Reset session block counter so progress bar starts fresh
+    state.sessionBlocks = 0;
     _gameLockGraceUntil = 0; // v3.21.10: new session cancels any grace window
     state.gameLockGraceUntil = 0;
     state.timerState = 'running';
@@ -7428,6 +8053,32 @@ try {
     } catch(_) {}
     // v3.21.17: Record session start for the daily timeline.
     state._sessionStartedAt = Date.now();
+    // v3.23.414: Initialize phase tracking for phased sessions
+    console.log('[PHASE-DBG-INIT] beginActualSession: phaseModeEnabled=' + state.phaseModeEnabled + ' phases=' + (state.phases ? state.phases.length : 'null') + ' sessionDurationSec=' + state.sessionDurationSec);
+    if (state.phaseModeEnabled && state.phases && state.phases.length > 0) {
+      state.currentPhaseIndex = 0;
+      state.phaseStartedAt = Date.now();
+      console.log('[PHASE-DBG-INIT] Phase tracking INITIALIZED: idx=0 phases=' + state.phases.length + ' durations=' + state.phases.map(function(p){return p.name + ':' + p.durationSec + 's';}).join(', '));
+      // v3.23.415: Ensure all phase names are in history
+      if (!state.phaseHistory) state.phaseHistory = [];
+      state.phases.forEach(function(p) {
+        if (p.name && state.phaseHistory.indexOf(p.name) === -1) {
+          state.phaseHistory.push(p.name);
+        }
+      });
+      state.phaseTransitioning = false;
+      state.phaseTransitionEndsAt = 0;
+      state.phaseTtsAnnounced = {};
+      _phaseLayoutLogged = false; // reset so it logs fresh
+      try { _logPhaseLayout(); } catch(_) {}
+      // v3.23.424: Announce the first phase via TTS on session start
+      try {
+        var firstName = state.phases[0].name || 'first station';
+        speakPhaseAnnouncement(PHASE_TTS_LINES.start(firstName));
+      } catch(_) {}
+    } else {
+      state.currentPhaseIndex = -1;
+    }
     save();
     render();
     // v3.21.15: Start Cold Turkey block for the session duration.
@@ -7723,6 +8374,8 @@ try {
     // Run the 15-second "get ready" countdown, THEN start the real session.
     cancelPreStartCountdown();
     countdownRemaining = COUNTDOWN_SECONDS;
+    _countdownCancelled = false;
+    state.sessionBlocks = 0;  // v3.23.412: reset progress bar for new session
     state.timerState = 'countdown';
     _tlPreviewDurationSec = 0; // v3.23.6: clear preview — real session takes over
     // v3.23.8: Stamp idle-challenge spam guards early (countdown phase)
@@ -7757,9 +8410,11 @@ try {
         } else {
           clearInterval(countdownInterval);
           countdownInterval = null;
-          // Guard: if user hit reset / switched windows mid-countdown,
-          // don't slam into running state over their cancel.
-          if (state.timerState !== 'countdown') return;
+          // Guard: if user hit CANCEL/RESET mid-countdown, don't start.
+          // Uses a local flag instead of state.timerState to avoid a race
+          // condition where background.js overwrites timerState via stale
+          // storage writes (v3.23.412 fix).
+          if (_countdownCancelled) return;
           beginActualSession();
         }
       } catch (err) {
@@ -8042,7 +8697,8 @@ try {
 
     // Toggle panel open/close + resize window
     var _panelOpen = false;
-    var CLOSED_H = 78;
+    // v3.23.437: Taller base when phase mode is active (phase bar + done button below card)
+    var CLOSED_H = (state.phaseModeEnabled && state.phases && state.phases.length > 0) ? 110 : 78;
     var OPEN_H = 280;
 
     menuBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
@@ -8400,9 +9056,10 @@ try {
     }
     // Prefer Document Picture-in-Picture (actually always-on-top).
     if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
-      // v3.19.14: slimmer footprint now that the pill is rounded and
-      // has its own play/pause button — was 240x150, now 220x78.
-      window.documentPictureInPicture.requestWindow({ width: 220, height: 78 })
+      // v3.19.14: slimmer footprint — was 240x150, now 220x78.
+      // v3.23.437: Taller when phase mode active so phase bar + done button aren't cut off.
+      var _pipInitH = (state.phaseModeEnabled && state.phases && state.phases.length > 0) ? 110 : 78;
+      window.documentPictureInPicture.requestWindow({ width: 220, height: _pipInitH })
         .then(function(win) {
           pipWindow = win;
           // Write the full document. open/close/write is the cleanest
@@ -8532,7 +9189,14 @@ try {
       clock.textContent = '00:' + String(cs).padStart(2, '0');
       clock.classList.add('countdown');
       fill.classList.add('countdown');
-      label.textContent = 'GET READY';
+      // v3.23.433: Show phase info during countdown if phase mode is active
+      if (state.phaseModeEnabled && state.phases && state.phases.length > 0) {
+        var _cdFirstPhase = state.phases[0] ? state.phases[0].name : '';
+        label.textContent = '\u23F1 ' + state.phases.length + ' PHASES';
+        label.title = 'Phase timer starting! First up: ' + _cdFirstPhase + ' (' + state.phases.length + ' phases total)';
+      } else {
+        label.textContent = 'GET READY';
+      }
       fill.style.width = ((COUNTDOWN_SECONDS - cs) / COUNTDOWN_SECONDS * 100) + '%';
       if (btn) {
         btn.classList.add('countdown');
@@ -8560,12 +9224,26 @@ try {
         if (btnIcon) btnIcon.innerHTML = PIP_ICON_PLAY;
         if (btn) btn.title = 'Resume';
       } else if (state.timerState === 'running') {
-        label.textContent = state.doubleDownActive ? '🎲 DD ' + (dur / 60) + 'M' : (dur / 60) + '-MIN FOCUS';
-        if (state.doubleDownActive) {
+        // v3.23.424: Show phase info in PiP when phase mode active
+        if (state.phaseModeEnabled && state.phases && state.phases.length > 0 && state.currentPhaseIndex >= 0) {
+          var _pipPhase = state.phases[state.currentPhaseIndex];
+          var _pipPhaseName = _pipPhase ? _pipPhase.name : '';
+          if (state.phaseTransitioning) {
+            var _pipNextP = state.phases[state.currentPhaseIndex + 1];
+            label.textContent = '\u21C4 NEXT UP';
+            label.title = 'Transitioning to: ' + (_pipNextP ? _pipNextP.name : 'next phase');
+          } else {
+            // v3.23.435: Keep PiP label SHORT — just phase number. Detail goes in pipPhaseWrap below.
+            label.textContent = 'PHASE ' + (state.currentPhaseIndex + 1) + '/' + state.phases.length;
+            label.title = 'Phase ' + (state.currentPhaseIndex + 1) + ' of ' + state.phases.length + ': ' + _pipPhaseName;
+          }
+        } else if (state.doubleDownActive) {
+          label.textContent = '🎲 DD ' + (dur / 60) + 'M';
           var _ddOrig = Math.round((state.doubleDownOriginalSec || 0) / 60);
           var _ddExt = Math.round((state.doubleDownExtensionSec || 0) / 60);
           label.title = 'DOUBLE DOWN active! ' + _ddOrig + 'm original + ' + _ddExt + 'm extension. Finish = ' + DOUBLE_DOWN_BONUS_MULT + 'x bonus. Fail = -50% earnings.';
         } else {
+          label.textContent = (dur / 60) + '-MIN FOCUS';
           label.title = dur >= 60 ? (dur / 60) + '-minute focus session' : dur + '-second focus session';
         }
         if (btn) btn.classList.add('running');
@@ -8642,6 +9320,100 @@ try {
       }
       var pct = ((dur - state.timerRemaining) / dur) * 100;
       fill.style.width = pct + '%';
+      // v3.23.426: Main PiP bar always shows TOTAL session progress (default color)
+      fill.style.background = '';
+    }
+    // v3.23.426: Phase countdown bar in PiP — per-task bar with label + tooltip
+    if (state.phaseModeEnabled && state.phases && state.currentPhaseIndex >= 0 && state.timerState === 'running') {
+      try {
+        var _pipPhaseWrap = doc.getElementById('pipPhaseWrap');
+        if (!_pipPhaseWrap) {
+          // Create wrapper with label + bar
+          _pipPhaseWrap = doc.createElement('div');
+          _pipPhaseWrap.id = 'pipPhaseWrap';
+          _pipPhaseWrap.style.cssText = 'margin:3px 8px 0;';
+          // v3.23.436: Label row with done-early button
+          var _pipPhaseRow = doc.createElement('div');
+          _pipPhaseRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:2px;';
+          var _pipPhaseLabel = doc.createElement('div');
+          _pipPhaseLabel.id = 'pipPhaseLabel';
+          _pipPhaseLabel.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:6px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;';
+          _pipPhaseRow.appendChild(_pipPhaseLabel);
+          var _pipDoneBtn = doc.createElement('button');
+          _pipDoneBtn.type = 'button';
+          _pipDoneBtn.id = 'pipDoneEarlyBtn';
+          _pipDoneBtn.textContent = '\u2713';
+          _pipDoneBtn.title = 'Done early — redistribute remaining time';
+          _pipDoneBtn.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:7px;color:#ffd700;background:rgba(255,215,0,0.15);border:1px solid #ffd700;border-radius:4px;padding:2px 5px;cursor:pointer;white-space:nowrap;flex:0 0 auto;transition:all 0.15s;line-height:1;';
+          _pipDoneBtn.addEventListener('mouseenter', function() { this.style.background='rgba(255,215,0,0.3)'; });
+          _pipDoneBtn.addEventListener('mouseleave', function() { this.style.background='rgba(255,215,0,0.15)'; });
+          _pipDoneBtn.addEventListener('click', function() {
+            try { completePhaseEarly(); } catch(_e) { console.log('[PIP-DONE] Error:', _e); }
+          });
+          _pipPhaseRow.appendChild(_pipDoneBtn);
+          _pipPhaseWrap.appendChild(_pipPhaseRow);
+          var _pipPhaseBar = doc.createElement('div');
+          _pipPhaseBar.id = 'pipPhaseBar';
+          _pipPhaseBar.style.cssText = 'height:5px;border-radius:3px;background:rgba(255,255,255,0.12);overflow:hidden;';
+          var _pipPhaseFill = doc.createElement('div');
+          _pipPhaseFill.id = 'pipPhaseFill';
+          _pipPhaseFill.style.cssText = 'height:100%;border-radius:3px;transition:width 0.9s linear, background 0.5s;';
+          _pipPhaseBar.appendChild(_pipPhaseFill);
+          _pipPhaseWrap.appendChild(_pipPhaseBar);
+          // v3.23.435: Insert after .pip-card (not inside it after .pip-bar which is absolute-positioned)
+          var _pipCardEl = doc.querySelector('.pip-card');
+          if (_pipCardEl) {
+            _pipCardEl.parentNode.insertBefore(_pipPhaseWrap, _pipCardEl.nextSibling);
+          } else {
+            doc.body.appendChild(_pipPhaseWrap);
+          }
+          // v3.23.437: Resize PiP window to fit phase elements without scrolling
+          try { pipWindow.resizeTo(220, 110); } catch(_) {}
+        }
+        var _pipPhaseFill2 = doc.getElementById('pipPhaseFill');
+        var _pipPhaseLabel2 = doc.getElementById('pipPhaseLabel');
+        var _pipCurrPhase = state.phases[state.currentPhaseIndex];
+        if (Math.floor(Date.now() / 5000) % 2 === 0) console.log('[PHASE-DBG-PIP] fill=' + !!_pipPhaseFill2 + ' currPhase=' + !!_pipCurrPhase + ' idx=' + state.currentPhaseIndex + ' transitioning=' + state.phaseTransitioning);
+        if (_pipPhaseFill2 && _pipCurrPhase) {
+          var _pipPBounds = getPhaseBoundaries();
+          var _pipPElapsed = getPhaseElapsedSec();
+          var _pipPB = _pipPBounds[state.currentPhaseIndex];
+          if (_pipPB && !state.phaseTransitioning) {
+            _pipPhaseWrap.style.display = '';
+            var _pipPDur = _pipPB.effectiveDurationSec || _pipCurrPhase.durationSec; // v3.23.432: use boundary-scaled duration
+            var _pipPRem = Math.max(0, _pipPB.endSec - _pipPElapsed);
+            // v3.23.435: Remaining proportion (100% → 0%), clamped to prevent overflow
+            var _pipPPct = _pipPDur > 0 ? Math.min(100, Math.max(0, (_pipPRem / _pipPDur) * 100)) : 0;
+            var _pipPm2 = Math.floor(_pipPRem / 60);
+            var _pipPs2 = _pipPRem % 60;
+            _pipPhaseFill2.style.width = _pipPPct + '%';
+            _pipPhaseFill2.style.background = _pipPRem <= 30 ? '#ff4466' : (_pipCurrPhase.color || '#58cc02');
+            if (_pipPhaseLabel2) {
+              // v3.23.435: Show task name (truncated) + time remaining
+              var _pipTruncName = _pipCurrPhase.name.length > 20 ? _pipCurrPhase.name.substring(0, 18) + '..' : _pipCurrPhase.name;
+              _pipPhaseLabel2.textContent = _pipTruncName + ' ' + _pipPm2 + ':' + String(_pipPs2).padStart(2, '0');
+            }
+            _pipPhaseWrap.title = 'Current task: ' + _pipCurrPhase.name + ' — ' + _pipPm2 + 'm ' + _pipPs2 + 's remaining (phase ' + (state.currentPhaseIndex + 1) + ' of ' + state.phases.length + ')';
+          } else if (state.phaseTransitioning) {
+            _pipPhaseWrap.style.display = '';
+            var _pipNextP2 = state.phases[state.currentPhaseIndex + 1];
+            if (_pipPhaseLabel2) _pipPhaseLabel2.textContent = 'SWITCHING...';
+            _pipPhaseFill2.style.width = '100%';
+            _pipPhaseFill2.style.background = '#ffd700';
+            _pipPhaseWrap.title = 'Transitioning to: ' + (_pipNextP2 ? _pipNextP2.name : 'next task');
+          }
+        }
+      } catch(_pipE) {}
+    } else {
+      // Hide phase bar when not in phase mode
+      try {
+        var _pipPhaseHide = doc.getElementById('pipPhaseWrap');
+        if (_pipPhaseHide && _pipPhaseHide.style.display !== 'none') {
+          _pipPhaseHide.style.display = 'none';
+          // v3.23.437: Shrink PiP back when phase bar hidden
+          try { pipWindow.resizeTo(220, 78); } catch(_) {}
+        }
+      } catch(_) {}
     }
     // v3.23.344: Refresh DD section visibility on every render tick so it
     // appears/disappears when timer starts/stops (was only set once on init)
@@ -8864,7 +9636,7 @@ try {
       var marketYield = state.marketYieldMultiplier || 1.0;
       state.lastMarketYield = marketYield;  // persist for yield display
       comboCoins = Math.round(comboCoins * marketYield);
-      if (comboCoins > 0) awardCoins(comboCoins, state.combo + 'x chain' + (marketYield !== 1.0 ? ' [' + marketYield + 'x mkt]' : ''));
+      if (comboCoins > 0) awardCoins(comboCoins); // v3.23.413: suppress mid-session banner (celebration screen shows this)
     }
 
     // Check daily marathon thresholds (1h/2h/3h/4h/6h/8h focus today)
@@ -8875,7 +9647,7 @@ try {
 
     // Notifications
     let comboText = state.combo >= 2 ? ` 🔥 ${state.combo}x Combo!` : '';
-    notify(`+1 Textile earned! +${xpGain} XP${comboText}`, 'var(--accent)');
+    // v3.23.413: removed mid-session textile/XP banner (celebration screen shows this)
 
     if (state.combo >= 2) SFX.comboUp();
 
@@ -15195,9 +15967,1011 @@ try {
           while (t && t !== sessionPicker && !t.classList.contains('session-pill')) t = t.parentElement;
           if (!t || !t.classList.contains('session-pill')) return;
           var dur = parseInt(t.getAttribute('data-dur'), 10);
-          if (dur) setSessionDuration(dur);
+          if (dur) {
+            setSessionDuration(dur);
+            // v3.23.423: Directly rebalance phases (belt-and-suspenders with hook in setSessionDuration)
+            if (state.phaseModeEnabled && state.phases && state.phases.length > 0) {
+              rebalancePhases();
+              renderPhaseList();
+            }
+            updateStartButtonForPhases();
+          }
         });
       }
+
+      // ═══════════════════════════════════════════════════════════════
+      // v3.23.414: PHASE MODE — toggle, setup panel, autocomplete, sliders
+      // ═══════════════════════════════════════════════════════════════
+      var PHASE_COLORS = ['#534AB7','#0F6E56','#993C1D','#854F0B','#185FA5','#3B6D11','#993556','#5F5E5A'];
+      var PHASE_MIN_SEC = 60;   // 1 min minimum per phase
+      var PHASE_TRANSITION_SEC = 60;
+
+      function initPhaseMode() {
+        var toggle = document.getElementById('phaseToggle');
+        var label = document.getElementById('phaseToggleLabel');
+        var panel = document.getElementById('phasePanel');
+        var input = document.getElementById('phaseAddInput');
+        var acBox = document.getElementById('phaseAutocomplete');
+        if (!toggle || !panel) return;
+
+        // Restore toggle state
+        if (state.phaseModeEnabled) {
+          toggle.classList.add('on');
+          label.classList.add('on');
+          panel.classList.add('open');
+          renderPhaseList();
+        }
+
+        // Toggle click
+        toggle.addEventListener('click', function() {
+          state.phaseModeEnabled = !state.phaseModeEnabled;
+          toggle.classList.toggle('on', state.phaseModeEnabled);
+          label.classList.toggle('on', state.phaseModeEnabled);
+          panel.classList.toggle('open', state.phaseModeEnabled);
+          updateStartButtonForPhases();
+          save();
+        });
+        label.addEventListener('click', function() { toggle.click(); });
+
+        // Add phase via Enter key
+        if (input) {
+          input.addEventListener('keydown', function(e) {
+            // Arrow keys for autocomplete navigation
+            var items = acBox ? acBox.querySelectorAll('.phase-ac-item') : [];
+            var activeItem = acBox ? acBox.querySelector('.phase-ac-item.active') : null;
+            if (e.key === 'ArrowDown' && items.length) {
+              e.preventDefault();
+              var idx = activeItem ? Array.prototype.indexOf.call(items, activeItem) : -1;
+              items.forEach(function(it) { it.classList.remove('active'); });
+              items[Math.min(idx + 1, items.length - 1)].classList.add('active');
+              return;
+            }
+            if (e.key === 'ArrowUp' && items.length) {
+              e.preventDefault();
+              var idx2 = activeItem ? Array.prototype.indexOf.call(items, activeItem) : items.length;
+              items.forEach(function(it) { it.classList.remove('active'); });
+              items[Math.max(idx2 - 1, 0)].classList.add('active');
+              return;
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              var sel = acBox ? acBox.querySelector('.phase-ac-item.active') : null;
+              if (sel) {
+                addPhase(sel.getAttribute('data-task-text'));
+              } else if (input.value.trim()) {
+                addPhase(input.value.trim());
+              }
+              input.value = '';
+              if (acBox) { acBox.classList.remove('open'); acBox.innerHTML = ''; }
+            }
+            if (e.key === 'Escape') {
+              if (acBox) { acBox.classList.remove('open'); acBox.innerHTML = ''; }
+            }
+          });
+
+          // Autocomplete on input
+          input.addEventListener('input', function() {
+            var q = input.value.trim().toLowerCase();
+            if (!q || q.length < 1) {
+              if (acBox) { acBox.classList.remove('open'); acBox.innerHTML = ''; }
+              return;
+            }
+            // Gather all tasks from all projects
+            var suggestions = [];
+            if (state.tasks) {
+              Object.keys(state.tasks).forEach(function(projId) {
+                var list = state.tasks[projId];
+                if (!Array.isArray(list)) return;
+                list.forEach(function(t) {
+                  if (t && t.text && !t.completed && t.text.toLowerCase().indexOf(q) !== -1) {
+                    suggestions.push(t.text);
+                  }
+                });
+              });
+            }
+            // Also check todayTasks and priorityTasks
+            if (Array.isArray(state.todayTasks)) {
+              state.todayTasks.forEach(function(t) {
+                if (t && t.text && !t.completed && t.text.toLowerCase().indexOf(q) !== -1) {
+                  if (suggestions.indexOf(t.text) === -1) suggestions.push(t.text);
+                }
+              });
+            }
+            if (Array.isArray(state.priorityTasks)) {
+              state.priorityTasks.forEach(function(t) {
+                if (t && t.text && !t.completed && t.text.toLowerCase().indexOf(q) !== -1) {
+                  if (suggestions.indexOf(t.text) === -1) suggestions.push(t.text);
+                }
+              });
+            }
+            // v3.23.415: Also include phase history
+            if (Array.isArray(state.phaseHistory)) {
+              state.phaseHistory.forEach(function(h) {
+                if (h && h.toLowerCase().indexOf(q) !== -1) {
+                  if (suggestions.indexOf(h) === -1) suggestions.push(h);
+                }
+              });
+            }
+            // v3.23.429: Also include task names from saved bundles
+            if (Array.isArray(state.tagBundles)) {
+              state.tagBundles.forEach(function(bundle) {
+                // Match bundle name itself
+                if (bundle.name && bundle.name.toLowerCase().indexOf(q) !== -1) {
+                  // Add all tasks from matching bundle
+                  if (Array.isArray(bundle.tasks)) {
+                    bundle.tasks.forEach(function(bt) {
+                      var taskName = bt.name || bt.text || '';
+                      if (taskName && suggestions.indexOf(taskName) === -1) suggestions.push(taskName);
+                    });
+                  }
+                }
+                // Also match individual task names inside bundles
+                if (Array.isArray(bundle.tasks)) {
+                  bundle.tasks.forEach(function(bt) {
+                    var taskName = bt.name || bt.text || '';
+                    if (taskName && taskName.toLowerCase().indexOf(q) !== -1) {
+                      if (suggestions.indexOf(taskName) === -1) suggestions.push(taskName);
+                    }
+                  });
+                }
+              });
+            }
+            // Deduplicate and limit
+            suggestions = suggestions.slice(0, 8);
+            if (!acBox) return;
+            if (suggestions.length === 0) {
+              acBox.classList.remove('open');
+              acBox.innerHTML = '';
+              return;
+            }
+            acBox.innerHTML = suggestions.map(function(s) {
+              // Highlight matching portion
+              var lIdx = s.toLowerCase().indexOf(q);
+              var highlighted = s;
+              if (lIdx !== -1) {
+                highlighted = s.substring(0, lIdx) +
+                  '<span class="phase-ac-match">' + s.substring(lIdx, lIdx + q.length) + '</span>' +
+                  s.substring(lIdx + q.length);
+              }
+              return '<div class="phase-ac-item" data-task-text="' + s.replace(/"/g, '&quot;') + '">' + highlighted + '</div>';
+            }).join('');
+            acBox.classList.add('open');
+            // Click handler for autocomplete items
+            acBox.querySelectorAll('.phase-ac-item').forEach(function(item) {
+              item.addEventListener('click', function() {
+                addPhase(item.getAttribute('data-task-text'));
+                input.value = '';
+                acBox.classList.remove('open');
+                acBox.innerHTML = '';
+                input.focus();
+              });
+            });
+          });
+
+          // Hide autocomplete on blur (slight delay for click to register)
+          input.addEventListener('blur', function() {
+            setTimeout(function() {
+              if (acBox) { acBox.classList.remove('open'); }
+            }, 200);
+          });
+        }
+      }
+
+
+      // ═══════════════════════════════════════════════════════════════════
+      // v3.23.427: TASK TAG SYSTEM — tags, bundles, sandbox phases
+      // ═══════════════════════════════════════════════════════════════════
+
+      var SANDBOX_ICON = '\u{1F3D6}';  // beach umbrella emoji
+
+      function getTagsForTask(taskName) {
+        if (!state.taskTags || !taskName) return [];
+        var norm = taskName.trim().toLowerCase();
+        var result = [];
+        Object.keys(state.taskTags).forEach(function(tag) {
+          var tasks = state.taskTags[tag] || [];
+          for (var i = 0; i < tasks.length; i++) {
+            if (tasks[i].toLowerCase() === norm) { result.push(tag); break; }
+          }
+        });
+        return result;
+      }
+
+      function addTagToTask(tag, taskName) {
+        if (!tag || !taskName) return;
+        tag = tag.trim(); taskName = taskName.trim();
+        if (!tag || !taskName) return;
+        if (!state.taskTags) state.taskTags = {};
+        if (!state.taskTags[tag]) state.taskTags[tag] = [];
+        var norm = taskName.toLowerCase();
+        for (var i = 0; i < state.taskTags[tag].length; i++) {
+          if (state.taskTags[tag][i].toLowerCase() === norm) return; // already tagged
+        }
+        state.taskTags[tag].push(taskName);
+        save();
+      }
+
+      function removeTagFromTask(tag, taskName) {
+        if (!state.taskTags || !state.taskTags[tag]) return;
+        var norm = taskName.toLowerCase();
+        state.taskTags[tag] = state.taskTags[tag].filter(function(t) {
+          return t.toLowerCase() !== norm;
+        });
+        if (state.taskTags[tag].length === 0) delete state.taskTags[tag];
+        save();
+      }
+
+      function getRelatedTasks(taskName) {
+        // Find all tasks that share any tag with the given task
+        var tags = getTagsForTask(taskName);
+        if (!tags.length) return [];
+        var related = {};
+        tags.forEach(function(tag) {
+          (state.taskTags[tag] || []).forEach(function(t) {
+            if (t.toLowerCase() !== taskName.trim().toLowerCase()) {
+              related[t] = (related[t] || 0) + 1;
+            }
+          });
+        });
+        // Sort by number of shared tags (most related first)
+        return Object.keys(related).sort(function(a, b) { return related[b] - related[a]; });
+      }
+
+      function getAllTags() {
+        if (!state.taskTags) return [];
+        return Object.keys(state.taskTags).sort();
+      }
+
+      function loadTagBundle(bundle) {
+        if (!bundle || !bundle.tasks || !bundle.tasks.length) return;
+        state.phases = [];
+        state.phaseModeEnabled = true;
+        var totalSec = state.sessionDurationSec || 600;
+        var hasDurations = bundle.tasks.some(function(t) { return t.durationSec > 0; });
+        if (hasDurations) {
+          // Use stored durations, scale to fit total
+          var bundleTotal = bundle.tasks.reduce(function(s, t) { return s + (t.durationSec || 60); }, 0);
+          var scale = totalSec / bundleTotal;
+          bundle.tasks.forEach(function(t, i) {
+            state.phases.push({
+              name: t.name,
+              durationSec: Math.max(PHASE_MIN_SEC, Math.round((t.durationSec || 60) * scale)),
+              color: PHASE_COLORS[i % PHASE_COLORS.length],
+              locked: false,
+              sandbox: t.sandbox || false
+            });
+          });
+        } else {
+          var per = Math.max(PHASE_MIN_SEC, Math.floor(totalSec / bundle.tasks.length));
+          bundle.tasks.forEach(function(t, i) {
+            state.phases.push({
+              name: t.name,
+              durationSec: per,
+              color: PHASE_COLORS[i % PHASE_COLORS.length],
+              locked: false,
+              sandbox: t.sandbox || false
+            });
+          });
+        }
+        // Adjust last phase to absorb rounding
+        var alloc = state.phases.reduce(function(s, p) { return s + p.durationSec; }, 0);
+        if (alloc !== totalSec && state.phases.length) {
+          state.phases[state.phases.length - 1].durationSec += (totalSec - alloc);
+        }
+        renderPhaseList();
+        updateStartButtonForPhases();
+        save();
+      }
+
+      function saveCurrentAsBundle(bundleName) {
+        if (!bundleName || !state.phases || !state.phases.length) return;
+        if (!state.tagBundles) state.tagBundles = [];
+        var tasks = state.phases.map(function(p) {
+          return { name: p.name, durationSec: p.durationSec, sandbox: p.sandbox || false };
+        });
+        // Check if bundle name already exists — overwrite
+        var found = false;
+        for (var i = 0; i < state.tagBundles.length; i++) {
+          if (state.tagBundles[i].name === bundleName) {
+            state.tagBundles[i].tasks = tasks;
+            state.tagBundles[i].updatedAt = Date.now();
+            found = true; break;
+          }
+        }
+        if (!found) {
+          state.tagBundles.push({
+            id: 'bundle_' + Date.now(),
+            name: bundleName,
+            tasks: tasks,
+            createdAt: Date.now()
+          });
+        }
+        save();
+        renderBundleControls();
+      }
+
+      function deleteTagBundle(bundleId) {
+        if (!state.tagBundles) return;
+        state.tagBundles = state.tagBundles.filter(function(b) { return b.id !== bundleId; });
+        save();
+        renderBundleControls();
+      }
+
+      function showTagPicker(taskName, anchorEl) {
+        // Close any existing picker
+        var old = document.getElementById('tagPickerOverlay');
+        if (old) old.remove();
+
+        var overlay = document.createElement('div');
+        overlay.id = 'tagPickerOverlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+        var box = document.createElement('div');
+        box.style.cssText = 'background:var(--bg-card,#1a1a2e);border:1px solid var(--accent3,#4ecdc4);border-radius:8px;padding:16px;min-width:280px;max-width:360px;max-height:400px;overflow-y:auto;font-family:"Press Start 2P",monospace;';
+
+        var title = document.createElement('div');
+        title.style.cssText = 'font-size:9px;color:var(--accent3,#4ecdc4);margin-bottom:10px;letter-spacing:1px;text-transform:uppercase;';
+        title.textContent = SANDBOX_ICON + ' TAGS: ' + (taskName.length > 20 ? taskName.substring(0, 20) + '...' : taskName);
+        box.appendChild(title);
+
+        // Current tags
+        var currentTags = getTagsForTask(taskName);
+        var allTags = getAllTags();
+
+        // Show existing tags with remove buttons
+        if (currentTags.length > 0) {
+          var curSection = document.createElement('div');
+          curSection.style.cssText = 'margin-bottom:8px;';
+          currentTags.forEach(function(tag) {
+            var chip = document.createElement('span');
+            chip.style.cssText = 'display:inline-block;font-size:7px;background:rgba(78,205,196,0.2);color:var(--accent3);padding:3px 8px;border-radius:10px;margin:2px 4px 2px 0;cursor:pointer;border:1px solid rgba(78,205,196,0.3);';
+            chip.textContent = tag + ' ×';
+            chip.title = 'Click to remove this tag';
+            chip.addEventListener('click', function() {
+              removeTagFromTask(tag, taskName);
+              overlay.remove();
+              showTagPicker(taskName, anchorEl);
+            });
+            curSection.appendChild(chip);
+          });
+          box.appendChild(curSection);
+        }
+
+        // Show all other available tags to add
+        var otherTags = allTags.filter(function(t) { return currentTags.indexOf(t) === -1; });
+        if (otherTags.length > 0) {
+          var addLabel = document.createElement('div');
+          addLabel.style.cssText = 'font-size:7px;color:var(--text-dim);margin:6px 0 4px;letter-spacing:0.5px;';
+          addLabel.textContent = 'ADD EXISTING TAG:';
+          box.appendChild(addLabel);
+          otherTags.forEach(function(tag) {
+            var chip = document.createElement('span');
+            chip.style.cssText = 'display:inline-block;font-size:7px;background:rgba(255,255,255,0.05);color:var(--text-dim);padding:3px 8px;border-radius:10px;margin:2px 4px 2px 0;cursor:pointer;border:1px solid rgba(255,255,255,0.1);';
+            chip.textContent = '+ ' + tag;
+            chip.title = 'Click to add this tag to the task';
+            chip.addEventListener('click', function() {
+              addTagToTask(tag, taskName);
+              overlay.remove();
+              showTagPicker(taskName, anchorEl);
+            });
+            box.appendChild(chip);
+          });
+        }
+
+        // New tag input
+        var newRow = document.createElement('div');
+        newRow.style.cssText = 'display:flex;gap:4px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(78,205,196,0.15);';
+        var newInput = document.createElement('input');
+        newInput.type = 'text';
+        newInput.placeholder = 'New tag name...';
+        newInput.style.cssText = 'flex:1;font-size:8px;font-family:"Press Start 2P",monospace;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:4px 6px;color:var(--text-main,#e0e0e0);';
+        var newBtn = document.createElement('button');
+        newBtn.type = 'button';
+        newBtn.textContent = 'ADD';
+        newBtn.style.cssText = 'font-size:7px;font-family:"Press Start 2P",monospace;background:rgba(78,205,196,0.15);border:1px solid rgba(78,205,196,0.3);border-radius:4px;padding:4px 8px;color:var(--accent3);cursor:pointer;';
+        newBtn.title = 'Create a new tag and add it to this task';
+        newBtn.addEventListener('click', function() {
+          var v = newInput.value.trim();
+          if (v) { addTagToTask(v, taskName); overlay.remove(); showTagPicker(taskName, anchorEl); }
+        });
+        newInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') newBtn.click();
+        });
+        newRow.appendChild(newInput);
+        newRow.appendChild(newBtn);
+        box.appendChild(newRow);
+
+        // Close button
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.textContent = 'CLOSE';
+        closeBtn.style.cssText = 'display:block;width:100%;margin-top:12px;font-size:7px;font-family:"Press Start 2P",monospace;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:5px;color:var(--text-dim);cursor:pointer;';
+        closeBtn.addEventListener('click', function() { overlay.remove(); });
+        box.appendChild(closeBtn);
+
+        overlay.appendChild(box);
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+        setTimeout(function() { newInput.focus(); }, 100);
+      }
+
+      function showRelatedSuggestions(taskName) {
+        var related = getRelatedTasks(taskName);
+        if (!related.length) return;
+        // Show suggestion bar below phase list
+        var existing = document.getElementById('phaseRelatedSuggest');
+        if (existing) existing.remove();
+        var bar = document.createElement('div');
+        bar.id = 'phaseRelatedSuggest';
+        bar.style.cssText = 'margin:6px 0;padding:6px 8px;background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.2);border-radius:6px;';
+        var label = document.createElement('div');
+        label.style.cssText = 'font-size:7px;color:var(--accent3,#4ecdc4);margin-bottom:5px;letter-spacing:0.5px;text-transform:uppercase;';
+        label.textContent = '\u{1F517} RELATED TASKS (same tags):';
+        bar.appendChild(label);
+        related.slice(0, 6).forEach(function(name) {
+          var chip = document.createElement('button');
+          chip.type = 'button';
+          chip.style.cssText = 'display:inline-block;font-size:7px;font-family:"Press Start 2P",monospace;background:rgba(78,205,196,0.12);color:var(--text-main,#e0e0e0);padding:3px 8px;border-radius:10px;margin:2px 4px 2px 0;cursor:pointer;border:1px solid rgba(78,205,196,0.25);transition:all 0.15s;';
+          chip.textContent = '+ ' + (name.length > 25 ? name.substring(0, 25) + '..' : name);
+          chip.title = 'Click to add "' + name + '" as a phase';
+          chip.addEventListener('click', function() {
+            addPhase(name);
+            bar.remove();
+          });
+          chip.addEventListener('mouseenter', function() { chip.style.background = 'rgba(78,205,196,0.25)'; });
+          chip.addEventListener('mouseleave', function() { chip.style.background = 'rgba(78,205,196,0.12)'; });
+          bar.appendChild(chip);
+        });
+        var panel = document.getElementById('phasePanel');
+        var addRow = document.getElementById('phaseAddRow');
+        if (panel && addRow) panel.insertBefore(bar, addRow);
+      }
+
+      function renderBundleControls() {
+        var container = document.getElementById('phaseBundleControls');
+        if (!container) return;
+        var html = '';
+        // Save current as bundle
+        if (state.phases && state.phases.length >= 2) {
+          html += '<div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;">';
+          html += '<input type="text" id="bundleSaveName" placeholder="Bundle name..." style="flex:1;font-size:7px;font-family:\'Press Start 2P\',monospace;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:3px 6px;color:var(--text-main);" title="Name this phase bundle so you can load it again later" />';
+          html += '<button type="button" id="bundleSaveBtn" style="font-size:7px;font-family:\'Press Start 2P\',monospace;background:rgba(78,205,196,0.12);border:1px solid rgba(78,205,196,0.25);border-radius:4px;padding:3px 8px;color:var(--accent3);cursor:pointer;" title="Save current phases as a reusable bundle">\u{1F4BE} SAVE</button>';
+          html += '</div>';
+        }
+        // List existing bundles
+        var bundles = state.tagBundles || [];
+        if (bundles.length > 0) {
+          html += '<div style="font-size:7px;color:var(--text-dim);margin:4px 0 3px;letter-spacing:0.5px;text-transform:uppercase;">\u{1F4E6} SAVED BUNDLES:</div>';
+          bundles.forEach(function(b) {
+            var taskList = b.tasks.map(function(t) { return (t.sandbox ? '\u{1F3D6} ' : '') + t.name; }).join(', ');
+            html += '<div style="display:flex;align-items:center;gap:4px;margin:2px 0;">';
+            html += '<button type="button" class="bundle-load" data-bundle-id="' + b.id + '" style="flex:1;text-align:left;font-size:7px;font-family:\'Press Start 2P\',monospace;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:3px 6px;color:var(--text-main);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="Load bundle: ' + taskList.replace(/"/g, '&quot;') + '">' + (b.name || 'Unnamed').replace(/</g, '&lt;') + ' <span style="color:var(--text-dim);">(' + b.tasks.length + ')</span></button>';
+            html += '<button type="button" class="bundle-delete" data-bundle-id="' + b.id + '" style="font-size:8px;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 4px;" title="Delete this bundle">×</button>';
+            html += '</div>';
+          });
+        }
+        container.innerHTML = html;
+        // Wire save
+        var saveBtn = document.getElementById('bundleSaveBtn');
+        if (saveBtn) {
+          saveBtn.addEventListener('click', function() {
+            var nameInput = document.getElementById('bundleSaveName');
+            if (nameInput && nameInput.value.trim()) {
+              saveCurrentAsBundle(nameInput.value.trim());
+            }
+          });
+        }
+        // Wire load
+        container.querySelectorAll('.bundle-load').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var id = btn.getAttribute('data-bundle-id');
+            var bundle = (state.tagBundles || []).filter(function(b) { return b.id === id; })[0];
+            if (bundle) loadTagBundle(bundle);
+          });
+        });
+        // Wire delete
+        container.querySelectorAll('.bundle-delete').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            deleteTagBundle(btn.getAttribute('data-bundle-id'));
+          });
+        });
+      }
+
+      // v3.23.427: Sandbox phase — add a "do whatever" free-form phase
+      function addSandboxPhase() {
+        addPhase(SANDBOX_ICON + ' Sandbox');
+        // Mark the last phase as sandbox
+        if (state.phases && state.phases.length > 0) {
+          state.phases[state.phases.length - 1].sandbox = true;
+          renderPhaseList();
+          save();
+        }
+      }
+
+      function addPhase(name) {
+        if (!name || !name.trim()) return;
+        var totalSec = state.sessionDurationSec || 600;
+        var existing = state.phases || [];
+        // v3.23.423: Respect locked phases — keep their duration, split remainder among unlocked + new
+        var lockedTotal = 0;
+        var unlockedCount = 0;
+        existing.forEach(function(p) {
+          if (p.locked) lockedTotal += p.durationSec;
+          else unlockedCount++;
+        });
+        // New phase is unlocked, so unlocked pool = unlockedCount + 1
+        var availableForUnlocked = totalSec - lockedTotal;
+        var perUnlocked = Math.max(PHASE_MIN_SEC, Math.floor(availableForUnlocked / (unlockedCount + 1)));
+        var newPhases = [];
+        existing.forEach(function(p) {
+          if (p.locked) {
+            newPhases.push({ name: p.name, durationSec: p.durationSec, color: p.color, locked: true });
+          } else {
+            newPhases.push({ name: p.name, durationSec: perUnlocked, color: p.color, locked: false });
+          }
+        });
+        newPhases.push({
+          name: name.trim(),
+          durationSec: perUnlocked,
+          color: PHASE_COLORS[(newPhases.length) % PHASE_COLORS.length]
+        });
+        // Adjust to fit total exactly — give remainder to last unlocked phase
+        var allocated = newPhases.reduce(function(s, p) { return s + p.durationSec; }, 0);
+        if (allocated !== totalSec) {
+          for (var i = newPhases.length - 1; i >= 0; i--) {
+            if (!newPhases[i].locked) {
+              newPhases[i].durationSec += (totalSec - allocated);
+              break;
+            }
+          }
+        }
+        state.phases = newPhases;
+        // v3.23.415: Save to phase history for future autocomplete
+        if (!state.phaseHistory) state.phaseHistory = [];
+        var trimName = name.trim();
+        if (trimName && state.phaseHistory.indexOf(trimName) === -1) {
+          state.phaseHistory.push(trimName);
+          // Cap at 50 entries
+          if (state.phaseHistory.length > 50) state.phaseHistory.shift();
+        }
+        renderPhaseList();
+        updateStartButtonForPhases();
+        save();
+        // v3.23.427: Show related task suggestions based on tags
+        showRelatedSuggestions(name.trim());
+        renderBundleControls();
+      }
+
+      function removePhase(idx) {
+        if (!state.phases || idx < 0 || idx >= state.phases.length) return;
+        state.phases.splice(idx, 1);
+        if (state.phases.length > 0) {
+          rebalancePhases();
+        }
+        renderPhaseList();
+        updateStartButtonForPhases();
+        save();
+      }
+
+      function rebalancePhases() {
+        var totalSec = state.sessionDurationSec || 600;
+        var phases = state.phases;
+        if (!phases || phases.length === 0) return;
+
+        // v3.23.423: Respect locks — only scale unlocked phases
+        var lockedTotal = 0;
+        var unlocked = [];
+        for (var i = 0; i < phases.length; i++) {
+          if (phases[i].locked) {
+            lockedTotal += phases[i].durationSec;
+          } else {
+            unlocked.push(i);
+          }
+        }
+
+        if (unlocked.length === 0) return; // all locked, can't rebalance
+
+        var targetForUnlocked = totalSec - lockedTotal;
+        if (targetForUnlocked < unlocked.length * PHASE_MIN_SEC) {
+          targetForUnlocked = unlocked.length * PHASE_MIN_SEC;
+        }
+
+        var unlockedTotal = unlocked.reduce(function(s, j) { return s + phases[j].durationSec; }, 0);
+        if (unlockedTotal === targetForUnlocked) return;
+
+        var scale = targetForUnlocked / (unlockedTotal || 1);
+        var running = 0;
+        for (var k = 0; k < unlocked.length - 1; k++) {
+          var j = unlocked[k];
+          phases[j].durationSec = Math.max(PHASE_MIN_SEC, Math.round(phases[j].durationSec * scale));
+          running += phases[j].durationSec;
+        }
+        var lastJ = unlocked[unlocked.length - 1];
+        phases[lastJ].durationSec = Math.max(PHASE_MIN_SEC, targetForUnlocked - running);
+      }
+
+      function onPhaseSliderChange(idx, newSec) {
+        if (!state.phases || idx < 0 || idx >= state.phases.length) return;
+        var totalSec = state.sessionDurationSec || 600;
+        var phases = state.phases;
+        var oldSec = phases[idx].durationSec;
+        var diff = newSec - oldSec;
+        if (diff === 0) return;
+
+        phases[idx].durationSec = newSec;
+
+        // v3.23.423: Respect locked phases — only redistribute among UNLOCKED others
+        var lockedTotal = 0;
+        var unlocked = [];
+        for (var i = 0; i < phases.length; i++) {
+          if (i === idx) continue;
+          if (phases[i].locked) {
+            lockedTotal += phases[i].durationSec;
+          } else {
+            unlocked.push(i);
+          }
+        }
+
+        if (unlocked.length === 0) {
+          // All others are locked — can't rebalance, revert
+          phases[idx].durationSec = oldSec;
+          renderPhaseList();
+          return;
+        }
+
+        var remaining = totalSec - newSec - lockedTotal;
+        if (remaining < unlocked.length * PHASE_MIN_SEC) {
+          // Not enough room — cap the change
+          remaining = unlocked.length * PHASE_MIN_SEC;
+          phases[idx].durationSec = totalSec - lockedTotal - remaining;
+        }
+
+        var unlockedTotal = unlocked.reduce(function(s, j) { return s + phases[j].durationSec; }, 0);
+
+        // Proportional redistribution among unlocked
+        var runningOther = 0;
+        for (var k = 0; k < unlocked.length - 1; k++) {
+          var j = unlocked[k];
+          var ratio = unlockedTotal > 0 ? phases[j].durationSec / unlockedTotal : 1 / unlocked.length;
+          phases[j].durationSec = Math.max(PHASE_MIN_SEC, Math.round(remaining * ratio));
+          runningOther += phases[j].durationSec;
+        }
+        // Last unlocked gets remainder
+        var lastJ = unlocked[unlocked.length - 1];
+        phases[lastJ].durationSec = Math.max(PHASE_MIN_SEC, remaining - runningOther);
+
+        renderPhaseList();
+        save();
+      }
+
+      function renderPhaseList() {
+        var list = document.getElementById('phaseList');
+        var bar = document.getElementById('phaseBar');
+        var countEl = document.getElementById('phaseCount');
+        var allocEl = document.getElementById('phaseAlloc');
+        if (!list) return;
+
+        var phases = state.phases || [];
+        var totalSec = state.sessionDurationSec || 600;
+        var totalMin = Math.round(totalSec / 60);
+
+        if (phases.length === 0) {
+          list.innerHTML = '';
+          if (bar) bar.innerHTML = '';
+          if (countEl) countEl.textContent = '0 PHASES';
+          if (allocEl) { allocEl.textContent = '0M / ' + totalMin + 'M'; allocEl.className = 'phase-summary-over'; }
+          return;
+        }
+
+        var html = '';
+        var allocated = 0;
+        phases.forEach(function(p, i) {
+          var min = Math.round(p.durationSec / 60);
+          var maxSec = totalSec - (phases.length - 1) * PHASE_MIN_SEC;
+          allocated += p.durationSec;
+          html += '<div class="phase-item" data-phase-idx="' + i + '">';
+          html += '<div class="phase-item-header">';
+          // v3.23.423: Move up/down buttons for reordering
+          html += '<div class="phase-move">';
+          html += '<button type="button" class="phase-move-btn' + (i === 0 ? ' disabled' : '') + '" data-move-idx="' + i + '" data-move-dir="up" title="Move this phase up">&#9650;</button>';
+          html += '<button type="button" class="phase-move-btn' + (i === phases.length - 1 ? ' disabled' : '') + '" data-move-idx="' + i + '" data-move-dir="down" title="Move this phase down">&#9660;</button>';
+          html += '</div>';
+          html += '<div class="phase-num" style="background:' + p.color + '22;color:' + p.color + ';">' + (i + 1) + '</div>';
+          html += '<span class="phase-name" data-name-idx="' + i + '" title="Click to edit">' + (p.name || '').replace(/</g, '&lt;') + '</span>';
+          // v3.23.427: Sandbox indicator + tag button
+          if (p.sandbox) { html += '<span style="font-size:10px;margin-right:2px;" title="Sandbox phase — free time to do whatever needs doing">' + SANDBOX_ICON + '</span>'; }
+          html += '<button type="button" class="phase-tag-btn" data-tag-idx="' + i + '" title="Manage tags for this phase task" style="font-size:8px;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 3px;opacity:0.7;transition:opacity 0.15s;">&#127991;</button>';
+          var isLocked = p.locked ? true : false;
+          html += '<button type="button" class="phase-lock' + (isLocked ? ' locked' : '') + '" data-lock-idx="' + i + '" title="' + (isLocked ? 'Unlock this phase so it rebalances when others change' : 'Lock this phase time so it stays fixed when you adjust others') + '">' + (isLocked ? '&#128274;' : '&#128275;') + '</button>';
+          html += '<div class="phase-nudge">';
+          html += '<button type="button" class="phase-nudge-btn" data-nudge-idx="' + i + '" data-nudge-dir="up" title="Add 1 minute to this phase">&#9650;</button>';
+          html += '<button type="button" class="phase-nudge-btn" data-nudge-idx="' + i + '" data-nudge-dir="down" title="Remove 1 minute from this phase">&#9660;</button>';
+          html += '</div>';
+          html += '<span class="phase-time" id="phaseTime' + i + '">' + min + 'm</span>';
+          html += '<div class="phase-remove" data-remove-idx="' + i + '" title="Remove this phase">&times;</div>';
+          html += '</div>';
+          html += '<div class="phase-slider-row">';
+          html += '<input type="range" min="' + PHASE_MIN_SEC + '" max="' + maxSec + '" value="' + p.durationSec + '" step="60" data-slider-idx="' + i + '" title="Drag to adjust time for this phase" />';
+          html += '</div>';
+          html += '</div>';
+        });
+        list.innerHTML = html;
+
+        // Bar — v3.23.429: uses CSS classes for glow animations
+        if (bar) {
+          bar.innerHTML = phases.map(function(p, i) {
+            var isActive = (state.timerState === 'running' && state.currentPhaseIndex === i && !state.phaseTransitioning);
+            var isDone = (state.timerState === 'running' && state.currentPhaseIndex > i);
+            var isTrans = (state.timerState === 'running' && state.currentPhaseIndex === i && state.phaseTransitioning);
+            var cls = 'phase-bar-seg' + (isActive ? ' seg-active' : '') + (isDone ? ' seg-done' : '') + (isTrans ? ' seg-transition' : '');
+            var sandbox = p.sandbox ? ' \u{1F3D6}' : '';
+            return '<div class="' + cls + '" data-bar-idx="' + i + '" style="flex:' + p.durationSec + ';background:' + p.color + ';" title="' + (p.name || 'Phase ' + (i+1)).replace(/"/g, '&quot;') + sandbox + ' — ' + Math.round(p.durationSec/60) + 'm' + (isActive ? ' (ACTIVE)' : (isDone ? ' (DONE)' : (isTrans ? ' (TRANSITION)' : ''))) + '"></div>';
+          }).join('');
+        }
+
+
+        // Summary
+        var allocMin = Math.round(allocated / 60);
+        if (countEl) countEl.textContent = phases.length + ' PHASE' + (phases.length !== 1 ? 'S' : '');
+        if (allocEl) {
+          allocEl.textContent = allocMin + 'M / ' + totalMin + 'M';
+          allocEl.className = (allocated <= totalSec + 30) ? 'phase-summary-ok' : 'phase-summary-over';
+        }
+
+        // Wire slider events
+        list.querySelectorAll('input[type=range]').forEach(function(slider) {
+          var idx = parseInt(slider.getAttribute('data-slider-idx'), 10);
+          slider.addEventListener('input', function() {
+            var val = parseInt(slider.value, 10);
+            var timeEl = document.getElementById('phaseTime' + idx);
+            if (timeEl) timeEl.textContent = Math.round(val / 60) + 'm';
+          });
+          slider.addEventListener('change', function() {
+            onPhaseSliderChange(idx, parseInt(slider.value, 10));
+          });
+        });
+
+        // Wire remove buttons
+        list.querySelectorAll('.phase-remove').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            removePhase(parseInt(btn.getAttribute('data-remove-idx'), 10));
+          });
+        });
+
+        // v3.23.427: Wire tag buttons
+        list.querySelectorAll('.phase-tag-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var idx = parseInt(btn.getAttribute('data-tag-idx'), 10);
+            if (!state.phases || !state.phases[idx]) return;
+            showTagPicker(state.phases[idx].name, btn);
+          });
+          btn.addEventListener('mouseenter', function() { btn.style.opacity = '1'; });
+          btn.addEventListener('mouseleave', function() { btn.style.opacity = '0.7'; });
+        });
+
+        // Wire lock buttons
+        list.querySelectorAll('.phase-lock').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var idx = parseInt(btn.getAttribute('data-lock-idx'), 10);
+            if (!state.phases || !state.phases[idx]) return;
+            state.phases[idx].locked = !state.phases[idx].locked;
+            renderPhaseList();
+            save();
+          });
+        });
+
+        // Wire move up/down buttons (reorder phases)
+        list.querySelectorAll('.phase-move-btn').forEach(function(btn) {
+          if (btn.classList.contains('disabled')) return;
+          btn.addEventListener('click', function() {
+            var idx = parseInt(btn.getAttribute('data-move-idx'), 10);
+            var dir = btn.getAttribute('data-move-dir');
+            movePhase(idx, dir);
+          });
+        });
+
+        // Wire phase name click-to-edit
+        list.querySelectorAll('.phase-name').forEach(function(nameEl) {
+          nameEl.addEventListener('click', function() {
+            var idx = parseInt(nameEl.getAttribute('data-name-idx'), 10);
+            if (isNaN(idx) || !state.phases || !state.phases[idx]) return;
+            // Replace span with input
+            var inp = document.createElement('input');
+            inp.type = 'text';
+            inp.className = 'phase-name-input';
+            inp.value = state.phases[idx].name || '';
+            inp.maxLength = 60;
+            nameEl.replaceWith(inp);
+            inp.focus();
+            inp.select();
+            function commitEdit() {
+              var newName = inp.value.trim();
+              if (newName && state.phases && state.phases[idx]) {
+                state.phases[idx].name = newName;
+                // Add to history if new
+                if (!state.phaseHistory) state.phaseHistory = [];
+                if (newName && state.phaseHistory.indexOf(newName) === -1) {
+                  state.phaseHistory.push(newName);
+                  if (state.phaseHistory.length > 50) state.phaseHistory.shift();
+                }
+                save();
+              }
+              renderPhaseList();
+            }
+            inp.addEventListener('blur', commitEdit);
+            inp.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+              if (e.key === 'Escape') { inp.value = state.phases[idx].name || ''; inp.blur(); }
+            });
+          });
+        });
+
+        // Wire nudge +/- buttons (1-minute increments)
+        list.querySelectorAll('.phase-nudge-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var idx = parseInt(btn.getAttribute('data-nudge-idx'), 10);
+            var dir = btn.getAttribute('data-nudge-dir');
+            var delta = (dir === 'up') ? 60 : -60; // 1 minute
+            var phases = state.phases;
+            if (!phases || !phases[idx]) return;
+            var newSec = Math.max(PHASE_MIN_SEC, phases[idx].durationSec + delta);
+            var totalSec = state.sessionDurationSec || 600;
+            var maxSec = totalSec - (phases.length - 1) * PHASE_MIN_SEC;
+            if (newSec > maxSec) return; // can't exceed max
+            onPhaseSliderChange(idx, newSec);
+          });
+        });
+      }
+
+      function movePhase(fromIdx, dir) {
+        if (!state.phases || fromIdx < 0 || fromIdx >= state.phases.length) return;
+        var toIdx = dir === 'up' ? fromIdx - 1 : fromIdx + 1;
+        if (toIdx < 0 || toIdx >= state.phases.length) return;
+        // Swap the two phases (preserves all properties: name, durationSec, color, locked)
+        var temp = state.phases[fromIdx];
+        state.phases[fromIdx] = state.phases[toIdx];
+        state.phases[toIdx] = temp;
+        renderPhaseList();
+        save();
+      }
+
+      function updateStartButtonForPhases() {
+        var startBtn = document.getElementById('startBtn');
+        if (!startBtn) return;
+        if (state.phaseModeEnabled && state.phases && state.phases.length > 0) {
+          startBtn.textContent = 'START PHASES';
+          startBtn.classList.add('btn-phased');
+          startBtn.classList.remove('btn-primary');
+        } else {
+          if (state.timerState === 'idle') startBtn.textContent = 'START';
+          startBtn.classList.remove('btn-phased');
+          startBtn.classList.add('btn-primary');
+        }
+      }
+
+      // Rebalance phases when session duration changes
+      function onSessionDurationChangeForPhases() {
+        if (state.phaseModeEnabled && state.phases && state.phases.length > 0) {
+          rebalancePhases();
+          renderPhaseList();
+        }
+        updateStartButtonForPhases();
+      }
+
+      // Initialize phase mode
+      initPhaseMode();
+      // Wire phase transition "Ready" button
+      var phaseReadyBtn = document.getElementById('phaseReadyBtn');
+      if (phaseReadyBtn) {
+        phaseReadyBtn.addEventListener('click', function() {
+          skipPhaseTransition();
+        });
+      }
+
+      // v3.23.436: Wire "Done Early" button
+      var earlyDoneBtn = document.getElementById('phaseEarlyDoneBtn');
+      if (earlyDoneBtn) {
+        earlyDoneBtn.addEventListener('click', function() {
+          completePhaseEarly();
+        });
+        // Duolingo hover effects
+        earlyDoneBtn.addEventListener('mouseenter', function() { this.style.transform='scale(1.05) translateY(-2px)'; this.style.background='rgba(255,215,0,0.2)'; this.style.boxShadow='0 0 12px rgba(255,215,0,0.3)'; });
+        earlyDoneBtn.addEventListener('mouseleave', function() { this.style.transform=''; this.style.background='rgba(255,215,0,0.1)'; this.style.boxShadow=''; });
+        earlyDoneBtn.addEventListener('mousedown', function() { this.style.transform='scale(0.95) translateY(1px)'; this.style.borderBottomWidth='1px'; });
+        earlyDoneBtn.addEventListener('mouseup', function() { this.style.transform='scale(1.05) translateY(-2px)'; this.style.borderBottomWidth='3px'; });
+      }
+
+      // Wire TTS test button — speaks the first telegraph message
+      var ttsTestBtn = document.getElementById('phaseTtsTest');
+      if (ttsTestBtn) {
+        ttsTestBtn.addEventListener('click', function() {
+          // Samuel Morse's first telegraph message, May 24 1844
+          var quote = 'What hath God wrought';
+          // Show it visually
+          notify('"' + quote + '" — Samuel Morse, 1844', 'var(--accent3)');
+          speakPhaseAnnouncement(quote);
+        });
+      }
+
+      // Wire TTS mute button
+      var ttsMuteBtn = document.getElementById('phaseTtsMute');
+      if (ttsMuteBtn) {
+        if (state.phaseTtsMuted) {
+          ttsMuteBtn.innerHTML = '&#128263; UNMUTE';
+          ttsMuteBtn.style.borderColor = 'rgba(255,107,157,0.4)';
+          ttsMuteBtn.style.color = 'var(--accent2)';
+          ttsMuteBtn.style.background = 'rgba(255,107,157,0.1)';
+        }
+        ttsMuteBtn.addEventListener('click', function() {
+          state.phaseTtsMuted = !state.phaseTtsMuted;
+          if (state.phaseTtsMuted) {
+            ttsMuteBtn.innerHTML = '&#128263; UNMUTE';
+            ttsMuteBtn.style.borderColor = 'rgba(255,107,157,0.4)';
+            ttsMuteBtn.style.color = 'var(--accent2)';
+            ttsMuteBtn.style.background = 'rgba(255,107,157,0.1)';
+          } else {
+            ttsMuteBtn.innerHTML = '&#128264; MUTE';
+            ttsMuteBtn.style.borderColor = 'rgba(255,255,255,0.15)';
+            ttsMuteBtn.style.color = 'var(--text-dim)';
+            ttsMuteBtn.style.background = 'rgba(255,255,255,0.05)';
+          }
+          save();
+        });
+      }
+
+      // Wire transition time controls
+      var transSlider = document.getElementById('phaseTransSlider');
+      var transTimeEl = document.getElementById('phaseTransTime');
+      var transDown = document.getElementById('transDown');
+      var transUp = document.getElementById('transUp');
+      if (transSlider) {
+        // Restore saved value
+        var savedTrans = state.phaseTransitionSec || 60;
+        transSlider.value = savedTrans;
+        if (transTimeEl) transTimeEl.textContent = savedTrans + 's';
+        transSlider.addEventListener('input', function() {
+          var val = parseInt(transSlider.value, 10);
+          if (transTimeEl) transTimeEl.textContent = val + 's';
+        });
+        transSlider.addEventListener('change', function() {
+          state.phaseTransitionSec = parseInt(transSlider.value, 10);
+          save();
+        });
+      }
+      if (transDown) {
+        transDown.addEventListener('click', function() {
+          var cur = state.phaseTransitionSec || 60;
+          var newVal = Math.max(10, cur - 5);
+          state.phaseTransitionSec = newVal;
+          if (transSlider) transSlider.value = newVal;
+          if (transTimeEl) transTimeEl.textContent = newVal + 's';
+          save();
+        });
+      }
+      if (transUp) {
+        transUp.addEventListener('click', function() {
+          var cur = state.phaseTransitionSec || 60;
+          var newVal = Math.min(120, cur + 5);
+          state.phaseTransitionSec = newVal;
+          if (transSlider) transSlider.value = newVal;
+          if (transTimeEl) transTimeEl.textContent = newVal + 's';
+          save();
+        });
+      }
+      // v3.23.427: Wire sandbox button
+      var sandboxBtn = document.getElementById('phaseSandboxBtn');
+      if (sandboxBtn) {
+        sandboxBtn.addEventListener('click', function() {
+          addSandboxPhase();
+        });
+      }
+
+      // v3.23.427: Initial render of bundle controls
+      renderBundleControls();
+
+      // Also update start button on first render
+      updateStartButtonForPhases();
+
 
       // Tabs dropdown bookend menu
       var tabMenuBtn = document.getElementById('tabMenuBtn');
@@ -17015,7 +18789,7 @@ try {
       // user's computer AND mirrors it into chrome.storage.local under
       // 'pixelFocusState_backup', then asks the background service worker
       // to reload the extension. Nothing is lost.
-      var settingsBtn = $('settingsBtn');
+      var settingsBtn = $('settingsBtn') || $('menuSettingsBtn');
       var settingsModal = $('settingsModal');
       var settingsModalCloseBtn = $('settingsModalCloseBtn');
       var safeRefreshBtn = $('safeRefreshBtn');
@@ -17487,11 +19261,8 @@ try {
           save();
           render();
           console.log('[CK-BRIDGE] Dollars: $' + _penPrevDollars + ' -> $' + Math.floor(state.coins) + ' (penalty applied in popup)');
-          // Show celebration overlay
-          setTimeout(function() {
-            try { showCkBuddyCelebration(); } catch(e) { console.warn('[CK-BRIDGE] Celebration error:', e); }
-          }, 400);
-          // (Legacy storage read path removed — popup handles bonuses/penalties directly now)
+          // v3.23.410: Do NOT show celebration for mid-quiz penalties — only on block complete (CKRB_BONUS)
+          console.log('[CK-BRIDGE] Penalty applied silently (no celebration mid-quiz)');
         } else if (msg.type === 'CKRB_BONUS') {
           var _ckAmt = msg.amount || 0;
           console.log('[CK-BRIDGE] Received CKRB_BONUS in popup, amount=$' + _ckAmt);
@@ -19090,12 +20861,58 @@ try {
         if (!settingsModal) return;
         settingsModal.style.display = 'none';
       }
-      if (settingsBtn) {
-        settingsBtn.addEventListener('click', function() {
+      // --- Menu dropdown (replaces old settingsBtn) ---
+      var menuBtn = document.getElementById('menuBtn');
+      var menuDropdown = document.getElementById('menuDropdown');
+      var menuSettingsBtn = document.getElementById('menuSettingsBtn');
+      var menuAboutBtn = document.getElementById('menuAboutBtn');
+      function closeMenuDropdown() { if (menuDropdown) menuDropdown.style.display = 'none'; }
+      if (menuBtn) {
+        menuBtn.addEventListener('click', function(ev) {
+          ev.stopPropagation();
           try { SFX.click && SFX.click(); } catch (_) {}
+          if (menuDropdown) {
+            var vis = menuDropdown.style.display === 'block';
+            menuDropdown.style.display = vis ? 'none' : 'block';
+          }
+        });
+      }
+      if (menuSettingsBtn) {
+        menuSettingsBtn.addEventListener('click', function() {
+          try { SFX.click && SFX.click(); } catch (_) {}
+          closeMenuDropdown();
           openSettingsModal();
         });
       }
+      var aboutLoomModal = document.getElementById('aboutLoomModal');
+      var aboutLoomCloseBtn = document.getElementById('aboutLoomCloseBtn');
+      if (menuAboutBtn) {
+        menuAboutBtn.addEventListener('click', function() {
+          try { SFX.click && SFX.click(); } catch (_) {}
+          closeMenuDropdown();
+          if (aboutLoomModal) aboutLoomModal.style.display = 'flex';
+        });
+      }
+      if (aboutLoomCloseBtn) {
+        aboutLoomCloseBtn.addEventListener('click', function() {
+          try { SFX.click && SFX.click(); } catch (_) {}
+          if (aboutLoomModal) aboutLoomModal.style.display = 'none';
+        });
+      }
+      if (aboutLoomModal) {
+        aboutLoomModal.addEventListener('click', function(ev) {
+          if (ev.target === aboutLoomModal) aboutLoomModal.style.display = 'none';
+        });
+      }
+      document.addEventListener('click', function() { closeMenuDropdown(); });
+      // Hover effects for dropdown items
+      [menuSettingsBtn, menuAboutBtn].forEach(function(btn) {
+        if (!btn) return;
+        btn.addEventListener('mouseenter', function() { btn.style.background = 'rgba(168,85,247,0.15)'; });
+        btn.addEventListener('mouseleave', function() { btn.style.background = 'transparent'; });
+      });
+      // Legacy alias so rest of code still works
+      var settingsBtn = menuSettingsBtn;
       if (settingsModalCloseBtn) {
         settingsModalCloseBtn.addEventListener('click', function() {
           try { SFX.click && SFX.click(); } catch (_) {}
@@ -19761,4 +21578,4 @@ try {
     document.body.appendChild(_vLabel);
   }
   _vLabel.textContent = 'v' + (chrome.runtime.getManifest().version || '?');
-} catch(_) {}
+} catch(_appErr) { console.error('[APP.JS FATAL]', _appErr && _appErr.message, _appErr && _appErr.stack); }

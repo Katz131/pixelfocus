@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Todo of the Loom",
-  "version": "3.23.409",
-  "description": "v3.23.409 - CK Buddy: direct state mutation for money persistence + before/after balance",
+  "version": "3.23.437",
+  "description": "v3.23.437 - Auto-resize PiP window for phase mode",
   "permissions": [
     "storage",
     "alarms",
@@ -32,5 +32,18 @@
     "ids": [
       "eanjidgieollmmocppapogfkldkegdpi"
     ]
-  }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "fonts/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }

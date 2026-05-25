@@ -2039,20 +2039,27 @@ chrome.runtime.onMessageExternal.addListener(function(msg, sender, sendResponse)
       }
 
     } else if (msg.type === 'CKRB_BLOCK_COMPLETED') {
-      // Award bonus based on average answer speed
+      // Award bonus — use CK Buddy's penalty-adjusted calculation if provided
       var total = msg.totalQuestions || 1;
-      var totalMs = msg.totalMs || msg.totalTimeMs || 0;  // CK Buddy sends totalMs
+      var totalMs = msg.totalMs || msg.totalTimeMs || 0;
       var avgMs = totalMs / total;
-      var bonus = 0;
-      if (avgMs <= CKRB_FAST_THRESHOLD_MS) {
-        bonus = CKRB_COMPLETION_BONUS_FAST;
-      } else if (avgMs <= CKRB_OK_THRESHOLD_MS) {
-        bonus = CKRB_COMPLETION_BONUS_OK;
+      var bonus;
+      if (typeof msg.calculatedBonus === 'number') {
+        bonus = msg.calculatedBonus;
+        console.log('[CK-BRIDGE] Using CK Buddy calculated bonus: $' + bonus);
+      } else {
+        bonus = 0;
+        if (avgMs <= CKRB_FAST_THRESHOLD_MS) bonus = CKRB_COMPLETION_BONUS_FAST;
+        else if (avgMs <= CKRB_OK_THRESHOLD_MS) bonus = CKRB_COMPLETION_BONUS_OK;
       }
       // Award coins if bonus earned
       if (bonus > 0) {
         state.coins = (state.coins || 0) + bonus;
         state.lifetimeCoins = (state.lifetimeCoins || 0) + bonus;
+        state.coinsEarnedToday = (state.coinsEarnedToday || 0) + bonus;
+      } else if (bonus < 0) {
+        // Net penalty — deduct (can go negative)
+        state.coins = (state.coins || 0) + bonus;
         state.coinsEarnedToday = (state.coinsEarnedToday || 0) + bonus;
       }
       // ALWAYS queue for celebration on popup return — even if $0 bonus

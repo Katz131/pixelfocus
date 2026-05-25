@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>About the Loom</title>
+<style>
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('fonts/PressStart2P-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: #08080f;
+  color: #c8c8d0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  line-height: 1.85;
+  min-height: 100vh;
+}
+.back-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #0a0a14;
+  border-bottom: 1px solid #1a1a2e;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+}
+.back-btn {
+  background: transparent;
+  border: 1px solid #a855f7;
+  color: #a855f7;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s, background 0.2s;
+}
+.back-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 4px 12px rgba(168,85,247,0.35);
+  background: rgba(168,85,247,0.1);
+}
+.back-btn:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: none;
+}
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 28px;
+  font-weight: normal;
+  color: #e0e0e8;
+  margin: 0 0 6px;
+  letter-spacing: 0.5px;
+}
+.subtitle {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: #555;
+  letter-spacing: 2px;
+  margin: 0 0 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #1a1a2e;
+}
+p {
+  margin: 0 0 20px;
+  color: #b0b0bc;
+}
+p em {
+  color: #d0d0dc;
+  font-style: italic;
+}
+.tagline {
+  font-size: 14px;
+  color: #666;
+  margin: 40px 0 0;
+  padding-top: 24px;
+  border-top: 1px solid #1a1a2e;
+  font-style: italic;
+  line-height: 1.6;
+}
+.version-note {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #333;
+  margin-top: 24px;
+  letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+
+<div class="back-bar">
+  <button class="back-btn" id="backBtn" title="Return to the main screen">&#9664; BACK</button>
+</div>
+
+<div class="container">
+  <h1>Of looms and luddites</h1>
+  <div class="subtitle">A BRIEF HISTORY OF REASONABLE PANIC</div>
+
+  <p>It is one of history's finer ironies that the word "Luddite" &mdash; now deployed as a casual insult against anyone who squints suspiciously at a software update &mdash; originates from a movement that was neither stupid nor wrong. The men and women who took sledgehammers to the stocking frames of the English Midlands between 1811 and 1816 were skilled tradespeople who understood the machinery with considerable precision. They simply preferred not to be made obsolete by it.</p>
+
+  <p>The flying shuttle, the spinning jenny, the water frame, and finally Edmund Cartwright's power loom together constituted a technological cascade that did to Georgian England's textile trade what a river does to a sandcastle. Each invention fed the next, until a single power loom operated by an unskilled adolescent could outproduce a master weaver by a factor of four. The handloom weaver &mdash; a man who had spent years mastering a trade that conferred not merely income but identity, who worked from home and set his own hours &mdash; found himself, in the span of a decade, quaint, then redundant, then destitute.</p>
+
+  <p>The Luddites responded with theatrical flair. They claimed allegiance to "General Ned Ludd," a probably fictitious commander said to reside in Sherwood Forest (an address suggesting either a gift for literary allusion or a truly remarkable estate agent). They organised in secret cells, wrote threatening letters, and descended upon the mills with hammers. Parliament responded with the Frame Breaking Act of 1812, making loom-smashing a capital offence. Lord Byron opposed the bill, asking whether the government truly intended to execute tradesmen for destroying machinery. The bill passed. Fourteen Luddites were hanged at York in 1813.</p>
+
+  <p>The standard telling is tidy: the Luddites were wrong, the machines won, standards of living rose, and textiles became affordable to millions. This is broadly true &mdash; and rather easy to say from two centuries' distance. Handloom weavers' earnings fell from 21 shillings a week in 1802 to 6 by the 1830s. An entire generation lived and died inside the transition and never saw the other side of it.</p>
+
+  <p>This matters because we are living through it again. The artificial intelligence systems now reshaping our economy share with the power loom several noteworthy properties: they are extraordinarily capable, they improve faster than the institutions designed to govern them, and they are cheered on by enthusiasts whose faith in the transformation is matched only by their confidence that they, personally, will land on the right side of it.</p>
+
+  <p>The reasonable person must hold two ideas at once: that anxiety about technological upheaval is not irrational and that the instinct to ban what we do not yet understand has an exceptionally poor track record. The Luddites were right about the problem and wrong about the solution. The power loom <em>was</em> going to upend their lives. Smashing it was never going to help. The measure of a civilisation is not merely how much it produces but how it treats those whose world it has just rearranged. The automated loom was a marvel. The haste with which it was deployed was, at best, careless. Both of these things are true.</p>
+
+  <p class="tagline">Welcome to Todo of the Loom, where you are both the weaver and the machine &mdash; the demoralizing to-do list.</p>
+
+  <div class="version-note">TODO OF THE LOOM</div>
+</div>
+
+<script src="btn-sounds.js"></script>
+<script>
+  document.getElementById('backBtn').addEventListener('click', function() {
+    chrome.runtime.sendMessage({ type: 'pf-open', path: 'popup.html' });
+    window.close();
+  });
+</script>
+</body>
+</html>

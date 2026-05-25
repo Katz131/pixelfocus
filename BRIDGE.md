@@ -1,8 +1,8 @@
 # CK Buddy ↔ Todo of the Loom — Cross-Extension Bridge Protocol
 
 **Last updated:** 2026-05-23
-**CK Buddy version at last sync:** v335
-**Loom version at last sync:** v3.23.409
+**CK Buddy version at last sync:** v344
+**Loom version at last sync:** v3.23.410
 
 ---
 
@@ -276,3 +276,4 @@ CK Buddy sends TO Loom. Only the receiver needs the sender listed.
 | 2026-05-23 | Loom v3.23.409 | Fixed: direct state mutation for money persistence, before→after balance display, celebration fires when popup already open, field name compat (totalMs/totalTimeMs) | CK Buddy Claude |
 | 2026-05-22 | CK v334 | Added debug logging to _sendToLoom, bumped to v335 | CK Buddy Claude |
 | 2026-05-22 | CK v320-329 | Added _sendToLoom helper, all CKRB message sends, bridge status indicator, per-question timer | CK Buddy Claude |
+| 2026-05-23 | CK v344 / Loom v3.23.410 | CK Buddy speed penalties (red/yellow) are LOCAL only — no longer send CKRB_QUESTION_IDLE to Loom. Loom CKRB_PENALTY handler no longer shows celebration overlay mid-quiz. Celebration only fires on CKRB_BONUS (block complete). | CK Buddy Claude |

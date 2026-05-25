@@ -132,6 +132,86 @@ body.focus-mode .xp-text, body.focus-mode .next-xp-preview, body.focus-mode .str
 @keyframes survNagPulse { 0%,100%{opacity:0.85;} 50%{opacity:0.4;} }
 .timer-label { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:2px; margin-bottom:4px; }
 .timer-controls { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+
+/* Phase mode toggle + panel */
+.phase-toggle-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:8px 0 2px; }
+.phase-toggle-label { font-size:8px; color:var(--text-dim); letter-spacing:1px; text-transform:uppercase; cursor:pointer; transition:color 0.2s; }
+.phase-toggle-label.on { color:var(--accent3); }
+.phase-toggle-track { width:32px; height:16px; border-radius:8px; background:#333355; position:relative; cursor:pointer; transition:background 0.2s; }
+.phase-toggle-track.on { background:var(--accent3); }
+.phase-toggle-thumb { width:12px; height:12px; border-radius:50%; background:white; position:absolute; top:2px; left:2px; transition:left 0.2s; }
+.phase-toggle-track.on .phase-toggle-thumb { left:18px; }
+.phase-panel { background:rgba(78,205,196,0.06); border:1px solid rgba(78,205,196,0.2); border-radius:6px; padding:10px; margin:8px 0 0; text-align:left; display:none; animation:fadeSlideIn 0.2s ease; }
+.phase-panel.open { display:block; }
+@keyframes fadeSlideIn { from{opacity:0;transform:translateY(-6px);} to{opacity:1;transform:translateY(0);} }
+.phase-item { margin-bottom:8px; }
+.phase-item-header { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.phase-num { width:18px; height:18px; border-radius:50%; background:rgba(78,205,196,0.15); color:var(--accent3); display:flex; align-items:center; justify-content:center; font-size:8px; flex-shrink:0; }
+.phase-name { flex:1; font-size:8px; color:var(--text); letter-spacing:0.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+.phase-name:hover { color:var(--accent3); text-decoration:underline; text-decoration-style:dotted; }
+.phase-name-input { flex:1; font-size:8px; font-family:inherit; letter-spacing:0.3px; background:rgba(255,255,255,0.08); border:1px solid var(--accent3); border-radius:3px; color:var(--text); padding:2px 4px; outline:none; }
+.phase-time { font-size:8px; color:var(--accent3); min-width:24px; text-align:right; }
+
+/* Phase lock button */
+.phase-lock { width:18px; height:18px; border-radius:50%; border:1px solid rgba(78,205,196,0.2); background:transparent; color:var(--text-dim); cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+.phase-lock:hover { border-color:var(--accent3); color:var(--accent3); transform:scale(1.15); }
+.phase-lock.locked { background:rgba(255,215,0,0.15); border-color:rgba(255,215,0,0.5); color:#ffd700; }
+.phase-lock.locked:hover { background:rgba(255,215,0,0.25); }
+/* Phase time nudge buttons */
+.phase-nudge { display:flex; flex-direction:column; gap:1px; flex-shrink:0; }
+.phase-nudge-btn { width:18px; height:14px; border:1px solid rgba(78,205,196,0.3); border-radius:3px; background:rgba(78,205,196,0.08); color:var(--accent3); cursor:pointer; font-size:9px; display:flex; align-items:center; justify-content:center; transition:all 0.15s; padding:0; line-height:1; }
+.phase-nudge-btn:hover { background:rgba(78,205,196,0.2); border-color:var(--accent3); transform:scale(1.15); }
+.phase-nudge-btn:active { transform:scale(0.9); background:rgba(78,205,196,0.3); }
+
+.phase-remove { width:16px; height:16px; border-radius:50%; border:none; background:rgba(255,107,157,0.15); color:var(--accent2); cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+.phase-remove:hover { background:rgba(255,107,157,0.3); transform:scale(1.15); }
+/* Phase move (reorder) buttons */
+.phase-move { display:flex; flex-direction:column; gap:1px; flex-shrink:0; margin-right:4px; }
+.phase-move-btn { width:16px; height:13px; border:1px solid rgba(255,255,255,0.15); border-radius:3px; background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.4); cursor:pointer; font-size:8px; display:flex; align-items:center; justify-content:center; transition:all 0.15s; padding:0; line-height:1; }
+.phase-move-btn:hover { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.8); border-color:rgba(255,255,255,0.3); transform:scale(1.15); }
+.phase-move-btn:active { transform:scale(0.9); background:rgba(255,255,255,0.2); }
+.phase-move-btn.disabled { opacity:0.2; cursor:default; pointer-events:none; }
+.phase-slider-row { padding:0 0 0 24px; }
+.phase-slider-row input[type=range] { width:100%; accent-color:var(--accent3); }
+.phase-add-input { display:flex; align-items:center; gap:6px; width:100%; height:26px; background:rgba(255,255,255,0.04); border:1px dashed rgba(78,205,196,0.3); border-radius:4px; padding:0 8px; font-size:8px; color:var(--text-dim); cursor:text; transition:border-color 0.2s; }
+.phase-add-input:hover { border-color:rgba(78,205,196,0.5); }
+.phase-add-input input { background:transparent; border:none; color:var(--text); font-family:'Press Start 2P',monospace; font-size:8px; width:100%; outline:none; }
+.phase-add-input input::placeholder { color:var(--text-dim); }
+.phase-autocomplete { background:var(--surface2); border:1px solid var(--border); border-radius:4px; max-height:120px; overflow-y:auto; margin:2px 0 6px; display:none; }
+.phase-autocomplete.open { display:block; }
+.phase-ac-item { padding:5px 10px; font-size:8px; color:var(--text); cursor:pointer; transition:background 0.1s; letter-spacing:0.3px; }
+.phase-ac-item:hover, .phase-ac-item.active { background:rgba(78,205,196,0.12); color:var(--accent3); }
+.phase-ac-match { color:var(--accent3); font-weight:bold; }
+.phase-bar { display:flex; height:8px; border-radius:3px; overflow:visible; gap:2px; margin:10px 0 6px; }
+.phase-bar-seg { border-radius:2px; transition:flex 0.3s ease; }
+.phase-bar-seg.seg-active { animation:phaseSegPulse 1.2s ease-in-out infinite; border:2px solid #fff !important; z-index:1; position:relative; }
+.phase-bar-seg.seg-done { opacity:0.3 !important; }
+.phase-bar-seg.seg-transition { animation:phaseSegTrans 0.8s ease-in-out infinite; border:2px solid #ffd700 !important; }
+@keyframes phaseSegPulse {
+  0%,100% { box-shadow:0 0 4px currentColor, 0 0 8px currentColor; transform:scaleY(1); }
+  50% { box-shadow:0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor; transform:scaleY(2.5); }
+}
+@keyframes phaseSegTrans {
+  0%,100% { box-shadow:0 0 4px #ffd700; }
+  50% { box-shadow:0 0 12px #ffd700, 0 0 24px #ffd700; transform:scaleY(2); }
+}
+.phase-summary { display:flex; justify-content:space-between; font-size:7px; color:var(--text-dim); letter-spacing:0.5px; }
+.phase-summary-ok { color:var(--accent); }
+.phase-summary-over { color:var(--danger); }
+.btn-phased { border-color:var(--accent3) !important; color:var(--accent3) !important; box-shadow:0 0 8px rgba(78,205,196,0.3) !important; }
+/* Phase progress during session */
+.phase-progress-bar { display:flex; height:22px; border-radius:4px; overflow:hidden; gap:1px; margin:6px 0; border:1px solid var(--border); }
+.phase-progress-seg { display:flex; align-items:center; justify-content:center; font-size:7px; color:white; letter-spacing:0.3px; transition:all 0.3s; position:relative; }
+.phase-progress-seg.done { opacity:0.5; }
+.phase-progress-seg.active { outline:2px solid #ffd700; outline-offset:-2px; }
+.phase-progress-transition { background:repeating-linear-gradient(45deg,#444,#444 3px,#555 3px,#555 6px); min-width:12px; display:flex; align-items:center; justify-content:center; font-size:8px; color:#999; }
+.phase-transition-overlay { background:rgba(255,215,0,0.08); border:1px solid rgba(255,215,0,0.3); border-radius:6px; padding:10px; text-align:center; margin:6px 0; animation:pulse 2s ease-in-out infinite; }
+.phase-transition-title { font-size:9px; color:#ffd700; letter-spacing:1px; margin-bottom:4px; }
+.phase-transition-next { font-size:8px; color:var(--text-dim); margin-bottom:6px; }
+.phase-transition-timer { font-size:20px; color:#ffd700; letter-spacing:2px; margin-bottom:8px; }
+.btn-ready { background:rgba(78,205,196,0.15); border:1px solid var(--accent3); color:var(--accent3); border-radius:4px; padding:6px 16px; font-size:8px; cursor:pointer; transition:all 0.15s; border-bottom:3px solid rgba(0,0,0,0.3); }
+.btn-ready:hover { background:rgba(78,205,196,0.25); transform:scale(1.06) translateY(-2px); }
+
 .btn { padding:8px 16px; border:2px solid var(--border); border-radius:4px; background:var(--surface2); color:var(--text); font-family:'Press Start 2P',monospace; font-size:9px; cursor:pointer; transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1); border-bottom:3px solid rgba(0,0,0,0.3); }
 .btn:hover { transform:scale(1.06) translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.4); border-bottom-width:4px; }
 .btn:active { transform:scale(0.95) translateY(1px); border-bottom-width:2px; }
@@ -541,7 +621,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
        the player picks a loom via the Gallery PROFILE button. -->
   <div style="display:flex;align-items:center;gap:8px;">
     <canvas id="profileAvatar" width="16" height="16" style="display:none;width:32px;height:32px;image-rendering:pixelated;border:2px solid var(--accent);border-radius:50%;background:#08080f;cursor:pointer;box-shadow:0 0 8px rgba(0,255,136,0.3);" title="Your profile picture. Click to open the gallery and pick a different loom."></canvas>
-  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features."><span id="versionTag"></span></span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button> <button type="button" id="settingsBtn" style="margin-left:4px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:9px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;" title="Settings &mdash; Safe Refresh (backup + reload the extension without losing progress), restore from backup, and other maintenance tools.">&#9881;</button> <button type="button" id="tutorialBtn" style="margin-left:4px;background:transparent;border:1px solid #a855f7;color:#a855f7;font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s,background 0.2s;" title="Encyclopedia &mdash; searchable guide to every feature in the game.">&#x1F393;</button></h1>
+  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features."><span id="versionTag"></span></span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button> <span id="menuWrapper" style="position:relative;display:inline-block;vertical-align:middle;margin-left:4px;"><button type="button" id="menuBtn" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;" title="Menu">MENU</button><div id="menuDropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#12121e;border:1px solid var(--accent3);border-radius:6px;min-width:160px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.6);overflow:hidden;"><button type="button" id="menuSettingsBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #1a1a2e;" title="Settings &mdash; Safe Refresh, restore from backup, and other maintenance tools.">&#9881; Settings</button><button type="button" id="menuAboutBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;" title="The history of the automated loom and the Luddite uprising &mdash; the real story behind the game.">&#128220; About the Loom</button></div></span> <button type="button" id="tutorialBtn" style="margin-left:4px;background:transparent;border:1px solid #a855f7;color:#a855f7;font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s,background 0.2s;" title="Encyclopedia &mdash; searchable guide to every feature in the game.">&#x1F393;</button></h1>
   </div>
   <div class="block-counter" id="blockCounter" title="Textiles produced today. One textile per completed 10-minute focus session. Resets at midnight.">
     <div class="block-icon"></div>
@@ -773,6 +853,58 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
     <button type="button" class="session-pill" data-dur="3600" title="60-minute marathon focus run. Earns 6 textiles + 3 commitment bonus textiles on completion.">60 MIN</button>
     <button type="button" class="session-pill" data-dur="5400" title="90-minute ultra focus run. Earns 9 textiles + 5 commitment bonus textiles on completion.">90 MIN</button>
   </div>
+
+  <!-- v3.23.414: Phase mode toggle + setup panel -->
+  <div class="phase-toggle-row">
+    <span class="phase-toggle-label" id="phaseToggleLabel" title="Split your session into timed phases for different tasks. A voice announces when to switch.">PHASES</span>
+    <div class="phase-toggle-track" id="phaseToggle" title="Toggle phase mode on/off. When on, divide your session into timed task phases with voice announcements.">
+      <div class="phase-toggle-thumb"></div>
+    </div>
+  </div>
+  <div class="phase-panel" id="phasePanel">
+    <div id="phaseList"></div>
+    <div class="phase-add-input" id="phaseAddRow">
+      <span style="font-size:10px;color:var(--text-dim);">+</span>
+      <input type="text" id="phaseAddInput" placeholder="Add a phase..." autocomplete="off" title="Type a task name or start typing to see suggestions from your task list." />
+    </div>
+    <div class="phase-autocomplete" id="phaseAutocomplete"></div>
+    <div style="display:flex;gap:4px;margin:4px 0;">
+      <button type="button" id="phaseSandboxBtn" style="font-size:7px;letter-spacing:0.5px;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(78,205,196,0.3);border-radius:3px;background:rgba(78,205,196,0.08);color:var(--accent3);cursor:pointer;transition:all 0.15s;" title="Add a sandbox phase — free time to do whatever needs doing in the general vicinity">&#127958; SANDBOX</button>
+    </div>
+    <div id="phaseBundleControls" style="margin:6px 0;padding:4px 0;border-top:1px solid rgba(78,205,196,0.1);"></div>
+    <div id="phaseTransitionRow" style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;padding:4px 0;border-top:1px solid rgba(78,205,196,0.1);">
+      <span style="font-size:7px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;flex-shrink:0;">TRANSITION</span>
+      <button type="button" class="phase-nudge-btn" id="transDown" title="Decrease transition time">&#9660;</button>
+      <input type="range" id="phaseTransSlider" min="10" max="120" step="5" value="60" style="flex:1;accent-color:var(--accent3);" title="Adjust the transition time between phases" />
+      <button type="button" class="phase-nudge-btn" id="transUp" title="Increase transition time">&#9650;</button>
+      <span id="phaseTransTime" style="font-size:8px;color:var(--accent3);min-width:28px;text-align:right;">60s</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin:2px 0 6px;padding:4px 0;border-top:1px solid rgba(78,205,196,0.1);">
+      <button type="button" id="phaseTtsTest" style="font-size:7px;letter-spacing:0.5px;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(78,205,196,0.3);border-radius:3px;background:rgba(78,205,196,0.08);color:var(--accent3);cursor:pointer;transition:all 0.15s;" title="Preview the dystopian TTS voice that announces phase transitions">&#128266; TEST VOICE</button>
+      <button type="button" id="phaseTtsMute" style="font-size:7px;letter-spacing:0.5px;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(255,255,255,0.15);border-radius:3px;background:rgba(255,255,255,0.05);color:var(--text-dim);cursor:pointer;transition:all 0.15s;" title="Mute/unmute TTS voice announcements (text banners still show)">&#128264; MUTE</button>
+      <span style="font-size:7px;color:var(--text-dim);opacity:0.6;flex:1;">Preview phase announcements</span>
+    </div>
+    <div class="phase-bar" id="phaseBar"></div>
+    <div class="phase-summary" id="phaseSummary">
+      <span id="phaseCount">0 PHASES</span>
+      <span id="phaseAlloc" class="phase-summary-ok">0M / 0M</span>
+    </div>
+  </div>
+  <!-- v3.23.414: Phase progress bar (shown during phased sessions) -->
+  <div id="phaseProgressContainer" style="display:none;margin:6px 0;">
+    <div class="phase-progress-bar" id="phaseProgressBar"></div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px;">
+      <div id="phaseCurrentLabel" style="font-size:8px;color:var(--accent3);text-align:center;letter-spacing:0.5px;flex:1;"></div>
+      <button type="button" id="phaseEarlyDoneBtn" style="display:none;font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;background:rgba(255,215,0,0.1);border:1px solid #ffd700;border-bottom:3px solid rgba(180,150,0,0.5);border-radius:6px;padding:4px 10px;cursor:pointer;white-space:nowrap;transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);" title="Finished this task early? Reclaim the remaining time and send it to another task or a free sandbox at the end.">&#10003; DONE</button>
+    </div>
+  </div>
+  <div id="phaseTransitionOverlay" class="phase-transition-overlay" style="display:none;">
+    <div class="phase-transition-title">&#128276; STATION CHANGE</div>
+    <div class="phase-transition-next" id="phaseTransitionNext"></div>
+    <div class="phase-transition-timer" id="phaseTransitionTimer">0:60</div>
+    <button class="btn-ready" id="phaseReadyBtn" title="Skip the transition and move to the next phase immediately.">&#10003; READY &mdash; MOVE ON</button>
+  </div>
+
   <div id="mirrorBanner" style="background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(78,205,196,0.08));border:1px solid #a855f7;border-radius:6px;padding:8px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#a855f7;letter-spacing:1px;line-height:1.8;">&#128225; MIRROR MODE &mdash; READ ONLY<br><span style="font-family:'Courier New',monospace;font-size:9px;color:#5a5a7e;">Viewing stats from main browser. Use Brave to make changes.</span></div>
   <div id="challengeBanner" style="display:none;background:linear-gradient(135deg,rgba(255,140,58,0.12),rgba(255,215,0,0.08));border:1px solid #ff8c3a;border-radius:6px;padding:6px 14px;margin:4px auto 6px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:8px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Idle Challenge active! Complete this session without pausing for 1.5x rewards.">&#9876; IDLE CHALLENGE ACTIVE &mdash; 1.5x REWARDS &#9876;</div>
   <div id="questBonusBadge" style="display:none;background:linear-gradient(135deg,rgba(255,215,0,0.15),rgba(255,107,157,0.10));border:1px solid #ffd700;border-radius:6px;padding:5px 14px;margin:4px auto 4px;max-width:360px;text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;letter-spacing:1px;animation:pulse 2s ease-in-out infinite;" title="Your daily quest reward doubles the textiles from your next completed focus session!">&#9876; 2x TEXTILES &#8212; QUEST REWARD ACTIVE &#9876;</div>
@@ -1249,6 +1381,34 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
       <button class="btn btn-small btn-primary" id="introBeginBtn" style="border-color:var(--accent);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;margin-left:6px;" title="Close the archive and return to the loom.">
         <span id="stage-dismiss">BEGIN THE FIRST SHIFT</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<div id="aboutLoomModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:220;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(180deg, #12122a 0%, #0a0a14 100%);border:2px solid var(--accent);border-radius:10px;padding:22px 24px 20px;width:480px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 0 40px rgba(0,255,136,0.3),inset 0 0 30px rgba(0,0,0,0.5);">
+    <div style="text-align:center;margin-bottom:14px;">
+      <h2 style="font-family:'Press Start 2P',monospace;font-size:13px;color:var(--accent);text-shadow:0 0 12px rgba(0,255,136,0.5);line-height:1.5;">Of looms and luddites</h2>
+      <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-top:6px;">a letter from the creator</div>
+      <div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:10px;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text);">Dr. Adam Katz</span>
+        <a href="https://www.linkedin.com/in/adam-katz-md/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,119,181,0.15);border:1px solid rgba(0,119,181,0.4);border-radius:4px;padding:4px 10px;text-decoration:none;color:#0077b5;font-family:'Press Start 2P',monospace;font-size:7px;letter-spacing:0.5px;transition:all 0.2s;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="#0077b5" xmlns="http://www.w3.org/2000/svg"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+          LINKEDIN
+        </a>
+      </div>
+    </div>
+    <div style="font-family:'Segoe UI',sans-serif;font-size:12px;color:var(--text);line-height:1.75;margin-bottom:16px;">
+      <p style="margin:0 0 10px;">It is one of history&#x2019;s finer ironies that the word &#x201C;Luddite&#x201D; &#x2014; now deployed as a casual insult against anyone who squints suspiciously at a software update &#x2014; originates from a movement that was neither stupid nor wrong. The men and women who took sledgehammers to the stocking frames of the English Midlands between 1811 and 1816 were skilled tradespeople who understood the machinery with considerable precision. They simply preferred not to be made obsolete by it.</p>
+      <p style="margin:0 0 10px;">The flying shuttle, the spinning jenny, the water frame, and finally Edmund Cartwright&#x2019;s power loom together constituted a technological cascade that did to Georgian England&#x2019;s textile trade what a river does to a sandcastle. Each invention fed the next, until a single power loom operated by an unskilled adolescent could outproduce a master weaver by a factor of four. The handloom weaver &#x2014; a man who had spent years mastering a trade that conferred not merely income but identity, who worked from home and set his own hours &#x2014; found himself, in the span of a decade, quaint, then redundant, then destitute.</p>
+      <p style="margin:0 0 10px;">The Luddites responded with theatrical flair. They claimed allegiance to &#x201C;General Ned Ludd,&#x201D; a probably fictitious commander said to reside in Sherwood Forest (an address suggesting either a gift for literary allusion or a truly remarkable estate agent). They organised in secret cells, wrote threatening letters, and descended upon the mills with hammers. Parliament responded with the Frame Breaking Act of 1812, making loom-smashing a capital offence. Lord Byron opposed the bill, asking whether the government truly intended to execute tradesmen for destroying machinery. The bill passed. Fourteen Luddites were hanged at York in 1813.</p>
+      <p style="margin:0 0 10px;">The standard telling is tidy: the Luddites were wrong, the machines won, standards of living rose, and textiles became affordable to millions. This is broadly true &#x2014; and rather easy to say from two centuries&#x2019; distance. Handloom weavers&#x2019; earnings fell from 21 shillings a week in 1802 to 6 by the 1830s. An entire generation lived and died inside the transition and never saw the other side of it.</p>
+      <p style="margin:0 0 10px;">This matters because we are living through it again. The artificial intelligence systems now reshaping our economy share with the power loom several noteworthy properties: they are extraordinarily capable, they improve faster than the institutions designed to govern them, and they are cheered on by enthusiasts whose faith in the transformation is matched only by their confidence that they, personally, will land on the right side of it.</p>
+      <p style="margin:0 0 10px;">The reasonable person must hold two ideas at once: that anxiety about technological upheaval is not irrational and that the instinct to ban what we do not yet understand has an exceptionally poor track record. The Luddites were right about the problem and wrong about the solution. The power loom <em>was</em> going to upend their lives. Smashing it was never going to help. The measure of a civilisation is not merely how much it produces but how it treats those whose world it has just rearranged. The automated loom was a marvel. The haste with which it was deployed was, at best, careless. Both of these things are true.</p>
+      <p style="margin:10px 0 0;font-style:italic;color:var(--text-dim);font-size:11px;">Welcome to Todo of the Loom, where you are both the weaver and the machine &#x2014; the demoralizing to-do list.</p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;">
+      <button class="btn btn-small btn-primary" id="aboutLoomCloseBtn" style="border-color:var(--accent);color:var(--accent);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 14px;">BACK TO THE LOOM</button>
     </div>
   </div>
 </div>

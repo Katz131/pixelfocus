@@ -1,6 +1,6 @@
 # Todo of the Loom — Claude Handoff Document
 
-**Current version:** 3.23.409
+**Current version:** 3.23.416
 **Last updated:** 2026-05-23
 
 ---
@@ -12,6 +12,20 @@ ANY change to ANY file = bump the patch version in `manifest.json`.
 No exceptions. No judgment calls about whether the change is "too small."
 
 How: increment the last number in `"version": "3.23.XXX"` and update the `description` field to match.
+
+**Version bump is required in ALL 4 files:** `manifest.json`, `factory.html` (badge), `fonts.css` (header comment), and `app.js` (first occurrence in header comment).
+
+**5 REASONS THIS WILL NEVER BE FORGOTTEN AGAIN:**
+
+1. **BUMP FIRST, NOT LAST.** The version bump is the FIRST action after deciding to make a change — before writing any code. Not "I'll bump at the end." Bump immediately, then code.
+
+2. **Every bash/python edit block MUST end with a version check.** After any edit to any file, the final command must include: `grep '"version"' manifest.json` to visually confirm the version number is current. If it still shows the old number, the edit block is incomplete.
+
+3. **The user cannot test without a version bump.** Chrome caches the old manifest. If the version doesn't change, Chrome may serve stale files. A missing bump doesn't just break protocol — it breaks the user's ability to verify the fix worked.
+
+4. **Debug-only changes STILL require a bump.** Adding console.log? Bump. Changing a label? Bump. Fixing a typo? Bump. There is no category of change small enough to skip. The version number is how the user knows they're running new code.
+
+5. **If you realize you forgot mid-task, STOP and bump before continuing.** Don't finish the current edit first. Don't say "I'll do it at the end." Stop. Bump. Then resume. The bump cannot be deferred.
 
 ### 2. Always Update the Task/Progress List
 Every task worked on MUST be tracked via TaskCreate/TaskUpdate.
@@ -63,6 +77,15 @@ All source files ship directly — no bundler, no npm, no webpack. The extension
 
 ### State Storage
 All state lives in `chrome.storage.local` under key `pixelFocusState`. Every page reads/writes this same key. `chrome.storage.onChanged` listeners sync state across open tabs. There is no backend database for user data — everything is local to the browser.
+
+**VERSION BUMP VERIFICATION TEMPLATE** — paste this at the end of every bash edit block:
+```bash
+echo "=== VERSION CHECK ==="
+grep '"version"' manifest.json
+grep -m1 'v3.23' factory.html | grep -o 'v3\.[0-9.]*'
+head -1 fonts.css | grep -o 'v3\.[0-9.]*'
+echo "=== ALL 4 FILES MUST SHOW SAME VERSION ==="
+```
 
 ---
 
