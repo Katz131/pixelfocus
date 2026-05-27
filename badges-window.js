@@ -347,15 +347,21 @@
     { id: 'morse_famous_5', cat: 'morse', name: 'Signal Historian', icon: '🎖️', desc: 'Send 5 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 5} },
     { id: 'morse_famous_7', cat: 'morse', name: 'Morse Scholar', icon: '🏛️', desc: 'Send 7 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 7} },
     { id: 'morse_famous_all', cat: 'morse', name: 'Master Telegrapher', icon: '👑', desc: 'Send all 11 famous historical messages in morse code. You\'ve tapped out every piece of telegraph history.', req: {"type": "famousCount", "count": 11} },
-    { id: 'morse_famous_pi15', cat: 'morse', name: 'Irrational Transmitter', icon: '🥧', desc: 'Send the first 16 digits of Pi (3141592653589793) in morse code. 3.14159265358979... the circle never closes.', req: {"type": "famousPi15", "count": 1} },
+    { id: 'morse_famous_pi15', cat: 'morse', name: 'Irrational Transmitter', icon: '🥧', desc: 'Send a famous 16-digit number sequence in morse code. The circle never closes.', descEarned: 'Send the first 16 digits of Pi (3141592653589793) in morse code. 3.14159265358979... the circle never closes.', req: {"type": "famousPi15", "count": 1} },
     { id: 'morse_audio_1', cat: 'morse', name: 'First Listen', icon: '🎧', desc: 'Correctly decode your first word from morse audio alone. Your ears are opening.', req: {"type": "audioCorrect", "count": 1} },
     { id: 'morse_audio_5', cat: 'morse', name: 'Keen Ear', icon: '👂', desc: 'Correctly decode 5 words from morse audio. The dits and dahs are becoming language.', req: {"type": "audioCorrect", "count": 5} },
     { id: 'morse_audio_10', cat: 'morse', name: 'Sound Interpreter', icon: '🔊', desc: 'Correctly decode 10 words from morse audio. You hear meaning where others hear beeps.', req: {"type": "audioCorrect", "count": 10} },
     { id: 'morse_audio_25', cat: 'morse', name: 'Frequency Savant', icon: '📡', desc: 'Correctly decode 25 words from morse audio. Your brain has rewired itself for telegraph.', req: {"type": "audioCorrect", "count": 25} },
     { id: 'morse_audio_antidis', cat: 'morse', name: 'Against All Establishment', icon: '⚔️', desc: 'Decode ANTIDISESTABLISHMENTARIANISM by ear alone. 28 letters of pure audio endurance.', req: {"type": "audioAntidis", "count": 1} },
     { id: 'morse_audio_pneumono', cat: 'morse', name: 'Volcanic Lungs', icon: '🌋', desc: 'Decode PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS by ear alone. 45 letters. The longest word in major dictionaries, transmitted through pure sound.', req: {"type": "audioPneumono", "count": 1} },
-    { id: 'morse_audio_fibonacci', cat: 'morse', name: 'The Golden Spiral', icon: '🌀', desc: 'Decode the first 12 Fibonacci numbers by ear alone. The sequence that shapes sunflowers, nautilus shells, and galaxies — heard only as dots and dashes.', req: {"type": "audioFibonacci", "count": 1} },
-    { id: 'morse_audio_pi', cat: 'morse', name: 'Transcendental Listener', icon: '🔢', desc: 'Decode the first 16 digits of Pi by ear alone. An irrational number, received through rational listening.', req: {"type": "audioPi", "count": 1} },
+    { id: 'morse_audio_fibonacci', cat: 'morse', name: 'The Golden Spiral', icon: '🌀', desc: 'Decode a famous number sequence by ear alone. The pattern that shapes sunflowers, nautilus shells, and galaxies — heard only as dots and dashes.', descEarned: 'Decode the first 12 Fibonacci numbers by ear alone. The sequence that shapes sunflowers, nautilus shells, and galaxies — heard only as dots and dashes.', req: {"type": "audioFibonacci", "count": 1} },
+    { id: 'morse_audio_pi', cat: 'morse', name: 'Transcendental Listener', icon: '🔢', desc: 'Decode a famous 16-digit number sequence by ear alone. An irrational number, received through rational listening.', descEarned: 'Decode the first 16 digits of Pi by ear alone. An irrational number, received through rational listening.', req: {"type": "audioPi", "count": 1} },
+    { id: 'morse_audio_tier_easy', cat: 'morse', name: 'First Transmissions', icon: '📡', desc: 'Complete all 10 words in the Easy audio challenge tier. Learn the origins of morse code, one word at a time.', req: {"type": "audioTierEasy", "count": 1} },
+    { id: 'morse_audio_tier_medium', cat: 'morse', name: 'Wireless Pioneer', icon: '📻', desc: 'Complete all 10 words in the Medium audio challenge tier. The golden age of wireless telegraphy, decoded by ear.', req: {"type": "audioTierMedium", "count": 1} },
+    { id: 'morse_audio_tier_hard', cat: 'morse', name: 'Master Operator', icon: '⚡', desc: 'Complete all 10 words in the Hard audio challenge tier. You could staff a wartime radio room.', req: {"type": "audioTierHard", "count": 1} },
+    { id: 'morse_audio_tier_boss', cat: 'morse', name: 'Marathon Decoder', icon: '🏆', desc: 'Decode ANTIDISESTABLISHMENTARIANISM by ear alone. 28 letters of pure morse endurance.', req: {"type": "audioTierBoss1", "count": 1} },
+    { id: 'morse_audio_tier_ultimate', cat: 'morse', name: 'Inhuman Ears', icon: '👂', desc: 'Decode PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS by ear alone. 45 letters. This shouldn\'t be possible.', req: {"type": "audioTierBoss2", "count": 1} },
+    { id: 'morse_audio_tier_alphabet', cat: 'morse', name: 'Complete Spectrum', icon: '🌈', desc: 'Decode every letter and digit of morse code in a single sequence. The entire language, by ear alone.', descEarned: 'Decoded all 26 letters and 10 digits in a single randomized morse sequence. You know the complete morse code alphabet by ear.', req: {"type": "audioTierAlphabet", "count": 1} },
   ];
 
   var CAT_LABELS = {
@@ -480,11 +486,11 @@
         case 'famousStein':       met = morseFamous.indexOf('stein') !== -1; break;
         case 'famousSupercali':  met = morseFamous.indexOf('supercali') !== -1; break;
         case 'famousPi15':        met = morseFamous.indexOf('pi15') !== -1; break;
-        case 'audioCorrect':      met = (s.morseAudioCorrect || 0) >= r.count; break;
-        case 'audioAntidis':      met = (s.morseAudioWins || []).indexOf('ANTIDISESTABLISHMENTARIANISM') !== -1; break;
-        case 'audioPneumono':     met = (s.morseAudioWins || []).indexOf('PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS') !== -1; break;
-        case 'audioFibonacci':    met = (s.morseAudioWins || []).indexOf('1123581321345589144') !== -1; break;
-        case 'audioPi':           met = (s.morseAudioWins || []).indexOf('3141592653589793') !== -1; break;
+        case 'audioCorrect':      met = (state.morseAudioCorrect || 0) >= r.count; break;
+        case 'audioAntidis':      met = (state.morseAudioWins || []).indexOf('ANTIDISESTABLISHMENTARIANISM') !== -1; break;
+        case 'audioPneumono':     met = (state.morseAudioWins || []).indexOf('PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS') !== -1; break;
+        case 'audioFibonacci':    met = (state.morseAudioWins || []).indexOf('1123581321345589144') !== -1; break;
+        case 'audioPi':           met = (state.morseAudioWins || []).indexOf('3141592653589793') !== -1; break;
       }
 
       if (met) {
@@ -576,11 +582,11 @@
       famousStein: morseFamous.indexOf('stein') !== -1 ? 1 : 0,
       famousSupercali: morseFamous.indexOf('supercali') !== -1 ? 1 : 0,
       famousPi15: morseFamous.indexOf('pi15') !== -1 ? 1 : 0,
-      audioCorrect: s.morseAudioCorrect || 0,
-      audioAntidis: (s.morseAudioWins || []).indexOf('ANTIDISESTABLISHMENTARIANISM') !== -1 ? 1 : 0,
-      audioPneumono: (s.morseAudioWins || []).indexOf('PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS') !== -1 ? 1 : 0,
-      audioFibonacci: (s.morseAudioWins || []).indexOf('1123581321345589144') !== -1 ? 1 : 0,
-      audioPi: (s.morseAudioWins || []).indexOf('3141592653589793') !== -1 ? 1 : 0
+      audioCorrect: st.morseAudioCorrect || 0,
+      audioAntidis: (st.morseAudioWins || []).indexOf('ANTIDISESTABLISHMENTARIANISM') !== -1 ? 1 : 0,
+      audioPneumono: (st.morseAudioWins || []).indexOf('PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS') !== -1 ? 1 : 0,
+      audioFibonacci: (st.morseAudioWins || []).indexOf('1123581321345589144') !== -1 ? 1 : 0,
+      audioPi: (st.morseAudioWins || []).indexOf('3141592653589793') !== -1 ? 1 : 0
     };
     return map[reqType] || 0;
   }
@@ -657,7 +663,7 @@
 
         var desc = document.createElement('div');
         desc.className = 'badge-desc';
-        desc.textContent = b.desc;
+        desc.textContent = (isEarned && b.descEarned) ? b.descEarned : b.desc;
         card.appendChild(desc);
 
 
@@ -696,7 +702,7 @@
         }
 
         card.setAttribute('title', isEarned
-          ? b.name + ' — ' + b.desc + '. Earned!'
+          ? b.name + ' — ' + ((b.descEarned) ? b.descEarned : b.desc) + '. Earned!'
           : b.name + ' — ' + b.desc + '. Not yet earned.');
 
         grid.appendChild(card);

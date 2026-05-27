@@ -7,6 +7,14 @@
 
 ## MANDATORY RULES (Read These First)
 
+### 0. TASK LIST BEFORE ANYTHING ELSE
+**BEFORE writing a single line of code, BEFORE bumping the version, BEFORE touching any file:**
+Call TaskCreate to log what you're about to do. This is STEP ZERO. Not step one. Step zero.
+
+The sequence is ALWAYS: **TaskCreate → version bump → code → syntax verify → TaskUpdate(completed)**
+
+If you haven't called TaskCreate yet, you haven't started. Period. No exceptions.
+
 ### 1. Version Bump on EVERY Change
 ANY change to ANY file = bump the patch version in `manifest.json`.
 No exceptions. No judgment calls about whether the change is "too small."

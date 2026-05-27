@@ -22,8 +22,26 @@
     try { if (window.getComputedStyle(el).cursor === 'pointer') return true; } catch(_) {}
     return false;
   }
+  // v3.23.484: Global hover brightness shift for all buttons
   document.addEventListener('mouseover', function(e) {
-    if (isBtn(e.target)) blip(660, 18, 0.025);
+    if (isBtn(e.target)) {
+      blip(660, 18, 0.025);
+      // Apply brightness boost unless element already has a custom hover handler
+      if (!e.target.getAttribute('data-no-hover-bright')) {
+        e.target._pfOrigFilter = e.target.style.filter || '';
+        var cur = e.target._pfOrigFilter;
+        // Don't stack — only add if no brightness already set
+        if (cur.indexOf('brightness') === -1) {
+          e.target.style.filter = cur ? cur + ' brightness(1.3)' : 'brightness(1.3)';
+        }
+      }
+    }
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (isBtn(e.target) && e.target._pfOrigFilter !== undefined) {
+      e.target.style.filter = e.target._pfOrigFilter;
+      delete e.target._pfOrigFilter;
+    }
   });
   document.addEventListener('click', function(e) {
     var t = e.target;
