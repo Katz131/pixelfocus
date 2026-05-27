@@ -554,9 +554,14 @@ chrome.storage.onChanged.addListener(function(changes, area) {
   // The alarms are re-created if the user pauses or resets (the window sends
   // PROMISE_TIMER_EXPIRED / PENALTY_TIMER_EXPIRED, or we detect idle→resume below).
   if (newState.timerState === 'running' || newState.timerState === 'countdown') {
-    console.log('[Storage] timerState=' + newState.timerState + ' — clearing deadline + idle alarms (user is engaging).');
-    try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
-    try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
+    console.log('[Storage] timerState=' + newState.timerState + ' — clearing idle alarms (user is engaging).');
+    // v3.23.487: Only clear promise/penalty alarms when RUNNING, not during countdown.
+    // Countdown is just the 15-sec GET READY phase — user hasn't started focusing yet.
+    // Clearing during countdown kills the promise window the user was supposed to honor.
+    if (newState.timerState === 'running') {
+      try { chrome.alarms.clear('pixelfocus-promise-deadline'); } catch(_) {}
+      try { chrome.alarms.clear('pixelfocus-penalty-deadline'); } catch(_) {}
+    }
     // v3.23.14: Kill idle challenge alarms entirely while focusing. The guards
     // inside the alarm handler SHOULD block notifications, but a race condition
     // (service worker wake-up reading stale storage) has allowed them through

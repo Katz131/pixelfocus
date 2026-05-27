@@ -895,6 +895,25 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
   var _acStopRequested = false;
   var _acScheduledOscs = [];
 
+  // v3.23.485: Success/error sounds for audio challenge
+  function _acPlaySuccessSound() {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') ctx.resume();
+      // Rising arpeggio: C5 → E5 → G5
+      var notes = [523, 659, 784];
+      for (var ni = 0; ni < notes.length; ni++) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = notes[ni];
+        g.gain.value = 0.08;
+        g.gain.setTargetAtTime(0, ctx.currentTime + ni * 0.12 + 0.1, 0.05);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + ni * 0.12);
+        o.stop(ctx.currentTime + ni * 0.12 + 0.2);
+      }
+    } catch(_) {}
+  }
+
   // v3.23.482: Tier unlock order — each tier requires previous tier fully completed
   var AC_TIER_ORDER = ['easy','medium','hard','boss1','boss2','pi','fibonacci','alphabet'];
   function _isTierUnlocked(diff, completedTiers) {
@@ -1210,24 +1229,64 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
       }
     }
 
-    function _renderProgressBar(diff) {
+    function _renderProgressBar(diff, blinkIdx) {
       var el = document.getElementById('acProgress');
       if (!el) return;
       var info = _acGetTierDone(diff);
       var tier = AC_TIER_WORDS[diff];
       if (!tier || tier.length <= 1) { el.innerHTML = ''; return; }
       var done = (_acTierProgress[diff] || []);
+      // v3.23.486: Always compute next unsolved index so it's always clickable
+      var _nextUnsolved = -1;
+      for (var _nu = 0; _nu < tier.length; _nu++) {
+        if (done.indexOf(tier[_nu][0]) === -1) { _nextUnsolved = _nu; break; }
+      }
+      // If blinkIdx provided use it, otherwise use _nextUnsolved
+      var _effectiveBlink = (typeof blinkIdx === 'number') ? blinkIdx : _nextUnsolved;
       var html = '<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#888;margin-bottom:4px;text-align:center;">' + info[0] + ' / ' + info[1] + ' WORDS</div>';
+      html += '<style>@keyframes acTileBlink{0%,100%{opacity:1;box-shadow:0 0 6px #ffd700}50%{opacity:0.4;box-shadow:none}}</style>';
       html += '<div style="display:flex;gap:3px;justify-content:center;">';
       for (var i = 0; i < tier.length; i++) {
         var isDone = done.indexOf(tier[i][0]) !== -1;
         var isCurrent = tier[i][0] === _acCurrentWord;
-        var bg = isDone ? '#00ff88' : (isCurrent ? '#ffd700' : '#222');
-        var border = isCurrent ? '2px solid #fff' : '1px solid #333';
-        html += '<div style="width:' + Math.floor(100/tier.length) + '%;height:8px;background:' + bg + ';border-radius:3px;border:' + border + ';" title="' + (isDone ? '✓ ' + tier[i][0] : (i+1) + '/' + tier.length) + '"></div>';
+        var isNextUnsolved = (i === _nextUnsolved);
+        var shouldBlink = (typeof blinkIdx === 'number' && i === blinkIdx);
+        var bg = isDone ? '#00ff88' : (isCurrent ? '#ffd700' : (shouldBlink ? '#ffd700' : '#222'));
+        var border = isCurrent ? '2px solid #fff' : (shouldBlink ? '2px solid #ffd700' : (isNextUnsolved ? '2px solid #555' : '1px solid #333'));
+        // Clickable: completed, current, next unsolved, or blinking
+        var clickable = isDone || isCurrent || isNextUnsolved || shouldBlink;
+        var cursor = clickable ? 'pointer' : 'default';
+        var anim = shouldBlink ? 'animation:acTileBlink 0.8s ease-in-out infinite;background:#ffd700;' : '';
+        var title = isDone ? ('\u2713 ' + tier[i][0] + ' (click to replay)') : (isNextUnsolved ? 'Click to start this word!' : (isCurrent ? tier[i][0] : (i+1) + '/' + tier.length));
+        html += '<div class="ac-tile" data-tidx="' + i + '" style="width:' + Math.floor(100/tier.length) + '%;height:12px;background:' + bg + ';border-radius:4px;border:' + border + ';cursor:' + cursor + ';transition:all 0.15s;' + anim + '" title="' + title + '"></div>';
       }
       html += '</div>';
       el.innerHTML = html;
+      // v3.23.485: Clickable tiles
+      var _tiles = el.querySelectorAll('.ac-tile');
+      for (var _ti = 0; _ti < _tiles.length; _ti++) {
+        (function(_tIdx) {
+          _tiles[_tIdx].addEventListener('click', function() {
+            var _tw = tier[_tIdx][0];
+            var _tDone = done.indexOf(_tw) !== -1;
+            var _tIsNext = (_tIdx === _nextUnsolved);
+            var _tBlink = (typeof blinkIdx === 'number' && _tIdx === blinkIdx);
+            if (_tDone || _tBlink || _tIsNext || _tw === _acCurrentWord) {
+              _acCurrentWord = _tw;
+              document.getElementById('acHint').textContent = _acCurrentWord.length + ((diff === 'pi' || diff === 'fibonacci') ? ' DIGITS' : (diff === 'alphabet' ? ' CHARACTERS' : ' LETTERS'));
+              document.getElementById('acStatus').textContent = _tDone ? 'REPLAYING: ' + _tw : 'PRESS PLAY TO HEAR THE WORD';
+              document.getElementById('acStatus').style.color = '#ffd700';
+              document.getElementById('acInput').value = '';
+              document.getElementById('acResult').textContent = '';
+              document.getElementById('acHistory').textContent = '';
+              document.getElementById('acPlayBtn').textContent = '🔊 PLAY';
+              document.getElementById('acPlayBtn').style.color = '#ffd700';
+              document.getElementById('acStopBtn').style.display = 'none';
+              _renderProgressBar(diff);
+            }
+          });
+        })(_ti);
+      }
     }
 
     // Close
@@ -1334,7 +1393,17 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
         acCorrect++;
         // Show history reveal
         var _hist = _acGetHistory(currentDiff, _acCurrentWord);
-        result.innerHTML = '<span style="color:#00ff88;">✓ CORRECT!</span> <span style="color:#666;">' + _acCurrentWord + '</span>';
+        // v3.23.485: Big celebration flash + sound
+        _acPlaySuccessSound();
+        result.innerHTML = '<span style="color:#00ff88;font-size:12px;">✓ CORRECT!</span> <span style="color:#aaffaa;font-size:10px;">' + _acCurrentWord + '</span>';
+        // Flash the play area green briefly
+        var _playArea = document.getElementById('acPlayArea');
+        if (_playArea) {
+          _playArea.style.transition = 'box-shadow 0.2s, border-color 0.2s';
+          _playArea.style.boxShadow = '0 0 30px rgba(0,255,136,0.5),inset 0 0 20px rgba(0,255,136,0.1)';
+          _playArea.style.borderColor = '#00ff88';
+          setTimeout(function() { _playArea.style.boxShadow = ''; _playArea.style.borderColor = '#2a4a2a'; }, 1500);
+        }
         if (_hist) {
           document.getElementById('acHistory').innerHTML = '<span style="color:#ffd700;">📜</span> ' + _hist;
         }
@@ -1372,7 +1441,29 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             chrome.storage.local.set({ _pageSaveAt: Date.now() });
             _updateTierButtons(st);
             _updateTierProgress();
+            // v3.23.487: Compute blink INSIDE callback where _acTierProgress is fresh
+            var _cbNextBlink = -1;
+            var _cbTierList = AC_TIER_WORDS[currentDiff] || [];
+            var _cbDoneArr = (_acTierProgress[currentDiff] || []);
+            for (var _cbi = 0; _cbi < _cbTierList.length; _cbi++) {
+              if (_cbDoneArr.indexOf(_cbTierList[_cbi][0]) === -1) { _cbNextBlink = _cbi; break; }
+            }
             _renderProgressBar(currentDiff);
+            // Delayed blink + status update with fresh data
+            setTimeout(function() {
+              document.getElementById('acPlayBtn').textContent = '🔊 PLAY';
+              document.getElementById('acPlayBtn').style.color = '#ffd700';
+              document.getElementById('acStopBtn').style.display = 'none';
+              if (_cbNextBlink >= 0) {
+                document.getElementById('acStatus').textContent = 'CLICK NEXT TILE TO CONTINUE ▼';
+                document.getElementById('acStatus').style.color = '#ffd700';
+                _renderProgressBar(currentDiff, _cbNextBlink);
+              } else {
+                document.getElementById('acStatus').textContent = 'TIER COMPLETE! 🎉';
+                document.getElementById('acStatus').style.color = '#00ff88';
+                _renderProgressBar(currentDiff);
+              }
+            }, 1200);
             // v3.23.482: Show unlock celebration for next tier
             if (_wasNewlyCompleted) {
               var _nextIdx = AC_TIER_ORDER.indexOf(currentDiff) + 1;
@@ -1392,21 +1483,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             }
           });
         } catch(e) {}
-        // Auto-advance after 4s (longer to read history)
-        var _advanceDelay = _hist ? 5000 : 2500;
-        setTimeout(function() {
-          _acCurrentWord = _acPickWord(currentDiff);
-          document.getElementById('acHint').textContent = _acCurrentWord.length + (currentDiff === 'pi' || currentDiff === 'fibonacci' ? ' DIGITS' : ' LETTERS');
-          document.getElementById('acStatus').textContent = 'PRESS PLAY FOR NEXT WORD';
-          document.getElementById('acStatus').style.color = '#ffd700';
-          input.value = '';
-          result.textContent = '';
-          document.getElementById('acHistory').textContent = '';
-          document.getElementById('acPlayBtn').textContent = '🔊 PLAY';
-          document.getElementById('acPlayBtn').style.color = '#ffd700';
-          document.getElementById('acStopBtn').style.display = 'none';
-          _renderProgressBar(currentDiff);
-        }, _advanceDelay);
+        // v3.23.487: Blink logic moved inside async callback above
       } else {
         result.innerHTML = '<span style="color:#ff5a5a;">✗ WRONG</span> <span style="color:#444;">Try again or replay</span>';
         input.value = '';
