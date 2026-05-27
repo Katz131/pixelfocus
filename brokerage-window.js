@@ -553,6 +553,7 @@
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px;">' +
             '<input class="trade-input" type="number" min="10" value="100" step="50" id="bondAmt_' + bond.id + '" title="Amount of brokerage cash to invest in this bond">' +
+            '<button class="trade-btn buy bond-max-btn" data-id="' + bond.id + '" style="padding:4px 8px;font-size:8px;min-width:auto;" title="Invest ALL deposited cash into this bond">MAX</button>' +
             '<button class="trade-btn buy buy-bond-btn" data-id="' + bond.id + '" title="Purchase this bond — matures after ' + bond.sessions + ' focus sessions for a ' + (bond.rate * 100).toFixed(0) + '% return">BUY</button>' +
           '</div>' +
         '</div>';
@@ -562,6 +563,19 @@
     el.querySelectorAll('.buy-bond-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         buyBond(btn.dataset.id);
+      });
+    });
+
+    // v3.23.490: MAX button fills bond input with full deposited balance
+    el.querySelectorAll('.bond-max-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var b = getB();
+        var bondId = btn.dataset.id;
+        var amtEl = document.getElementById('bondAmt_' + bondId);
+        if (amtEl && b.cash > 0) {
+          amtEl.value = Math.floor(b.cash);
+          SFX.click();
+        }
       });
     });
 

@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.487 - Main Application Logic
+// PixelFocus v3.23.495 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -925,6 +925,16 @@ try {
     volumeMuteMinute: 0,            // v3.21.79: mute start minute (0-59)
     volumeUnmuteHour: 10,           // v3.21.79: unmute start hour (0-23)
     volumeUnmuteMinute: 0,          // v3.21.79: unmute start minute (0-59)
+    // v3.23.495: Debt system — when fines exceed your balance, you go into debt.
+    // Debt accrues 5% daily interest. Must be repaid within 24 hours OR by
+    // completing 2 focus sessions. Unpaid debt triggers escalating penalties,
+    // reduces employee morale (more dissidents), and drops house wellbeing.
+    debtAmount: 0,                   // current outstanding debt (positive = owes money)
+    debtStartedAt: 0,               // timestamp when debt was first incurred
+    debtSessionsCompleted: 0,        // focus sessions completed since debt started
+    debtLastInterestAt: 0,           // timestamp of last interest accrual
+    debtPenaltiesApplied: 0,         // count of escalating penalties applied
+    lifetimeDebtIncurred: 0,         // all-time debt for badges/stats
     // v3.23.61: Social / Remote task-adding
     friends: {},                     // { profileId: { displayName, status, permittedProjects:[], addedAt } }
     remoteTasksEnabled: true,        // allow friends to add tasks to your projects
@@ -1606,7 +1616,8 @@ try {
             'bandwidthWrits','dataSachets','cogitationTokens',
             'aspectExegesis','aspectChromatics','aspectDeftness','aspectOmens','aspectIntrospection',
             'patsiesRecruited','patsiesLost','patsiesPromoted','patsiesBetrayals',
-            'canvasSize','petFoodCost','incineratorFuelBonus'
+            'canvasSize','petFoodCost','incineratorFuelBonus',
+            'debtAmount','debtStartedAt','debtSessionsCompleted','debtLastInterestAt','debtPenaltiesApplied','lifetimeDebtIncurred'
           ];
           _numFields.forEach(function(f) {
             var best = _loaded[f] || 0;
@@ -1901,6 +1912,8 @@ try {
         if (!state.dustPixels) state.dustPixels = [];
         if (!state.recentTasks) state.recentTasks = [];
         if (typeof state.coins !== 'number') state.coins = 0;
+    // v3.23.495: Accrue any outstanding debt interest on load
+    try { _accrueDebtInterest(); _checkDebtPenalties(); } catch(_) {}
         if (typeof state.lifetimeCoins !== 'number') state.lifetimeCoins = 0;
         if (typeof state.lastCoinTick !== 'number') state.lastCoinTick = 0;
         if (!Array.isArray(state.marathonBonusesToday)) state.marathonBonusesToday = [];
@@ -2062,9 +2075,15 @@ try {
       if (state.timerState === 'running') {
         if (state.timerEndsAt && Date.now() >= state.timerEndsAt) {
           // Session completed while away / popup closed — award the credit.
+          // v3.23.492: Clean up phase state on load-time completion
+          if (state.currentPhaseIndex >= 0) {
+            state.currentPhaseIndex = -1;
+            state.phaseTransitioning = false;
+          }
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
           state.timerState = 'completed';
+          state._sessionCompletedAt = Date.now(); // v3.23.490: stamp for staleness
           save();
         } else if (state.timerEndsAt) {
           // Still mid-session. Resync display time from the wall clock
@@ -2083,8 +2102,22 @@ try {
         }
       }
       // If background finished the timer, show confirmation
+      // v3.23.490: Only trigger if completion is RECENT (< 5 min) — prevents stale
+      // 'completed' state from re-firing on page reload after rewards already awarded
       if (state.timerState === 'completed') {
-        setTimeout(function() { showFocusConfirmation(); }, 300);
+        var _completedAt = state._sessionCompletedAt || 0;
+        var _completedAge = _completedAt ? (Date.now() - _completedAt) : Infinity;
+        if (_completedAge < 5 * 60 * 1000) {
+          setTimeout(function() { showFocusConfirmation(); }, 300);
+        } else {
+          // Stale completion — reset to idle silently
+          console.log('[Timer] Stale completed state on load (' + Math.round(_completedAge / 1000) + 's old) — resetting to idle');
+          state.timerState = 'idle';
+          state.timerRemaining = state.sessionDurationSec || 600;
+          state.timerEndsAt = 0;
+          state._sessionCompletedAt = 0;
+          save();
+        }
       }
       checkComboTimeout();
       checkDayRollover();
@@ -2372,6 +2405,9 @@ try {
 
       // v3.23.167: Drain pet fullness on daily rollover
       try { drainPetFullness(); } catch(_) {}
+
+      // v3.23.495: Accrue debt interest and check overdue penalties on day rollover
+      try { _accrueDebtInterest(); _checkDebtPenalties(); } catch(_debtErr) { console.warn('[DayRollover] Debt error:', _debtErr); }
 
       // v3.21.59: Archive yesterday's focus minutes into focusHistory
       // v3.22.94: Also archive whatever dailySessionLog holds (even if date
@@ -3245,6 +3281,153 @@ try {
     if (total >= 1 && reason) {
       logHouseFeed('money_gain', '+$' + Math.floor(total) + ' (' + reason + ')', Math.floor(total));
     }
+    // v3.23.495: Auto-pay down debt with new earnings
+    if ((state.debtAmount || 0) > 0 && (state.coins || 0) > 0) {
+      _checkDebtPayoff();
+    }
+  }
+
+  // ===== DEBT SYSTEM (v3.23.495) =====
+  // When penalties push coins below zero, the deficit is recorded as debt.
+  // Debt accrues 5% daily interest. Player can repay by earning enough money
+  // or completing 2 focus sessions. Unpaid debt beyond 24h triggers escalating
+  // penalties: extra fines, increased dissident probability, house wellbeing drop.
+  // -----------------------------------------------------------------------
+  var DEBT_INTEREST_RATE = 0.05;       // 5% per day
+  var DEBT_GRACE_SESSIONS = 2;         // complete 2 sessions to clear debt
+  var DEBT_GRACE_HOURS = 24;           // or pay within 24 hours
+  var DEBT_PENALTY_INTERVAL_MS = 12 * 60 * 60 * 1000; // escalating penalty every 12h
+
+  // Record new debt when coins go negative. Called from penalty sites.
+  function _recordDebt(deficit, reason) {
+    if (!deficit || deficit <= 0) return;
+    var now = Date.now();
+    var wasInDebt = (state.debtAmount || 0) > 0;
+    state.debtAmount = (state.debtAmount || 0) + deficit;
+    state.lifetimeDebtIncurred = (state.lifetimeDebtIncurred || 0) + deficit;
+    if (!wasInDebt) {
+      state.debtStartedAt = now;
+      state.debtSessionsCompleted = 0;
+      state.debtPenaltiesApplied = 0;
+      state.debtLastInterestAt = now;
+    }
+    // Clamp coins to 0 — debt tracks the negative portion
+    state.coins = 0;
+    notify('DEBT: -$' + Math.floor(deficit) + ' (' + reason + ')', '#ff4444', { duration: 4000 });
+    logHouseFeed('debt', 'Went into debt: -$' + Math.floor(deficit) + ' (' + reason + ')', -Math.floor(deficit));
+    console.log('[Debt] Recorded $' + deficit.toFixed(2) + ' debt from ' + reason + '. Total: $' + state.debtAmount.toFixed(2));
+  }
+
+  // Accrue interest on outstanding debt. Called on load and day rollover.
+  function _accrueDebtInterest() {
+    if (!state.debtAmount || state.debtAmount <= 0) return;
+    var now = Date.now();
+    var lastAccrual = state.debtLastInterestAt || state.debtStartedAt || now;
+    var hoursElapsed = (now - lastAccrual) / (1000 * 60 * 60);
+    if (hoursElapsed < 1) return; // accrue at most once per hour
+    // Pro-rate daily interest to hours elapsed
+    var interestFraction = (DEBT_INTEREST_RATE * hoursElapsed) / 24;
+    var interest = Math.round(state.debtAmount * interestFraction);
+    if (interest < 1) interest = 1; // minimum $1 interest
+    state.debtAmount += interest;
+    state.debtLastInterestAt = now;
+    console.log('[Debt] Accrued $' + interest + ' interest. Total debt: $' + Math.floor(state.debtAmount));
+  }
+
+  // Check whether debt has been repaid (coins cover it) or sessions completed.
+  // Called after awardCoins and after session completion.
+  function _checkDebtPayoff() {
+    if (!state.debtAmount || state.debtAmount <= 0) return;
+    // Option 1: Player earned enough to cover debt
+    if ((state.coins || 0) >= state.debtAmount) {
+      var paid = Math.ceil(state.debtAmount);
+      state.coins -= paid;
+      state.debtAmount = 0;
+      state.debtStartedAt = 0;
+      state.debtSessionsCompleted = 0;
+      state.debtPenaltiesApplied = 0;
+      state.debtLastInterestAt = 0;
+      notify('DEBT CLEARED! Paid $' + paid, '#00ff88', { duration: 4000 });
+      logHouseFeed('debt_cleared', 'Debt cleared! Paid $' + paid, -paid);
+      return;
+    }
+    // Option 2: Completed enough sessions (forgiveness — debt wiped)
+    if ((state.debtSessionsCompleted || 0) >= DEBT_GRACE_SESSIONS) {
+      var forgiven = Math.ceil(state.debtAmount);
+      state.debtAmount = 0;
+      state.debtStartedAt = 0;
+      state.debtSessionsCompleted = 0;
+      state.debtPenaltiesApplied = 0;
+      state.debtLastInterestAt = 0;
+      notify('DEBT FORGIVEN! ' + DEBT_GRACE_SESSIONS + ' sessions completed ($' + forgiven + ' waived)', '#00ff88', { duration: 5000 });
+      logHouseFeed('debt_forgiven', 'Debt of $' + forgiven + ' forgiven after ' + DEBT_GRACE_SESSIONS + ' focus sessions', forgiven);
+      return;
+    }
+  }
+
+  // Check for overdue debt and apply escalating penalties.
+  // Called on load and during day rollover.
+  function _checkDebtPenalties() {
+    if (!state.debtAmount || state.debtAmount <= 0) return;
+    var now = Date.now();
+    var debtAge = now - (state.debtStartedAt || now);
+    if (debtAge < DEBT_GRACE_HOURS * 60 * 60 * 1000) return; // still in grace period
+    // How many penalty tiers should have been applied by now?
+    var overdueMs = debtAge - (DEBT_GRACE_HOURS * 60 * 60 * 1000);
+    var expectedPenalties = Math.floor(overdueMs / DEBT_PENALTY_INTERVAL_MS) + 1;
+    var applied = state.debtPenaltiesApplied || 0;
+    while (applied < expectedPenalties && applied < 5) {
+      applied++;
+      // Escalating penalty: $50 * tier
+      var fine = 50 * applied;
+      state.debtAmount += fine;
+      notify('OVERDUE DEBT PENALTY: +$' + fine + ' (tier ' + applied + ')', '#ff2222', { duration: 5000 });
+      logHouseFeed('debt_penalty', 'Overdue debt penalty: +$' + fine + ' added to balance', -fine);
+    }
+    state.debtPenaltiesApplied = applied;
+  }
+
+  // Render the debt banner on the main popup dashboard.
+  function renderDebtBanner() {
+    var existing = document.getElementById('debtBanner');
+    if (!state.debtAmount || state.debtAmount <= 0) {
+      if (existing) existing.style.display = 'none';
+      return;
+    }
+    if (!existing) {
+      // Create the banner — insert before the stats row
+      var statsRow = document.querySelector('.stats-row');
+      if (!statsRow) return;
+      existing = document.createElement('div');
+      existing.id = 'debtBanner';
+      existing.style.cssText = 'background:linear-gradient(135deg,#2a0000,#4a0000);border:2px solid #ff4444;border-radius:8px;padding:8px 12px;margin:0 8px 8px 8px;text-align:center;font-family:"Press Start 2P",monospace;cursor:pointer;transition:transform 0.15s;';
+      existing.addEventListener('mouseenter', function() { this.style.transform = 'scale(1.02)'; });
+      existing.addEventListener('mouseleave', function() { this.style.transform = 'scale(1)'; });
+      statsRow.parentNode.insertBefore(existing, statsRow);
+    }
+    existing.style.display = 'block';
+    var amt = Math.ceil(state.debtAmount);
+    var sessionsLeft = Math.max(0, DEBT_GRACE_SESSIONS - (state.debtSessionsCompleted || 0));
+    var hoursLeft = 0;
+    if (state.debtStartedAt) {
+      var elapsed = Date.now() - state.debtStartedAt;
+      hoursLeft = Math.max(0, DEBT_GRACE_HOURS - (elapsed / (1000 * 60 * 60)));
+    }
+    var timeStr = hoursLeft > 1 ? Math.floor(hoursLeft) + 'h' : hoursLeft > 0 ? Math.floor(hoursLeft * 60) + 'min' : 'OVERDUE';
+    var isOverdue = hoursLeft <= 0;
+    existing.innerHTML = '<div style="color:#ff4444;font-size:10px;margin-bottom:4px;">' +
+      (isOverdue ? '\u26A0 OVERDUE DEBT' : '\u26A0 IN DEBT') +
+      '</div>' +
+      '<div style="color:#ff6b6b;font-size:14px;font-weight:bold;margin-bottom:4px;">-$' + amt + '</div>' +
+      '<div style="color:#ff8888;font-size:7px;">' +
+      (isOverdue ? 'Interest accruing! Complete ' + sessionsLeft + ' session' + (sessionsLeft !== 1 ? 's' : '') + ' or earn $' + amt + ' to clear' :
+       'Pay within ' + timeStr + ' or complete ' + sessionsLeft + ' session' + (sessionsLeft !== 1 ? 's' : '') + ' to clear') +
+      '</div>';
+    existing.title = 'Outstanding debt of $' + amt + '. ' +
+      (isOverdue ? 'OVERDUE — penalties are being applied every 12 hours! ' : '') +
+      'Clear by earning enough money or completing ' + sessionsLeft + ' more focus session' + (sessionsLeft !== 1 ? 's' : '') + '. ' +
+      'Debt accrues ' + (DEBT_INTEREST_RATE * 100) + '% daily interest. ' +
+      'While in debt: employee morale drops (more dissidents) and house wellbeing falls.';
   }
 
   // ===== Employee Payroll System (v3.23.77) =====
@@ -3318,8 +3501,8 @@ try {
     if (state.lastPayrollDate === today) return 0;
     state.lastPayrollDate = today;
     state.coins = (state.coins || 0) - cost;
-    // Don't let coins go below zero from payroll
-    if (state.coins < 0) { cost = cost + state.coins; state.coins = 0; }
+    // v3.23.495: Payroll can push into debt instead of clamping to 0
+    if (state.coins < 0) { _recordDebt(-state.coins, 'payroll'); }
     state.totalWagesPaid = (state.totalWagesPaid || 0) + cost;
     if (cost > 0) logHouseFeed('payroll', 'Daily payroll: -$' + Math.floor(cost), -Math.floor(cost));
     return cost;
@@ -3606,6 +3789,15 @@ try {
     } else {
       el.title = 'Money is only earned from (1) the end-of-day streak bonus if you worked 1+ hour that day, (2) combo bursts from chaining 10-min sessions, and (3) daily marathon thresholds. To unlock passive trickle income, buy Hire Employees in the factory.';
     }
+    // v3.23.495: Show debt status on coin display
+    if ((state.debtAmount || 0) > 0) {
+      el.style.color = '#ff4444';
+      el.textContent = '-$' + Math.ceil(state.debtAmount);
+      el.title = 'IN DEBT: You owe $' + Math.ceil(state.debtAmount) + '. Earn money or complete focus sessions to clear it.';
+    } else {
+      el.style.color = '#ffd700';
+    }
+    renderDebtBanner();
   }
 
   // ============== FOCUS TIMELINE (6-hour sliding window) ==============
@@ -5429,8 +5621,8 @@ try {
       if (!_confModal || _confModal.style.display !== 'flex') {
         if (!window._completedSafetyNetAt) {
           window._completedSafetyNetAt = Date.now();
-        } else if (Date.now() - window._completedSafetyNetAt > 10000) {
-          console.log('[Timer] Safety net: timerState stuck at completed for 10s — resetting to idle.');
+        } else if (Date.now() - window._completedSafetyNetAt > 5000) {
+          console.log('[Timer] Safety net: timerState stuck at completed for 5s — resetting to idle.');
           state.timerState = 'idle';
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
@@ -7442,6 +7634,7 @@ try {
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
           state.timerState = 'completed';
+          state._sessionCompletedAt = Date.now(); // v3.23.490
           SFX.timerComplete();
           try { cancelWorkCheckIn(); } catch (_) {}
           save();
@@ -7768,7 +7961,8 @@ try {
               // Nag 3: deduct 100 coins penalty — but only once per surveillance session
               var _penaltyJustApplied = false;
               if (_nagNum >= 3 && !st.surveillancePenaltyApplied) {
-                st.coins = Math.max(0, (st.coins || 0) - 100);
+                st.coins = (st.coins || 0) - 100;
+                if (st.coins < 0) { _recordDebt(-st.coins, 'surveillance'); }
                 st.surveillancePenaltyApplied = true;
                 _penaltyJustApplied = true;
                 state.coins = st.coins;
@@ -8286,6 +8480,9 @@ try {
     SFX.startTimer();
     // v3.23.311: Clear distraction counts for the new session
     state.sessionDistractions = {};
+    // v3.23.489: Track combo coins pre/post market yield for celebration screen
+    state._sessionComboCoinsPre = 0;
+    state._sessionComboCoinsPost = 0;
     // v3.23.412: Reset session block counter so progress bar starts fresh
     state.sessionBlocks = 0;
     _gameLockGraceUntil = 0; // v3.21.10: new session cancels any grace window
@@ -8712,6 +8909,7 @@ try {
           timerInterval = null;
           state.timerRemaining = 0;
           state.timerState = 'completed';
+          state._sessionCompletedAt = Date.now(); // v3.23.490: stamp for staleness check
           SFX.timerComplete();
           // Session finished — cancel the honor-system check-in.
           // The end-of-session confirmation modal is the canonical
@@ -8771,6 +8969,16 @@ try {
       state.sessionDurationSec = state.doubleDownOriginalSec || state.sessionDurationSec;
       state.timerRemaining = state.sessionDurationSec;
       resetDoubleDown();
+    }
+    // v3.23.492: Clean up phase state on reset
+    if (state.currentPhaseIndex >= 0) {
+      state.currentPhaseIndex = -1;
+      state.phaseTransitioning = false;
+      state.phaseTransitionEndsAt = 0;
+      var ppc = document.getElementById('phaseProgressContainer');
+      if (ppc) ppc.style.display = 'none';
+      var pto = document.getElementById('phaseTransitionOverlay');
+      if (pto) pto.style.display = 'none';
     }
     // Reset stops the honor-system check-in clock.
     try { cancelWorkCheckIn(); } catch (_) {}
@@ -8967,9 +9175,15 @@ try {
 
     // Toggle panel open/close + resize window
     var _panelOpen = false;
-    // v3.23.437: Taller base when phase mode is active (phase bar + done button below card)
-    var CLOSED_H = (state.phaseModeEnabled && state.phases && state.phases.length > 0) ? 110 : 78;
+    // v3.23.493: Dynamic height — measure actual content each time menu closes
     var OPEN_H = 280;
+    function _pipClosedH() {
+      try {
+        var _bh = doc.body.scrollHeight + 12;
+        if (state.phaseModeEnabled && state.phases && state.phases.length > 0) return Math.max(110, _bh);
+        return Math.max(78, _bh);
+      } catch(_) { return 78; }
+    }
 
     menuBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
     menuBtn.addEventListener('click', function(e) {
@@ -8978,7 +9192,7 @@ try {
       _panelOpen = !_panelOpen;
       panel.classList.toggle('open', _panelOpen);
       menuBtn.classList.toggle('active', _panelOpen);
-      try { win.resizeTo(_panelOpen ? 260 : 220, _panelOpen ? OPEN_H : CLOSED_H); } catch(_){}
+      try { win.resizeTo(_panelOpen ? 260 : 220, _panelOpen ? OPEN_H : _pipClosedH()); } catch(_){}
     });
 
     // v3.23.335: Wire double-down buttons in PiP menu
@@ -9328,7 +9542,7 @@ try {
     if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
       // v3.19.14: slimmer footprint — was 240x150, now 220x78.
       // v3.23.437: Taller when phase mode active so phase bar + done button aren't cut off.
-      var _pipInitH = (state.phaseModeEnabled && state.phases && state.phases.length > 0) ? 110 : 78;
+      var _pipInitH = (state.phaseModeEnabled && state.phases && state.phases.length > 0) ? 120 : 78;
       window.documentPictureInPicture.requestWindow({ width: 220, height: _pipInitH })
         .then(function(win) {
           pipWindow = win;
@@ -9580,7 +9794,13 @@ try {
           // Skip normal button/bar updates
           return;
         } else {
-          label.textContent = (dur / 60) + '-MIN READY';
+          // v3.23.492: Show phase info in idle if phase mode is toggled on
+          if (state.phaseModeEnabled && state.phases && state.phases.length > 0) {
+            label.textContent = '\u23F1 ' + state.phases.length + ' PHASES READY';
+            label.title = state.phases.length + ' phases configured (' + (dur / 60) + ' min total). Start from the main popup.';
+          } else {
+            label.textContent = (dur / 60) + '-MIN READY';
+          }
           label.style.color = ''; // v3.23.337: clear any held success/failure color
         }
         if (btnIcon) btnIcon.innerHTML = PIP_ICON_PLAY;
@@ -9637,8 +9857,11 @@ try {
           } else {
             doc.body.appendChild(_pipPhaseWrap);
           }
-          // v3.23.459: Resize PiP window to fit phase elements without scrolling
-          try { pipWindow.resizeTo(220, 110); } catch(_) {}
+          // v3.23.493: Auto-resize PiP to fit phase elements — measure actual content height
+          try {
+            var _pipBodyH = doc.body.scrollHeight + 12;
+            pipWindow.resizeTo(220, Math.max(110, _pipBodyH));
+          } catch(_) {}
         }
         var _pipPhaseFill2 = doc.getElementById('pipPhaseFill');
         var _pipPhaseLabel2 = doc.getElementById('pipPhaseLabel');
@@ -9680,8 +9903,8 @@ try {
         var _pipPhaseHide = doc.getElementById('pipPhaseWrap');
         if (_pipPhaseHide && _pipPhaseHide.style.display !== 'none') {
           _pipPhaseHide.style.display = 'none';
-          // v3.23.437: Shrink PiP back when phase bar hidden
-          try { pipWindow.resizeTo(220, 78); } catch(_) {}
+          // v3.23.493: Shrink PiP back when phase bar hidden — measure actual content
+          try { pipWindow.resizeTo(220, Math.max(78, doc.body.scrollHeight + 12)); } catch(_) {}
         }
       } catch(_) {}
     }
@@ -9852,6 +10075,8 @@ try {
     }
     state.sessionBlocks++; // still counts 1 session regardless of haul
     state.lifetimeSessions = (state.lifetimeSessions || 0) + 1;
+      // v3.23.495: Track sessions completed while in debt
+      if ((state.debtAmount || 0) > 0) { state.debtSessionsCompleted = (state.debtSessionsCompleted || 0) + 1; _checkDebtPayoff(); }
     if (typeof marketYield !== 'undefined') state.lastMarketYield = marketYield;
     // v3.23.137: Advance treasury bonds on focus session completion
     try {
@@ -9899,6 +10124,8 @@ try {
         var mktMult = [1, 1.25, 1.6, 2.0, 2.5, 3.0][Math.min(mktLevel, 5)];
         comboCoins = Math.round(comboCoins * mktMult);
       }
+      // v3.23.489: Track pre-market combo coins for celebration base vs market split
+      var _preMarketCombo = comboCoins;
       // v3.23.84: Market yield multiplier — applies market conditions to
       // focus session money. The multiplier was computed by MarketEngine at
       // session start and stays between 0.5x and 2.5x. Default 1.0x if the
@@ -9906,6 +10133,9 @@ try {
       var marketYield = state.marketYieldMultiplier || 1.0;
       state.lastMarketYield = marketYield;  // persist for yield display
       comboCoins = Math.round(comboCoins * marketYield);
+      // v3.23.489: Accumulate pre/post market combo for celebration
+      state._sessionComboCoinsPre = (state._sessionComboCoinsPre || 0) + _preMarketCombo;
+      state._sessionComboCoinsPost = (state._sessionComboCoinsPost || 0) + comboCoins;
       if (comboCoins > 0) awardCoins(comboCoins); // v3.23.413: suppress mid-session banner (celebration screen shows this)
     }
 
@@ -10056,6 +10286,7 @@ try {
       // If another click path already consumed the latch, bail.
       if (!_focusConfirmArmed) { closeModal(); return; }
       _focusConfirmArmed = false;
+      state._sessionCompletedAt = 0; // v3.23.490: clear staleness stamp
       closeModal();
       // v3.22.44: Expire challenge if timer wasn't started within 3 min of accepting
       var CHALLENGE_EXPIRY_MS = 3 * 60 * 1000;
@@ -10146,6 +10377,7 @@ try {
     noBtn.addEventListener('click', function() {
       if (!_focusConfirmArmed) { closeModal(); return; }
       _focusConfirmArmed = false;
+      state._sessionCompletedAt = 0; // v3.23.490: clear staleness stamp
       closeModal();
       // v3.21.51: Failing voids idle challenge
       state.challengeActive = false;
@@ -10157,7 +10389,8 @@ try {
           var _ddPenaltyBase = Math.max(0, (state.coins || 0) - (state.doubleDownOriginalCoins || 0));
           var _ddPenalty = Math.round(_ddPenaltyBase * 0.5);
           if (_ddPenalty > 0) {
-            state.coins = Math.max(0, (state.coins || 0) - _ddPenalty);
+            state.coins = (state.coins || 0) - _ddPenalty;
+            if (state.coins < 0) { _recordDebt(-state.coins, 'double-down'); }
             notify('DOUBLE DOWN FAILED! -$' + _ddPenalty + ' penalty (50% of session earnings)', '#ff4466');
           } else {
             notify('Double down failed! No bonus earned.', '#ff4466');
@@ -12987,6 +13220,12 @@ try {
     var streak = state.streak || 0;
     var sessionMin = Math.round((state.sessionDurationSec || 600) / 60);
     var coinsEarned = Math.round((state.coins || 0) - (snapshot.coins || 0));
+    // v3.23.489: Compute base earnings (without market yield) and market adjustment
+    var _mktComboPre = state._sessionComboCoinsPre || 0;
+    var _mktComboPost = state._sessionComboCoinsPost || 0;
+    var _mktAdjustment = _mktComboPost - _mktComboPre; // positive = bonus, negative = penalty
+    var _baseCoinsEarned = coinsEarned - _mktAdjustment; // what you'd have earned at 1.0x
+    var _mktYieldSnap = snapshot.mktYield || 1.0;
     var xpEarned = (state.xp || 0) - (snapshot.xp || 0);
     var newLevel = state.level || 1;
     var oldLevel = snapshot.level || 1;
@@ -13300,12 +13539,64 @@ try {
           }
           requestAnimationFrame(cTick);
         }
-        // Step 1: Money slides in + counts up
+        // Step 1: Money slides in — show BASE earnings first (what you'd earn at 1.0x yield)
+        // If market yield is active and != 1.0, show base then adjustment sequentially
+        var _showMktSplit = state.brokerageUnlocked && Math.abs(_mktYieldSnap - 1.0) > 0.01 && _mktComboPre > 0;
+        var _baseToShow = _showMktSplit ? Math.round(_baseCoinsEarned) : Math.round(coinsEarned);
         celebCoinsEl.parentNode.style.opacity = '1';
         celebCoinsEl.parentNode.style.transform = 'translateY(0)';
-        _celebCountUp(celebCoinsEl, Math.round(coinsEarned), '+$', '', 800, 300, 800, function() {
+        _celebCountUp(celebCoinsEl, Math.max(0, _baseToShow), '+$', '', 800, 300, 800, function() {
+          // Step 1b: Market yield adjustment (if applicable) — animate deduction/bonus
+          if (_showMktSplit && _mktAdjustment !== 0) {
+            // Create the market adjustment line below the base earnings
+            var _mktAdjEl = document.getElementById('celebMktAdj');
+            if (!_mktAdjEl) {
+              _mktAdjEl = document.createElement('div');
+              _mktAdjEl.id = 'celebMktAdj';
+              _mktAdjEl.style.cssText = 'font-family:"Press Start 2P",monospace;font-size:11px;margin-top:6px;opacity:0;transform:translateY(8px);transition:opacity 0.3s,transform 0.3s cubic-bezier(0.34,1.56,0.64,1);text-align:center;cursor:help;';
+              _mktAdjEl.title = 'Market yield ' + _mktYieldSnap.toFixed(2) + 'x applied to combo burst earnings. Base combo: $' + _mktComboPre + ', after market: $' + _mktComboPost + '. ' + (_mktAdjustment >= 0 ? 'Good market conditions boosted your payout!' : 'Poor margins or low demand reduced your payout. Adjust your price slider or upgrade Factory to cut costs.');
+              celebCoinsEl.parentNode.appendChild(_mktAdjEl);
+            }
+            var _adjColor = _mktAdjustment >= 0 ? '#00ff88' : '#ff5555';
+            var _adjPrefix = _mktAdjustment >= 0 ? '+$' : '-$';
+            var _adjAbs = Math.abs(_mktAdjustment);
+            var _adjLabel = _mktYieldSnap.toFixed(2) + 'x mkt';
+            _mktAdjEl.innerHTML = '<span style="color:#666;font-size:9px;">' + _adjLabel + '</span> <span id="celebMktAdjNum" style="color:' + _adjColor + ';">' + _adjPrefix + '0</span>';
+            _mktAdjEl.style.opacity = '1';
+            _mktAdjEl.style.transform = 'translateY(0)';
+            // Count-up the adjustment amount using a dedicated span
+            var _adjNumSpan = document.getElementById('celebMktAdjNum');
+            _celebCountUp(_adjNumSpan, _adjAbs, _adjPrefix, '', 500, _mktAdjustment >= 0 ? 500 : 200, _mktAdjustment >= 0 ? 900 : 400, function() {
+              // After market adjustment lands, update the total line
+              setTimeout(function() {
+                celebCoinsEl.textContent = '+$' + Math.round(coinsEarned);
+                if (_mktAdjustment < 0) {
+                  celebCoinsEl.style.transition = 'color 0.3s';
+                  celebCoinsEl.style.color = '#ff9966';
+                  setTimeout(function() { celebCoinsEl.style.color = ''; }, 600);
+                } else {
+                  celebCoinsEl.style.transition = 'color 0.3s';
+                  celebCoinsEl.style.color = '#00ff88';
+                  setTimeout(function() { celebCoinsEl.style.color = ''; }, 600);
+                }
+                _celebNote(_mktAdjustment >= 0 ? 880 : 220, 0.12, 0, 0.06);
+              }, 150);
+              // Then proceed to XP
+              setTimeout(function() {
+                _proceedToXP();
+              }, 400);
+            });
+          } else {
+            // No market split — clean up any old element and go straight to XP
+            var _oldMktAdj = document.getElementById('celebMktAdj');
+            if (_oldMktAdj) _oldMktAdj.remove();
+            setTimeout(function() {
+              _proceedToXP();
+            }, 200);
+          }
+        });
+        function _proceedToXP() {
           // Step 2: XP slides in + counts up (after money lands)
-          setTimeout(function() {
             celebXPEl.parentNode.style.opacity = '1';
             celebXPEl.parentNode.style.transform = 'translateY(0)';
             _celebCountUp(celebXPEl, Math.round(xpEarned), '+', '', 600, 400, 900, function() {
@@ -13544,8 +13835,7 @@ try {
                 setTimeout(function() { _mktInfoEl.style.opacity = '1'; _mktInfoEl.style.transform = 'translateY(0)'; _celebNote(330, 0.1, 0, 0.04); }, _mktDelay);
               }
             }); // end XP count-up callback
-          }, 200); // delay before XP starts
-        }); // end Money count-up callback
+        } // end _proceedToXP
         if (streak >= 5) _spawnCelebParticles(particles, 20);
         tapHint.textContent = 'tap to close';
       } else {
@@ -13553,6 +13843,8 @@ try {
         overlay.style.opacity = '0';
         setTimeout(function() {
           overlay.style.display = 'none'; particles.innerHTML = '';
+          // v3.23.489: Clean up market adjustment element
+          try { var _mktAdjClean = document.getElementById('celebMktAdj'); if (_mktAdjClean) _mktAdjClean.remove(); } catch(_) {}
           // v3.23.334: Force render on celebration dismiss to ensure all
           // controls (slider, session picker) are properly unlocked.
           // Fixes post-session lockout where controls stayed disabled.
@@ -13868,6 +14160,14 @@ try {
   };
 
   // ═══════════════════════════════════════════════════════════════════════
+  // v3.23.491: Helper — returns epoch ms for next local midnight (00:00:00.000)
+  function _nextMidnight() {
+    var d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
   // v3.23.166: FRIEND CHALLENGE SYSTEM
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -13962,6 +14262,8 @@ try {
   function _updateChallengeOnSessionComplete(sessionMinutes) {
     console.log('[REWARD-CHAIN] _updateChallengeOnSessionComplete() — challenge:', state.friendChallenge ? JSON.stringify({type: state.friendChallenge.type, progress: state.friendChallenge.tracking}) : 'none');
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    // v3.23.491: Don't track sessions before challenge officially starts (midnight start)
+    if (state.friendChallenge.startedAt && Date.now() < state.friendChallenge.startedAt) return;
     var ch = state.friendChallenge;
     if (!ch.tracking) ch.tracking = {};
     var type = ch.type;
@@ -13987,6 +14289,8 @@ try {
 
   function _updateChallengeOnTaskComplete() {
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    // v3.23.491: Don't track before challenge starts (midnight start)
+    if (state.friendChallenge.startedAt && Date.now() < state.friendChallenge.startedAt) return;
     var ch = state.friendChallenge;
     if (!ch.tracking) ch.tracking = {};
     if (ch.type === 'tasks_completed') {
@@ -13998,6 +14302,8 @@ try {
 
   function _updateChallengeOnQuestComplete() {
     if (!state.friendChallenge || state.friendChallenge.status !== 'active') return;
+    // v3.23.491: Don't track before challenge starts (midnight start)
+    if (state.friendChallenge.startedAt && Date.now() < state.friendChallenge.startedAt) return;
     var ch = state.friendChallenge;
     if (!ch.tracking) ch.tracking = {};
     if (ch.type === 'quest_completions') {
@@ -14033,6 +14339,9 @@ try {
         if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === fid) {
           console.log('[CHALLENGE-SYNC] Upgrading pending challenge to active via Firestore discovery');
           state.friendChallenge.status = 'active';
+          // v3.23.491: Challenge starts at next midnight
+          state.friendChallenge.startedAt = _nextMidnight();
+          state.friendChallenge.endsAt = _nextMidnight() + CHALLENGE_DURATION_MS;
           state.friendChallenge.opponentProgress = ac.myProgress || 0;
           _initChallengeTracking();
           save();
@@ -14233,7 +14542,8 @@ try {
       state.friendChallengeWins = (state.friendChallengeWins || 0) + 1;
     } else if (myProgress < theirProgress) {
       result = 'loss';
-      state.coins = Math.max(0, (state.coins || 0) - CHALLENGE_LOSER_PENALTY);
+      state.coins = (state.coins || 0) - CHALLENGE_LOSER_PENALTY;
+      if (state.coins < 0) { _recordDebt(-state.coins, 'challenge lost'); }
       state.friendChallengeLosses = (state.friendChallengeLosses || 0) + 1;
     } else {
       state.friendChallengeTies = (state.friendChallengeTies || 0) + 1;
@@ -14497,9 +14807,9 @@ try {
       opponentId: fromId,
       opponentName: fromName || fromId,
       opponentProgress: 0,
-      startedAt: Date.now(),
-      // v3.23.461: Always start timer from accept time, not send time
-      endsAt: Date.now() + CHALLENGE_DURATION_MS,
+      // v3.23.491: Challenge starts at next midnight so both sides get a clean start
+      startedAt: _nextMidnight(),
+      endsAt: _nextMidnight() + CHALLENGE_DURATION_MS,
       status: 'active',
       tracking: {}
     };
@@ -14653,7 +14963,16 @@ try {
         var hrs = Math.floor(remaining / 3600000);
         var mins = Math.floor((remaining % 3600000) / 60000);
         var timeStr = hrs + 'h ' + mins + 'm';
-        var statusLabel = ch.status === 'pending' ? '<span style="color:#ffa500;font-size:7px;">WAITING FOR RESPONSE...</span>' : '';
+        // v3.23.491: Show countdown to start if challenge hasn't begun yet
+        var _chNotStarted = ch.status === 'active' && ch.startedAt && Date.now() < ch.startedAt;
+        if (_chNotStarted) {
+          var _startRemain = Math.max(0, ch.startedAt - Date.now());
+          var _startHrs = Math.floor(_startRemain / 3600000);
+          var _startMins = Math.floor((_startRemain % 3600000) / 60000);
+          timeStr = 'starts in ' + _startHrs + 'h ' + _startMins + 'm';
+        }
+        var statusLabel = ch.status === 'pending' ? '<span style="color:#ffa500;font-size:7px;">WAITING FOR RESPONSE...</span>'
+          : _chNotStarted ? '<span style="color:#4ecdc4;font-size:7px;">STARTS AT MIDNIGHT &mdash; tracking begins then!</span>' : '';
 
         activeCard.innerHTML = '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #4ecdc4;border-radius:8px;padding:10px;margin-bottom:8px;">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
@@ -14706,7 +15025,7 @@ try {
           })() +
           '<div style="text-align:center;margin-top:4px;">' +
             '<span style="font-size:8px;color:' + (myProg > theirProg ? '#00ff88' : (myProg < theirProg ? '#ff4444' : '#888')) + ';">' +
-              (myProg > theirProg ? 'YOU\'RE WINNING!' : (myProg < theirProg ? 'CATCH UP!' : 'TIED!')) +
+              (_chNotStarted ? 'GET READY &mdash; TRACKING STARTS AT MIDNIGHT!' : (myProg > theirProg ? 'YOU\'RE WINNING!' : (myProg < theirProg ? 'CATCH UP!' : 'TIED!'))) +
             '</span>' +
           '</div>' +
           '<div style="text-align:center;margin-top:6px;">' +
@@ -16172,9 +16491,15 @@ try {
           // v3.23.132: One-shot guard — don't re-fire if tick already completed
           if (_sessionCompletionFired) return;
           _sessionCompletionFired = true;
+          // v3.23.492: Clean up phase state on backgrounded completion
+          if (state.currentPhaseIndex >= 0) {
+            state.currentPhaseIndex = -1;
+            state.phaseTransitioning = false;
+          }
           state.timerRemaining = 0;
           state.timerEndsAt = 0;
           state.timerState = 'completed';
+          state._sessionCompletedAt = Date.now(); // v3.23.490: stamp for staleness check
           try { SFX.timerComplete(); } catch (_) {}
           save();
           render();
@@ -16786,9 +17111,19 @@ try {
         var lockedTotal = 0;
         var unlockedCount = 0;
         existing.forEach(function(p) {
+          // v3.23.488: Clamp locked phases to session duration
+          if (p.locked && p.durationSec > totalSec) p.durationSec = totalSec;
           if (p.locked) lockedTotal += p.durationSec;
           else unlockedCount++;
         });
+        // v3.23.488: If locked total exceeds session, force-shrink locked phases
+        if (lockedTotal > totalSec && lockedTotal > 0) {
+          var _ls = totalSec / lockedTotal;
+          lockedTotal = 0;
+          existing.forEach(function(p) {
+            if (p.locked) { p.durationSec = Math.max(60, Math.round(p.durationSec * _ls)); lockedTotal += p.durationSec; }
+          });
+        }
         // New phase is unlocked, so unlocked pool = unlockedCount + 1
         var availableForUnlocked = totalSec - lockedTotal;
         var perUnlocked = Math.max(PHASE_MIN_SEC, Math.floor(availableForUnlocked / (unlockedCount + 1)));
@@ -16848,6 +17183,13 @@ try {
         var phases = state.phases;
         if (!phases || phases.length === 0) return;
 
+        // v3.23.488: First pass — clamp ALL phases (including locked) to not exceed totalSec individually
+        for (var ci = 0; ci < phases.length; ci++) {
+          if (phases[ci].durationSec > totalSec) {
+            phases[ci].durationSec = totalSec;
+          }
+        }
+
         // v3.23.423: Respect locks — only scale unlocked phases
         var lockedTotal = 0;
         var unlocked = [];
@@ -16856,6 +17198,18 @@ try {
             lockedTotal += phases[i].durationSec;
           } else {
             unlocked.push(i);
+          }
+        }
+
+        // v3.23.488: If locked phases alone exceed session, force-shrink them proportionally
+        if (lockedTotal > totalSec) {
+          var lockScale = totalSec / (lockedTotal || 1);
+          lockedTotal = 0;
+          for (var li = 0; li < phases.length; li++) {
+            if (phases[li].locked) {
+              phases[li].durationSec = Math.max(PHASE_MIN_SEC, Math.round(phases[li].durationSec * lockScale));
+              lockedTotal += phases[li].durationSec;
+            }
           }
         }
 
@@ -18722,9 +19076,9 @@ try {
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
                     state.friendChallenge.status = 'active';
-                    // v3.23.461: Reset timer from accept moment so both sides start fresh
-                    state.friendChallenge.startedAt = Date.now();
-                    state.friendChallenge.endsAt = Date.now() + CHALLENGE_DURATION_MS;
+                    // v3.23.491: Challenge starts at next midnight so both sides get a clean start
+                    state.friendChallenge.startedAt = _nextMidnight();
+                    state.friendChallenge.endsAt = _nextMidnight() + CHALLENGE_DURATION_MS;
                     _initChallengeTracking();
                     save();
                     try { _publishChallengeToFirestore(); } catch(_){}
@@ -19564,7 +19918,8 @@ try {
           console.log('[CK-BRIDGE] Received CKRB_PENALTY in popup, amount=$' + _penAmt);
           // Apply penalty directly to popup's in-memory state (avoids race with background.js save)
           var _penPrevDollars = Math.floor(state.coins || 0);
-          state.coins = Math.max(0, (state.coins || 0) - _penAmt);
+          state.coins = (state.coins || 0) - _penAmt;
+          if (state.coins < 0) { _recordDebt(-state.coins, 'penalty'); }
           notify('-$' + _penAmt + ' Q-bank idle penalty!', '#ff6b6b');
           // Build pending reward entry directly
           if (!state.ckBuddyPendingRewards) state.ckBuddyPendingRewards = [];

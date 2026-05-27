@@ -197,16 +197,31 @@ var MarketEngine = (function() {
     // Resonance: 1.0 when on target, drops to 0.3 when way off
     var resonance = 1.0 - (zoneNorm * 0.7);
 
-    // Margin still matters but is secondary to resonance
-    var marginFactor = margin > 0 ? (1 + margin * 0.5) : (1 + margin);
-    marginFactor = clamp(marginFactor, 0.3, 2.0);
+    // v3.23.488: Margin is PRIMARY, not secondary. Negative margins MUST reduce earnings.
+    // Previously demand could override negative margins, making low demand better.
+    // New formula: margin drives the multiplier, demand is a bonus/penalty on top.
+    // Deeply negative margin = deeply reduced earnings, regardless of demand.
+    var marginFactor;
+    if (margin >= 0) {
+      // Positive margin: 1.0 to 1.5x (margin caps at ~70% so max 1.35)
+      marginFactor = 1.0 + margin * 0.5;
+    } else {
+      // Negative margin: drops HARD. -50% margin = 0.25x, -100% margin = 0.0x
+      // Using quadratic falloff so small negatives are mild but deep negatives hurt
+      marginFactor = Math.max(0.05, 1.0 + margin * 2.0);
+    }
+    marginFactor = clamp(marginFactor, 0.05, 1.5);
 
-    var yieldMult = demand * marginFactor * resonance;
-    // v3.23.167: Raised floor from 0.3x to 0.50x — at 0.3x a 20-min
-    // session with 2x combo earned ~$7, which is economically meaningless
-    // when nothing in the game costs less than $1,000. 0.50x keeps bad
-    // markets punishing without making sessions feel pointless.
-    yieldMult = clamp(yieldMult, 0.5, 2.5);
+    // Demand is a SECONDARY modifier (0.7x to 1.3x range, not the huge swings before)
+    var demandMod = 0.7 + (demand * 0.6); // demand ~0.0-1.0 => 0.7-1.3
+    demandMod = clamp(demandMod, 0.7, 1.3);
+
+    var yieldMult = marginFactor * demandMod * resonance;
+    // v3.23.488: Floor at 0.10x (not 0.50x). Bad markets HURT, but never zero.
+    // A 30-min session at 0.10x still earns ~$1-3, so it's not nothing,
+    // but it's a real punishment. The celebration screen will show what you
+    // WOULD have earned vs what the market took.
+    yieldMult = clamp(yieldMult, 0.10, 2.5);
 
     // Round to 2 decimal places
     yieldMult = Math.round(yieldMult * 100) / 100;

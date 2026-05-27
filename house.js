@@ -163,7 +163,14 @@
     if (lob >= 3) darkness += 8;
     if (lob >= 6) darkness += 6;
 
-    var wb = clamp(55 + goodness - darkness, 0, 100);
+    // v3.23.495: Debt tanks wellbeing — proportional to amount owed
+    var debtPenalty = 0;
+    if (state.debtAmount && state.debtAmount > 0) {
+      // -10 base + -1 per $100 owed, capped at -30
+      debtPenalty = clamp(10 + Math.floor(state.debtAmount / 100), 0, 30);
+    }
+
+    var wb = clamp(55 + goodness - darkness - debtPenalty, 0, 100);
     return Math.round(wb);
   }
 

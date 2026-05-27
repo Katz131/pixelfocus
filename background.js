@@ -88,7 +88,7 @@ function _openNagPopupInner(htmlPath) {
           try {
             chrome.windows.get(_nagWindowId, function(w) {
               if (chrome.runtime.lastError || !w) { _clearNagTracking(); clearInterval(_refId); return; }
-              chrome.windows.update(_nagWindowId, { focused: true });
+              _refocusIfNotOnPopup(_nagWindowId);
             });
           } catch(_) { clearInterval(_refId); }
         }, 5000);
@@ -248,7 +248,7 @@ try {
             console.log('[PenaltyTracking] Promise timer REOPENED with ' + Math.round(_promiseRemainMs/1000) + 's remaining.');
             var _refocusId = setInterval(function() {
               if (!_promiseTimerWindowId || _promiseTimerResolved) { clearInterval(_refocusId); return; }
-              try { chrome.windows.update(_promiseTimerWindowId, { focused: true }); } catch(_) { clearInterval(_refocusId); }
+              try { _refocusIfNotOnPopup(_promiseTimerWindowId); } catch(_) { clearInterval(_refocusId); }
             }, 5000);
           }
         });
@@ -434,7 +434,14 @@ function applyPromisePenalty() {
     _setPromiseTimer(null, true);
 
     var prevCoins = state.coins || 0;
-    state.coins = Math.max(0, prevCoins - PROMISE_PENALTY);
+    state.coins = prevCoins - PROMISE_PENALTY;
+    // v3.23.495: Allow debt — record negative balance
+    if (state.coins < 0) {
+      state.debtAmount = (state.debtAmount || 0) + (-state.coins);
+      state.lifetimeDebtIncurred = (state.lifetimeDebtIncurred || 0) + (-state.coins);
+      if (!(state.debtAmount - (-state.coins) > 0)) { state.debtStartedAt = Date.now(); state.debtSessionsCompleted = 0; state.debtPenaltiesApplied = 0; state.debtLastInterestAt = Date.now(); }
+      state.coins = 0;
+    }
     state.penaltyCountdownActive = false;
     state.promiseDeadlineAt = 0;
     _safeSaveState(state, true); // v3.23.377: force — penalty must always write
@@ -519,7 +526,14 @@ function applyPenaltyTimerPenalty() {
     _setPenaltyTimer(null, true);
 
     var prevCoins = state.coins || 0;
-    state.coins = Math.max(0, prevCoins - PENALTY_TIMER_PENALTY);
+    state.coins = prevCoins - PENALTY_TIMER_PENALTY;
+    // v3.23.495: Allow debt
+    if (state.coins < 0) {
+      state.debtAmount = (state.debtAmount || 0) + (-state.coins);
+      state.lifetimeDebtIncurred = (state.lifetimeDebtIncurred || 0) + (-state.coins);
+      if (!(state.debtAmount - (-state.coins) > 0)) { state.debtStartedAt = Date.now(); state.debtSessionsCompleted = 0; state.debtPenaltiesApplied = 0; state.debtLastInterestAt = Date.now(); }
+      state.coins = 0;
+    }
     state.penaltyCountdownActive = false;
     state.promiseDeadlineAt = 0;
     _safeSaveState(state, true); // v3.23.377: force — penalty must always write
@@ -732,7 +746,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         // v3.23.35: Re-focus every 5s so it stays on top
         var _refocusId = setInterval(function() {
           if (!_promiseTimerWindowId || _promiseTimerResolved) { clearInterval(_refocusId); return; }
-          try { chrome.windows.update(_promiseTimerWindowId, { focused: true }); } catch(_) { clearInterval(_refocusId); }
+          try { _refocusIfNotOnPopup(_promiseTimerWindowId); } catch(_) { clearInterval(_refocusId); }
         }, 5000);
         // v3.23.2: Flag for pause/reset warning
         chrome.storage.local.get('pixelFocusState', function(r) {
@@ -1321,7 +1335,8 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 
       // Nag 3: $100 penalty (once per session)
       if (nagNum >= 3 && !state.surveillancePenaltyApplied) {
-        state.coins = Math.max(0, (state.coins || 0) - 100);
+        state.coins = (state.coins || 0) - 100;
+        if (state.coins < 0) { state.debtAmount = (state.debtAmount || 0) + (-state.coins); state.lifetimeDebtIncurred = (state.lifetimeDebtIncurred || 0) + (-state.coins); if (!(state.debtAmount - (-state.coins) > 0)) { state.debtStartedAt = Date.now(); state.debtSessionsCompleted = 0; state.debtPenaltiesApplied = 0; state.debtLastInterestAt = Date.now(); } state.coins = 0; }
         state.surveillancePenaltyApplied = true;
       }
       if (nagNum >= 3) {
@@ -1859,7 +1874,8 @@ function opportunisticSurveillanceCheck() {
 
     var penaltyJustApplied = false;
     if (nagNum >= 3 && !state.surveillancePenaltyApplied) {
-      state.coins = Math.max(0, (state.coins || 0) - 100);
+      state.coins = (state.coins || 0) - 100;
+      if (state.coins < 0) { state.debtAmount = (state.debtAmount || 0) + (-state.coins); state.lifetimeDebtIncurred = (state.lifetimeDebtIncurred || 0) + (-state.coins); if (!(state.debtAmount - (-state.coins) > 0)) { state.debtStartedAt = Date.now(); state.debtSessionsCompleted = 0; state.debtPenaltiesApplied = 0; state.debtLastInterestAt = Date.now(); } state.coins = 0; }
       state.surveillancePenaltyApplied = true;
       penaltyJustApplied = true;
     }
@@ -2013,7 +2029,7 @@ chrome.runtime.onMessageExternal.addListener(function(msg, sender, sendResponse)
       _ckrbIdleCount++;
       if (penalty > 0) {
         state.coins = (state.coins || 0) - penalty;
-        if (state.coins < 0) state.coins = 0;
+        if (state.coins < 0) { state.debtAmount = (state.debtAmount || 0) + (-state.coins); state.lifetimeDebtIncurred = (state.lifetimeDebtIncurred || 0) + (-state.coins); if (!(state.debtAmount - (-state.coins) > 0)) { state.debtStartedAt = Date.now(); state.debtSessionsCompleted = 0; state.debtPenaltiesApplied = 0; state.debtLastInterestAt = Date.now(); } state.coins = 0; }
         changed = true;
         if (!state.ckBuddyPendingRewards) state.ckBuddyPendingRewards = [];
         state.ckBuddyPendingRewards.push({ type: 'penalty', amount: penalty, reason: 'Idle ' + Math.round((msg.idleMs || 0) / 1000) + 's between answers', ts: Date.now() });

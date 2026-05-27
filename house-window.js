@@ -2311,6 +2311,31 @@
     }
   }
 
+
+  // v3.23.494: Get active event info for a pet (for tooltip enrichment)
+  function getActiveEventInfo(petIndex) {
+    var events = (state && state.houseEvents) || [];
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (ev.household || ev.petIndex === petIndex) {
+        return { title: ev.title || '', triggerState: ev.triggerState || '', action: ev.action || '' };
+      }
+    }
+    return null;
+  }
+
+  // v3.23.494: Mood emoji badges for event-driven states
+  var EVENT_MOOD_BADGES = {
+    sick: '\ud83e\ude7a',    // bandage face
+    scared: '\ud83d\ude28',  // fearful
+    angry: '\ud83d\ude21',   // angry
+    excited: '\u2728',        // sparkles
+    dancing: '\ud83c\udf89', // party
+    working: '\ud83d\udee0', // wrench
+    sad: '\ud83d\ude22',     // crying
+    happy: ''                  // no badge for happy (default)
+  };
+
   function getEventOverrideMood(petIndex) {
     var events = (state && state.houseEvents) || [];
     for (var i = 0; i < events.length; i++) {
@@ -2738,6 +2763,14 @@
       cv.style.cssText = 'image-rendering:pixelated;width:32px;height:32px;display:block;margin:0 auto;';
       drawPetSprite(cv, petType, MOOD_TO_SPRITE[spriteMood] || 'happy', 4);
 
+      // v3.23.494: Event mood badge — small emoji overlay when event is active
+      var _evBadge = null;
+      if (eventMood && EVENT_MOOD_BADGES[eventMood]) {
+        _evBadge = document.createElement('div');
+        _evBadge.style.cssText = 'position:absolute;top:-4px;right:-4px;font-size:10px;line-height:1;pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.5));';
+        _evBadge.textContent = EVENT_MOOD_BADGES[eventMood];
+      }
+
       // Bowl sprite canvas (smaller, below the pet)
       var bowlState = petBowlState(i);
       var bowlCv = document.createElement('canvas');
@@ -2756,7 +2789,12 @@
         + 'background:#1a1a2e;color:#c0c0d8;padding:6px 10px;border-radius:4px;font-size:10px;'
         + 'font-family:monospace;white-space:nowrap;z-index:100;pointer-events:none;'
         + 'border:1px solid #2a2a4e;max-width:260px;white-space:normal;line-height:1.4;';
-      tip.textContent = petTooltipText(spriteMood, petType, i);
+      var _evInfo = getActiveEventInfo(i);
+      if (_evInfo) {
+        tip.textContent = _evInfo.title + '. ' + petTooltipText(spriteMood, petType, i);
+      } else {
+        tip.textContent = petTooltipText(spriteMood, petType, i);
+      }
 
       // Tooltip hover logic
       (function(tipEl, wrapEl) {
@@ -2769,9 +2807,11 @@
       // color-coded reason so the player knows what's wrong.
       var actualSprite = MOOD_TO_SPRITE[spriteMood] || 'happy';
       var moodLbl = null;
-      if (actualSprite === 'sad') {
-        var reasonText = petMoodLabel(condition, petType, spriteMood);
-        var moodColors = {sad:'#6b6bff',sleeping:'#5a5a7e',scared:'#ff6347',angry:'#ff4444',sick:'#9966cc'};
+      // v3.23.494: Show mood label for sad sprites AND event-driven moods (so player knows why)
+      var _showMoodLabel = actualSprite === 'sad' || (eventMood && eventMood !== 'happy');
+      if (_showMoodLabel) {
+        var reasonText = eventMood ? (PET_MOOD_REASONS[eventMood] || eventMood) : petMoodLabel(condition, petType, spriteMood);
+        var moodColors = {sad:'#6b6bff',sleeping:'#5a5a7e',scared:'#ff6347',angry:'#ff4444',sick:'#9966cc',excited:'#58cc02',dancing:'#ffd700',working:'#f0a030'};
         moodLbl = document.createElement('div');
         moodLbl.style.cssText = 'font-size:7px;margin-top:1px;font-family:monospace;letter-spacing:0.3px;'
           + 'color:' + (moodColors[spriteMood] || '#ff6347') + ';';
@@ -2780,6 +2820,7 @@
 
       wrap.appendChild(tip);
       wrap.appendChild(cv);
+      if (_evBadge) wrap.appendChild(_evBadge);
       wrap.appendChild(bowlCv);
       wrap.appendChild(lbl);
       if (moodLbl) wrap.appendChild(moodLbl);
