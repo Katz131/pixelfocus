@@ -303,7 +303,9 @@ var MorseMessenger = (function() {
       'THE ENEMY IS IN SIGHT': 'togo',
       'A SMALL STEP FOR MAN': 'moon',
       'WHAT IS THE ANSWER': 'stein',
-      'STOP': 'stop'
+      'STOP': 'stop',
+      'SUPERCALIFRAGILISTICEXPIALIDOCIOUS': 'supercali',
+      '3141592653589793': 'pi15'
     };
     var _decodedUp = decoded.toUpperCase().trim();
     var _famousId = _famousMessages[_decodedUp] || null;
@@ -776,12 +778,350 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     }).join(' ');
   }
 
+
+  // ===== Standalone ABC Reference (accessible from inbox, no compose needed) =====
+  function openAbcReference() {
+    var existing = document.getElementById('morseAbcOverlay');
+    if (existing) { existing.remove(); return; }
+
+    var ov = document.createElement('div');
+    ov.id = 'morseAbcOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;padding:20px;overflow-y:auto;';
+
+    var html = '';
+    html += '<div style="width:100%;max-width:680px;background:linear-gradient(135deg,#1a2a1a,#0a150a);border:2px solid #2a4a2a;border-radius:10px;padding:16px;margin-bottom:8px;">';
+
+    // Close button
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#ffd700;letter-spacing:1px;">ABC REFERENCE</div>';
+    html += '<button id="morseAbcOverlayClose" style="font-family:\'Press Start 2P\',monospace;font-size:8px;padding:6px 12px;border-radius:8px;cursor:pointer;border:2px solid #ff5a5a;border-bottom:4px solid #aa2a2a;background:linear-gradient(180deg,#3a1515,#1f0a0a);color:#ff5a5a;box-shadow:0 4px 0 #0a0505,0 6px 12px rgba(0,0,0,0.4);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">CLOSE</button>';
+    html += '</div>';
+
+    // Hello Morse visual mnemonics
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#ffd700;text-align:center;margin-bottom:4px;">HELLO MORSE</div>';
+    html += '<div style="font-size:8px;color:#666;text-align:center;margin-bottom:10px;">Visual mnemonics \u2014 the word hints at the dot/dash pattern</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:5px;margin-bottom:12px;">';
+    var _hm = [
+      ['A','\u00b7\u2014','Archery'],['B','\u2014\u00b7\u00b7\u00b7','Banjo'],['C','\u2014\u00b7\u2014\u00b7','Candy'],['D','\u2014\u00b7\u00b7','Dog'],
+      ['E','\u00b7','Eye'],['F','\u00b7\u00b7\u2014\u00b7','Firetruck'],['G','\u2014\u2014\u00b7','Giraffe'],['H','\u00b7\u00b7\u00b7\u00b7','Hippo'],
+      ['I','\u00b7\u00b7','Insect'],['J','\u00b7\u2014\u2014\u2014','Jet'],['K','\u2014\u00b7\u2014','Kite'],['L','\u00b7\u2014\u00b7\u00b7','Laboratory'],
+      ['M','\u2014\u2014','Mustache'],['N','\u2014\u00b7','Net'],['O','\u2014\u2014\u2014','Orchestra'],['P','\u00b7\u2014\u2014\u00b7','Paddles'],
+      ['Q','\u2014\u2014\u00b7\u2014','Quarterback'],['R','\u00b7\u2014\u00b7','Robot'],['S','\u00b7\u00b7\u00b7','Submarine'],['T','\u2014','Tape'],
+      ['U','\u00b7\u00b7\u2014','Unicorn'],['V','\u00b7\u00b7\u00b7\u2014','Vacuum'],['W','\u00b7\u2014\u2014','Wand'],['X','\u2014\u00b7\u00b7\u2014','X-ray'],
+      ['Y','\u2014\u00b7\u2014\u2014','Yard'],['Z','\u2014\u2014\u00b7\u00b7','Zebra']
+    ];
+    for (var _hi = 0; _hi < _hm.length; _hi++) {
+      html += '<div style="background:rgba(107,142,35,0.12);border:1px solid #3a5a2a;border-radius:6px;padding:6px 4px;text-align:center;">';
+      html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#00ff88;margin-bottom:2px;">' + _hm[_hi][0] + '</div>';
+      html += '<div style="font-size:10px;color:#ffd700;letter-spacing:2px;margin-bottom:3px;">' + _hm[_hi][1] + '</div>';
+      html += '<div style="font-size:8px;color:#8fbc8f;">' + _hm[_hi][2] + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Quick reference
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4ecdc4;text-align:center;margin-bottom:6px;">QUICK REFERENCE</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:4px;">';
+    var _ar = [
+      ['A','\u00b7\u2014'],['B','\u2014\u00b7\u00b7\u00b7'],['C','\u2014\u00b7\u2014\u00b7'],['D','\u2014\u00b7\u00b7'],['E','\u00b7'],['F','\u00b7\u00b7\u2014\u00b7'],
+      ['G','\u2014\u2014\u00b7'],['H','\u00b7\u00b7\u00b7\u00b7'],['I','\u00b7\u00b7'],['J','\u00b7\u2014\u2014\u2014'],['K','\u2014\u00b7\u2014'],['L','\u00b7\u2014\u00b7\u00b7'],
+      ['M','\u2014\u2014'],['N','\u2014\u00b7'],['O','\u2014\u2014\u2014'],['P','\u00b7\u2014\u2014\u00b7'],['Q','\u2014\u2014\u00b7\u2014'],['R','\u00b7\u2014\u00b7'],
+      ['S','\u00b7\u00b7\u00b7'],['T','\u2014'],['U','\u00b7\u00b7\u2014'],['V','\u00b7\u00b7\u00b7\u2014'],['W','\u00b7\u2014\u2014'],['X','\u2014\u00b7\u00b7\u2014'],
+      ['Y','\u2014\u00b7\u2014\u2014'],['Z','\u2014\u2014\u00b7\u00b7']
+    ];
+    for (var _ri = 0; _ri < _ar.length; _ri++) {
+      html += '<div style="background:rgba(0,255,136,0.06);border:1px solid #1a3a1a;border-radius:4px;padding:4px 6px;text-align:center;">';
+      html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#00ff88;">' + _ar[_ri][0] + '</div>';
+      html += '<div style="font-size:11px;color:#ffd700;letter-spacing:2px;">' + _ar[_ri][1] + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Numbers
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#4ecdc4;text-align:center;margin:8px 0 6px;">NUMBERS</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:4px;">';
+    var _nr = [
+      ['0','\u2014\u2014\u2014\u2014\u2014'],['1','\u00b7\u2014\u2014\u2014\u2014'],['2','\u00b7\u00b7\u2014\u2014\u2014'],['3','\u00b7\u00b7\u00b7\u2014\u2014'],['4','\u00b7\u00b7\u00b7\u00b7\u2014'],
+      ['5','\u00b7\u00b7\u00b7\u00b7\u00b7'],['6','\u2014\u00b7\u00b7\u00b7\u00b7'],['7','\u2014\u2014\u00b7\u00b7\u00b7'],['8','\u2014\u2014\u2014\u00b7\u00b7'],['9','\u2014\u2014\u2014\u2014\u00b7']
+    ];
+    for (var _ni = 0; _ni < _nr.length; _ni++) {
+      html += '<div style="background:rgba(78,205,196,0.06);border:1px solid #1a3a3a;border-radius:4px;padding:4px 6px;text-align:center;">';
+      html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4ecdc4;">' + _nr[_ni][0] + '</div>';
+      html += '<div style="font-size:10px;color:#ffd700;letter-spacing:1px;">' + _nr[_ni][1] + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '<div style="text-align:center;margin-top:8px;font-size:8px;color:#555;">\u00b7 = dit (tap)  \u2014 = dah (hold)</div>';
+    html += '</div>';
+
+    ov.innerHTML = html;
+    document.body.appendChild(ov);
+
+    document.getElementById('morseAbcOverlayClose').addEventListener('click', function() {
+      ov.remove();
+    });
+    ov.addEventListener('click', function(e) {
+      if (e.target === ov) ov.remove();
+    });
+  }
+
+
+  // ===== Audio Listening Challenge (gated behind supercali badge) =====
+  var _acOverlay = null;
+  var _acCurrentWord = '';
+  var _acAudioCtx = null;
+  var _acPlaying = false;
+
+  // Challenge word pools by difficulty
+  var AC_WORDS_EASY = ['SOS','HI','OK','GO','NO','YES','CAT','DOG','RUN','HELP','STOP','MOON','STAR','FIRE','WIND','RAIN'];
+  var AC_WORDS_MEDIUM = ['HELLO','WORLD','MORSE','FOCUS','QUEST','BADGE','LOOM','CLOCK','PIANO','SWIFT','BRAVE','OCEAN'];
+  var AC_WORDS_HARD = ['TELEGRAPH','SUBMARINE','FREQUENCY','ELECTRICITY','TRANSMISSION','CONSTELLATION'];
+  var AC_WORDS_BOSS = ['ANTIDISESTABLISHMENTARIANISM','PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS'];
+  var AC_WORDS_NUMBERS = ['3141592653589793','1123581321345589144'];
+
+  // Morse lookup
+  var AC_MORSE_MAP = {
+    'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
+    'K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-',
+    'U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..',
+    '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....',
+    '6':'-....','7':'--...','8':'---..','9':'----.'
+  };
+
+  function _acPlayMorse(word, speed, onDone) {
+    if (_acPlaying) return;
+    _acPlaying = true;
+    if (!_acAudioCtx) _acAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_acAudioCtx.state === 'suspended') _acAudioCtx.resume();
+
+    var ditLen = speed || 0.08; // seconds
+    var dahLen = ditLen * 3;
+    var symbolGap = ditLen;
+    var letterGap = ditLen * 3;
+    var wordGap = ditLen * 7;
+    var freq = 660;
+    var t = _acAudioCtx.currentTime + 0.05;
+
+    for (var ci = 0; ci < word.length; ci++) {
+      var ch = word[ci].toUpperCase();
+      if (ch === ' ') { t += wordGap; continue; }
+      var code = AC_MORSE_MAP[ch];
+      if (!code) continue;
+      for (var si = 0; si < code.length; si++) {
+        var dur = code[si] === '.' ? ditLen : dahLen;
+        var osc = _acAudioCtx.createOscillator();
+        var gain = _acAudioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        osc.connect(gain);
+        gain.connect(_acAudioCtx.destination);
+        osc.start(t);
+        osc.stop(t + dur + 0.01);
+        t += dur + symbolGap;
+      }
+      t += letterGap - symbolGap; // letter gap minus the symbol gap already added
+    }
+    // Signal done
+    var totalDur = (t - _acAudioCtx.currentTime) * 1000 + 200;
+    setTimeout(function() { _acPlaying = false; if (onDone) onDone(); }, totalDur);
+  }
+
+  function _acPickWord(difficulty) {
+    var pool;
+    if (difficulty === 'easy') pool = AC_WORDS_EASY;
+    else if (difficulty === 'medium') pool = AC_WORDS_MEDIUM;
+    else if (difficulty === 'hard') pool = AC_WORDS_HARD;
+    else if (difficulty === 'boss1') return 'ANTIDISESTABLISHMENTARIANISM';
+    else if (difficulty === 'boss2') return 'PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS';
+    else if (difficulty === 'pi') return '3141592653589793';
+    else if (difficulty === 'fibonacci') return '1123581321345589144';
+    else pool = AC_WORDS_MEDIUM;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function openAudioChallenge() {
+    if (_acOverlay) { _acOverlay.remove(); _acOverlay = null; }
+
+    _acOverlay = document.createElement('div');
+    _acOverlay.id = 'morseAudioOverlay';
+    _acOverlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;padding:20px;overflow-y:auto;';
+
+    var html = '';
+    // Header
+    html += '<div style="width:100%;max-width:680px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+    html += '<button id="acCloseBtn" style="font-family:\'Press Start 2P\',monospace;font-size:8px;padding:8px 14px;border-radius:8px;cursor:pointer;border:2px solid #ff5a5a;border-bottom:4px solid #aa2a2a;background:linear-gradient(180deg,#3a1515,#1f0a0a);color:#ff5a5a;box-shadow:0 4px 0 #0a0505,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,90,90,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);">← BACK</button>';
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#ffd700;letter-spacing:1px;">🎧 AUDIO CHALLENGE</div>';
+    html += '<div style="width:80px;"></div>';
+    html += '</div>';
+
+    // Instructions
+    html += '<div style="width:100%;max-width:680px;background:linear-gradient(135deg,#1a1a2a,#0a0a15);border:2px solid #3a3a6a;border-radius:10px;padding:16px;margin-bottom:12px;text-align:center;">';
+    html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#8888cc;margin-bottom:8px;">LISTEN & DECODE</div>';
+    html += '<div style="font-size:11px;color:#666;line-height:1.6;">A word will be played as morse code audio.<br>Type what you hear. No dots or dashes shown — ears only.</div>';
+    html += '</div>';
+
+    // Difficulty selector
+    html += '<div style="width:100%;max-width:680px;display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;justify-content:center;">';
+    var diffs = [
+      ['easy','EASY','#00ff88','#0a2a0a','#001a05','2–4 letters'],
+      ['medium','MEDIUM','#ffd700','#2a2010','#1a1505','5–6 letters'],
+      ['hard','HARD','#ff6b6b','#2a1010','#1a0505','9–13 letters'],
+      ['boss1','BOSS','#ff00ff','#2a0a2a','#1a051a','28 letters'],
+      ['boss2','ULTIMATE','#00ffff','#0a2a2a','#051a1a','45 letters'],
+      ['pi','PI DIGITS','#ff8800','#2a1a0a','#1a0f05','16 digits'],
+      ['fibonacci','FIBONACCI','#88ff00','#1a2a0a','#0f1a05','19 digits']
+    ];
+    for (var di = 0; di < diffs.length; di++) {
+      var d = diffs[di];
+      html += '<button class="ac-diff-btn" data-diff="' + d[0] + '" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 12px;border-radius:8px;cursor:pointer;border:2px solid ' + d[2] + ';border-bottom:4px solid rgba(0,0,0,0.3);background:linear-gradient(180deg,' + d[3] + ',' + d[4] + ');color:' + d[2] + ';box-shadow:0 3px 0 rgba(0,0,0,0.4),0 4px 10px rgba(0,0,0,0.3);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);flex:1;min-width:100px;">' + d[1] + '<div style="font-size:6px;color:#555;margin-top:4px;">' + d[5] + '</div></button>';
+    }
+    html += '</div>';
+
+    // Play area
+    html += '<div id="acPlayArea" style="display:none;width:100%;max-width:680px;background:linear-gradient(135deg,#0a1a0a,#001a0a);border:2px solid #2a4a2a;border-radius:10px;padding:20px;text-align:center;">';
+    // Status
+    html += '<div id="acStatus" style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#00ff88;margin-bottom:16px;">READY</div>';
+    // Hint (letter count)
+    html += '<div id="acHint" style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#555;margin-bottom:12px;"></div>';
+    // Play button
+    html += '<button id="acPlayBtn" style="font-family:\'Press Start 2P\',monospace;font-size:10px;padding:12px 30px;border-radius:12px;cursor:pointer;border:2px solid #ffd700;border-bottom:5px solid #aa8800;background:linear-gradient(180deg,#2a2010,#150d05);color:#ffd700;box-shadow:0 5px 0 #0a0800,0 6px 14px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,215,0,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);letter-spacing:2px;margin-bottom:16px;">🔊 PLAY</button>';
+    // Speed control
+    html += '<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:10px;">';
+    html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#555;">SPEED:</span>';
+    html += '<button class="ac-speed-btn" data-speed="0.12" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #3a3a3a;background:#1a1a1a;color:#888;transition:all 0.1s;">SLOW</button>';
+    html += '<button class="ac-speed-btn ac-speed-active" data-speed="0.08" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #ffd700;background:#2a2010;color:#ffd700;transition:all 0.1s;">NORMAL</button>';
+    html += '<button class="ac-speed-btn" data-speed="0.05" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #3a3a3a;background:#1a1a1a;color:#888;transition:all 0.1s;">FAST</button>';
+    html += '</div>';
+    // Input
+    html += '<input id="acInput" type="text" autocomplete="off" spellcheck="false" style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#00ff88;background:#050f05;border:2px solid #1a3a1a;border-radius:8px;padding:12px 16px;width:100%;max-width:500px;text-align:center;text-transform:uppercase;outline:none;box-sizing:border-box;" placeholder="TYPE WHAT YOU HEAR...">';
+    // Submit
+    html += '<div style="margin-top:12px;">';
+    html += '<button id="acSubmitBtn" style="font-family:\'Press Start 2P\',monospace;font-size:9px;padding:10px 24px;border-radius:10px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#001a0a);color:#00ff88;box-shadow:0 4px 0 #001a0a,0 5px 12px rgba(0,0,0,0.4);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);letter-spacing:1px;">CHECK ANSWER</button>';
+    html += '</div>';
+    // Result
+    html += '<div id="acResult" style="margin-top:12px;font-family:\'Press Start 2P\',monospace;font-size:9px;min-height:20px;"></div>';
+    // Score
+    html += '<div id="acScore" style="margin-top:8px;font-family:\'Press Start 2P\',monospace;font-size:7px;color:#555;"></div>';
+    html += '</div>';
+
+    _acOverlay.innerHTML = html;
+    document.body.appendChild(_acOverlay);
+
+    var currentDiff = 'medium';
+    var currentSpeed = 0.08;
+    var acCorrect = 0;
+    var acAttempts = 0;
+
+    // Close
+    document.getElementById('acCloseBtn').addEventListener('click', function() {
+      _acOverlay.remove(); _acOverlay = null;
+    });
+
+    // Difficulty buttons
+    _acOverlay.querySelectorAll('.ac-diff-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        currentDiff = btn.getAttribute('data-diff');
+        _acCurrentWord = _acPickWord(currentDiff);
+        document.getElementById('acPlayArea').style.display = 'block';
+        document.getElementById('acStatus').textContent = 'PRESS PLAY TO HEAR THE WORD';
+        document.getElementById('acStatus').style.color = '#ffd700';
+        document.getElementById('acHint').textContent = _acCurrentWord.length + ' LETTERS';
+        document.getElementById('acInput').value = '';
+        document.getElementById('acResult').textContent = '';
+        // Highlight active difficulty
+        _acOverlay.querySelectorAll('.ac-diff-btn').forEach(function(b) {
+          b.style.opacity = b === btn ? '1' : '0.4';
+        });
+      });
+    });
+
+    // Speed buttons
+    _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        currentSpeed = parseFloat(btn.getAttribute('data-speed'));
+        _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(b) {
+          var isActive = b === btn;
+          b.style.border = '1px solid ' + (isActive ? '#ffd700' : '#3a3a3a');
+          b.style.background = isActive ? '#2a2010' : '#1a1a1a';
+          b.style.color = isActive ? '#ffd700' : '#888';
+        });
+      });
+    });
+
+    // Play button
+    document.getElementById('acPlayBtn').addEventListener('click', function() {
+      if (_acPlaying || !_acCurrentWord) return;
+      var playBtn = document.getElementById('acPlayBtn');
+      playBtn.textContent = '🔊 PLAYING...';
+      playBtn.style.color = '#00ff88';
+      document.getElementById('acStatus').textContent = 'LISTENING...';
+      document.getElementById('acStatus').style.color = '#00ff88';
+      _acPlayMorse(_acCurrentWord, currentSpeed, function() {
+        playBtn.textContent = '🔊 PLAY AGAIN';
+        playBtn.style.color = '#ffd700';
+        document.getElementById('acStatus').textContent = 'TYPE YOUR ANSWER BELOW';
+        document.getElementById('acStatus').style.color = '#ffd700';
+      });
+    });
+
+    // Submit
+    function checkAnswer() {
+      var input = document.getElementById('acInput');
+      var result = document.getElementById('acResult');
+      var guess = (input.value || '').trim().toUpperCase();
+      if (!guess) return;
+      acAttempts++;
+      if (guess === _acCurrentWord) {
+        acCorrect++;
+        result.innerHTML = '<span style="color:#00ff88;">✓ CORRECT!</span> <span style="color:#666;">' + _acCurrentWord + '</span>';
+        // Store in state for badges
+        try {
+          chrome.storage.local.get('pixelFocusState', function(d) {
+            var st = d.pixelFocusState || {};
+            if (!st.morseAudioWins) st.morseAudioWins = [];
+            if (st.morseAudioWins.indexOf(_acCurrentWord) === -1) {
+              st.morseAudioWins.push(_acCurrentWord);
+            }
+            st.morseAudioCorrect = (st.morseAudioCorrect || 0) + 1;
+            chrome.storage.local.set({ pixelFocusState: st });
+            chrome.storage.local.set({ _pageSaveAt: Date.now() });
+          });
+        } catch(e) {}
+        // Auto-advance after 2s
+        setTimeout(function() {
+          _acCurrentWord = _acPickWord(currentDiff);
+          document.getElementById('acHint').textContent = _acCurrentWord.length + ' LETTERS';
+          document.getElementById('acStatus').textContent = 'PRESS PLAY FOR NEXT WORD';
+          document.getElementById('acStatus').style.color = '#ffd700';
+          input.value = '';
+          result.textContent = '';
+          document.getElementById('acPlayBtn').textContent = '🔊 PLAY';
+          document.getElementById('acPlayBtn').style.color = '#ffd700';
+        }, 2500);
+      } else {
+        result.innerHTML = '<span style="color:#ff5a5a;">✗ WRONG</span> <span style="color:#444;">Try again or replay</span>';
+        input.value = '';
+        input.focus();
+      }
+      document.getElementById('acScore').textContent = acCorrect + '/' + acAttempts + ' correct this session';
+    }
+
+    document.getElementById('acSubmitBtn').addEventListener('click', checkAnswer);
+    document.getElementById('acInput').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') checkAnswer();
+    });
+  }
+
   // ===== Public API =====
   return {
     open: open,
     close: close,
     showIncoming: showIncoming,
     encode: encode,
-    decode: decode
+    decode: decode,
+    openAbcReference: openAbcReference,
+    openAudioChallenge: openAudioChallenge
   };
 })();

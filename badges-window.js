@@ -342,10 +342,20 @@
     { id: 'morse_famous_moon', cat: 'morse', name: 'One Small Step', icon: '🌙', desc: 'Send "A SMALL STEP FOR MAN" in morse code. Neil Armstrong\'s words as he stepped onto the lunar surface, July 20, 1969.', req: {"type": "famousMoon", "count": 1} },
     { id: 'morse_famous_stop', cat: 'morse', name: 'Full Stop', icon: '🛑', desc: 'Send "STOP" in morse code. The classic telegram punctuation — telegrams charged by the word, so STOP replaced periods.', req: {"type": "famousStop", "count": 1} },
     { id: 'morse_famous_stein', cat: 'morse', name: 'What Is The Answer', icon: '❓', desc: 'Send "WHAT IS THE ANSWER" in morse code. Gertrude Stein\'s last words (1946). When no one answered, she asked: "In that case, what is the question?"', req: {"type": "famousStein", "count": 1} },
+    { id: 'morse_famous_supercali', cat: 'morse', name: 'Supercalifragilistic', icon: '☂️', desc: 'Send "SUPERCALIFRAGILISTICEXPIALIDOCIOUS" in morse code. 34 characters of pure endurance. Mary Poppins would be proud.', req: {"type": "famousSupercali", "count": 1} },
     { id: 'morse_famous_3', cat: 'morse', name: 'Telegraph Historian', icon: '📜', desc: 'Send 3 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 3} },
     { id: 'morse_famous_5', cat: 'morse', name: 'Signal Historian', icon: '🎖️', desc: 'Send 5 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 5} },
     { id: 'morse_famous_7', cat: 'morse', name: 'Morse Scholar', icon: '🏛️', desc: 'Send 7 different famous historical messages in morse code.', req: {"type": "famousCount", "count": 7} },
-    { id: 'morse_famous_all', cat: 'morse', name: 'Master Telegrapher', icon: '👑', desc: 'Send all 9 famous historical messages in morse code. You\'ve tapped out every piece of telegraph history.', req: {"type": "famousCount", "count": 9} },
+    { id: 'morse_famous_all', cat: 'morse', name: 'Master Telegrapher', icon: '👑', desc: 'Send all 11 famous historical messages in morse code. You\'ve tapped out every piece of telegraph history.', req: {"type": "famousCount", "count": 11} },
+    { id: 'morse_famous_pi15', cat: 'morse', name: 'Irrational Transmitter', icon: '🥧', desc: 'Send the first 16 digits of Pi (3141592653589793) in morse code. 3.14159265358979... the circle never closes.', req: {"type": "famousPi15", "count": 1} },
+    { id: 'morse_audio_1', cat: 'morse', name: 'First Listen', icon: '🎧', desc: 'Correctly decode your first word from morse audio alone. Your ears are opening.', req: {"type": "audioCorrect", "count": 1} },
+    { id: 'morse_audio_5', cat: 'morse', name: 'Keen Ear', icon: '👂', desc: 'Correctly decode 5 words from morse audio. The dits and dahs are becoming language.', req: {"type": "audioCorrect", "count": 5} },
+    { id: 'morse_audio_10', cat: 'morse', name: 'Sound Interpreter', icon: '🔊', desc: 'Correctly decode 10 words from morse audio. You hear meaning where others hear beeps.', req: {"type": "audioCorrect", "count": 10} },
+    { id: 'morse_audio_25', cat: 'morse', name: 'Frequency Savant', icon: '📡', desc: 'Correctly decode 25 words from morse audio. Your brain has rewired itself for telegraph.', req: {"type": "audioCorrect", "count": 25} },
+    { id: 'morse_audio_antidis', cat: 'morse', name: 'Against All Establishment', icon: '⚔️', desc: 'Decode ANTIDISESTABLISHMENTARIANISM by ear alone. 28 letters of pure audio endurance.', req: {"type": "audioAntidis", "count": 1} },
+    { id: 'morse_audio_pneumono', cat: 'morse', name: 'Volcanic Lungs', icon: '🌋', desc: 'Decode PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS by ear alone. 45 letters. The longest word in major dictionaries, transmitted through pure sound.', req: {"type": "audioPneumono", "count": 1} },
+    { id: 'morse_audio_fibonacci', cat: 'morse', name: 'The Golden Spiral', icon: '🌀', desc: 'Decode the first 12 Fibonacci numbers by ear alone. The sequence that shapes sunflowers, nautilus shells, and galaxies — heard only as dots and dashes.', req: {"type": "audioFibonacci", "count": 1} },
+    { id: 'morse_audio_pi', cat: 'morse', name: 'Transcendental Listener', icon: '🔢', desc: 'Decode the first 16 digits of Pi by ear alone. An irrational number, received through rational listening.', req: {"type": "audioPi", "count": 1} },
   ];
 
   var CAT_LABELS = {
@@ -468,6 +478,13 @@
         case 'famousMoon':        met = morseFamous.indexOf('moon') !== -1; break;
         case 'famousStop':        met = morseFamous.indexOf('stop') !== -1; break;
         case 'famousStein':       met = morseFamous.indexOf('stein') !== -1; break;
+        case 'famousSupercali':  met = morseFamous.indexOf('supercali') !== -1; break;
+        case 'famousPi15':        met = morseFamous.indexOf('pi15') !== -1; break;
+        case 'audioCorrect':      met = (s.morseAudioCorrect || 0) >= r.count; break;
+        case 'audioAntidis':      met = (s.morseAudioWins || []).indexOf('ANTIDISESTABLISHMENTARIANISM') !== -1; break;
+        case 'audioPneumono':     met = (s.morseAudioWins || []).indexOf('PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS') !== -1; break;
+        case 'audioFibonacci':    met = (s.morseAudioWins || []).indexOf('1123581321345589144') !== -1; break;
+        case 'audioPi':           met = (s.morseAudioWins || []).indexOf('3141592653589793') !== -1; break;
       }
 
       if (met) {
@@ -556,7 +573,14 @@
       famousTogo: morseFamous.indexOf('togo') !== -1 ? 1 : 0,
       famousMoon: morseFamous.indexOf('moon') !== -1 ? 1 : 0,
       famousStop: morseFamous.indexOf('stop') !== -1 ? 1 : 0,
-      famousStein: morseFamous.indexOf('stein') !== -1 ? 1 : 0
+      famousStein: morseFamous.indexOf('stein') !== -1 ? 1 : 0,
+      famousSupercali: morseFamous.indexOf('supercali') !== -1 ? 1 : 0,
+      famousPi15: morseFamous.indexOf('pi15') !== -1 ? 1 : 0,
+      audioCorrect: s.morseAudioCorrect || 0,
+      audioAntidis: (s.morseAudioWins || []).indexOf('ANTIDISESTABLISHMENTARIANISM') !== -1 ? 1 : 0,
+      audioPneumono: (s.morseAudioWins || []).indexOf('PNEUMONOULTRAMICROSCOPICSILICOVOLCANOCONIOSIS') !== -1 ? 1 : 0,
+      audioFibonacci: (s.morseAudioWins || []).indexOf('1123581321345589144') !== -1 ? 1 : 0,
+      audioPi: (s.morseAudioWins || []).indexOf('3141592653589793') !== -1 ? 1 : 0
     };
     return map[reqType] || 0;
   }
@@ -575,7 +599,7 @@
     questsAmbitious: 'ambitious quests',
     morseSent: 'sent', morseRecv: 'received', famousCount: 'famous messages',
     famousSos: '', famousHello: '', famousCqd: '', famousWhgw: '',
-    famousWatson: '', famousTogo: '', famousMoon: '', famousStop: '', famousStein: ''
+    famousWatson: '', famousTogo: '', famousMoon: '', famousStop: '', famousStein: '', famousSupercali: '', famousPi15: '', audioCorrect: 'decoded', audioAntidis: '', audioPneumono: '', audioFibonacci: '', audioPi: ''
   };
 
   // ===== Render =====

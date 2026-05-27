@@ -64,13 +64,13 @@
       id: 'autoloomLevel',
       title: 'Autoloom',
       tree: 'Production',
-      desc: 'A self-operating loom. Produces textiles passively, even when you are not focusing. Starts excruciatingly slow on purpose.',
+      desc: 'A self-operating loom. Produces textiles passively based on your weekly output \u2014 the more you focus, the more the autoloom mirrors back. Percentage scales with level.',
       effects: [
-        '+1 textile every 5 days (~0.2/day)',
-        '+1 textile every 2 days (~0.5/day)',
-        '+1 textile every 24 hours (1/day)',
-        '+1 textile every 12 hours (2/day)',
-        '+1 textile every 4 hours (6/day)'
+        '5% of your weekly textiles, passively',
+        '12% of your weekly textiles, passively',
+        '22% of your weekly textiles, passively',
+        '35% of your weekly textiles, passively',
+        '50% of your weekly textiles, passively'
       ],
       costs: [5000, 25000, 100000, 500000, 2500000],
       milestones: [
@@ -474,7 +474,7 @@
       id: 'closedLoopWaterLevel',
       title: 'Closed-Loop Water',
       tree: 'Supply',
-      desc: 'Water for fiber processing is recycled inside a sealed loop. The loop is getting smaller. Reduces Aquifer drain and lifts the autoloom speed penalty (water shortage stretches tick intervals).',
+      desc: 'Water for fiber processing is recycled inside a sealed loop. The loop is getting smaller. Reduces Aquifer drain and lifts the autoloom output penalty (water shortage reduces passive textile yield).',
       effects: [
         'Water drain -30%, penalty floor 20%',
         'Water drain -55%, penalty floor 40%',

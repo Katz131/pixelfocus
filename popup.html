@@ -1224,6 +1224,12 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
       </div>
       <div id="morseFriendPicker" style="display:none;margin-top:8px;border-top:1px solid #332a00;padding-top:8px;"></div>
     </div>
+    <!-- v3.23.467: Morse Tools — always visible -->
+    <div id="morseToolsBar" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
+      <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#555;letter-spacing:1px;">MORSE:</span>
+      <button id="morseAbcRefBtn" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;background:linear-gradient(180deg,#2a2010,#150d05);border:2px solid #ffd700;border-bottom:3px solid #aa8800;border-radius:8px;padding:5px 12px;cursor:pointer;box-shadow:0 3px 0 #0a0800,0 4px 10px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,215,0,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);letter-spacing:1px;" title="Morse code alphabet reference — dots, dashes, and mnemonics for every letter">ABC REFERENCE</button>
+      <button id="morseAudioChalBtn" style="font-family:'Press Start 2P',monospace;font-size:7px;color:#8888ff;background:linear-gradient(180deg,#1a1a2a,#0a0a15);border:2px solid #8888ff;border-bottom:3px solid #5555aa;border-radius:8px;padding:5px 12px;cursor:pointer;box-shadow:0 3px 0 #0a0a15,0 4px 10px rgba(0,0,0,0.3),inset 0 1px 0 rgba(136,136,255,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);letter-spacing:1px;" title="Listen to morse code audio and decode by ear — unlocked with Supercalifragilistic badge">&#x1F3A7; AUDIO CHALLENGE</button>
+    </div>
     <!-- v3.23.230: Morse Inbox — collapsible received telegrams -->
     <div id="morseInboxPanel" style="display:none;margin-bottom:10px;">
       <div id="morseInboxHeader" style="display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0a1a0a,#001a0a);border:2px solid #00ff88;border-radius:8px;padding:8px 12px;cursor:pointer;transition:transform 0.1s,border-color 0.2s;user-select:none;" title="Click to expand/collapse">

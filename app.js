@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.458 - Main Application Logic
+// PixelFocus v3.23.467 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -898,6 +898,8 @@ try {
     morseSentCount: 0,           // v3.23.240: lifetime morse messages sent
     morseReceivedCount: 0,       // v3.23.240: lifetime morse messages received
     morseFamousSent: [],         // v3.23.240: IDs of famous morse messages successfully sent
+    morseAudioWins: [],          // v3.23.466: Words correctly decoded from audio morse challenges
+    morseAudioCorrect: 0,        // v3.23.466: Total audio morse challenges correctly answered
     popOutTimerOpen: false,
     gameLockGraceUntil: 0,            // v3.23.187: persisted grace period epoch
     friendChallengeLosses: 0,
@@ -1632,7 +1634,7 @@ try {
           });
           // Array fields: take the LONGEST array
           var _arrFields = [
-            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent',
+            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent','morseAudioWins','morseAudioCorrect',
             'projects','blockedTimes','dailyReminders','depletionMilestones',
             'houseEvents','houseEventHistory','houseFeedLog',
             'pendingChallengeInvites','friendChallengeHistory',
@@ -3377,67 +3379,125 @@ try {
   }
 
   // ===== Autoloom passive textile generator (Factory upgrade) =====
-  // Intentionally GLACIAL at low levels — this is a long-term investment.
-  //   L1 = 1 textile every 5 days   (7200 min)
-  //   L2 = 1 textile every 2 days   (2880 min)
-  //   L3 = 1 textile every 1 day    (1440 min)
-  //   L4 = 1 textile every 12 hours (720 min)
-  //   L5 = 1 textile every 4 hours  (240 min)
-  function getAutoloomPeriodMs() {
+  // v3.23.463: REDESIGNED — percentage of trailing-7-day textile output.
+  // Instead of a fixed "1 textile every N minutes" timer, the autoloom
+  // now produces a percentage of what you manually earned that week.
+  // More sessions → more autoloom output. Idle weeks → autoloom slows.
+  //   L1 =  5%    L2 = 12%    L3 = 22%    L4 = 35%    L5 = 50%
+  // AI Loom speed, water penalty, and textile multipliers still apply.
+  // Payout is drip-fed every 10 minutes proportionally.
+  var AUTOLOOM_WEEKLY_PCT = [0, 0.05, 0.12, 0.22, 0.35, 0.50];
+  var AUTOLOOM_TICK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+  // Compute how many textiles the player earned manually in the last 7 days.
+  // Uses focusHistory (daily minutes) as proxy: ~1 textile per 10 min block.
+  // Also adds todayBlocks for the current day (more accurate than minutes/10).
+  function getWeeklyManualTextiles() {
+    var total = 0;
+    var today = todayStr();
+    var fh = state.focusHistory || {};
+    // Look back 7 days (not counting today — we use todayBlocks for today)
+    for (var d = 1; d <= 7; d++) {
+      var date = new Date();
+      date.setDate(date.getDate() - d);
+      var key = date.getFullYear() + '-' +
+                String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                String(date.getDate()).padStart(2, '0');
+      if (fh[key]) {
+        total += Math.floor(fh[key] / 10); // ~1 textile per 10 min
+      }
+    }
+    // Add today's actual textile count (more precise than minutes/10)
+    total += (state.todayBlocks || 0);
+    return Math.max(0, total);
+  }
+
+  // Weekly textile target for autoloom at current level.
+  // This is the total passive textiles to distribute over the week.
+  function getAutoloomWeeklyTarget() {
     var l = state.autoloomLevel || 0;
     if (l <= 0) return 0;
-    var minutes = [0, 7200, 2880, 1440, 720, 240][Math.min(l, 5)];
-    // AI Loom speed divides the wait, making each textile arrive sooner.
+    var pct = AUTOLOOM_WEEKLY_PCT[Math.min(l, AUTOLOOM_WEEKLY_PCT.length - 1)];
+    var weeklyManual = getWeeklyManualTextiles();
+    var target = weeklyManual * pct;
+    // AI Loom speed multiplies the effective percentage.
     var speed = getAILoomSpeedMult();
-    // Silica depletion drags the AI speed bonus down.
     if ((state.aiLoomLevel || 0) > 0) {
       speed = Math.max(1, speed * getSilicaPenaltyMult());
     }
-    if (speed > 1) minutes = minutes / speed;
-    // v3.17: Retrocausal Bolt Scheduling Daemon shortens tick interval.
+    if (speed > 1) target = target * speed;
+    // v3.17: Retrocausal Bolt Scheduling Daemon boost.
     var retro = getV317AutoloomSpeedMult();
-    if (retro > 1) minutes = minutes / retro;
-    // Water depletion stretches the autoloom period — a 0.7 penalty
-    // means each tick takes ~43% longer. Inverse of the multiplier.
+    if (retro > 1) target = target * retro;
+    // Water depletion reduces output.
     var waterPen = getWaterPenaltyMult();
-    if (waterPen < 1) {
-      minutes = minutes / waterPen;
-    }
-    return minutes * 60 * 1000;
+    if (waterPen < 1) target = target * waterPen;
+    return target;
+  }
+
+  // Kept for backward compatibility — factory.js tooltip references.
+  // Returns the effective "period" in ms for display purposes only.
+  function getAutoloomPeriodMs() {
+    var l = state.autoloomLevel || 0;
+    if (l <= 0) return 0;
+    var weeklyTarget = getAutoloomWeeklyTarget();
+    if (weeklyTarget <= 0) return 0;
+    // How many ticks in a week, divided by target = effective period
+    var weekMs = 7 * 24 * 60 * 60 * 1000;
+    return weekMs / weeklyTarget;
   }
 
   function tickAutoloom() {
-    var period = getAutoloomPeriodMs();
-    if (period <= 0) return;
+    var l = state.autoloomLevel || 0;
+    if (l <= 0) return;
     var now = Date.now();
     if (!state.lastAutoloomTick || state.lastAutoloomTick === 0) {
       state.lastAutoloomTick = now;
       return;
     }
     var elapsed = now - state.lastAutoloomTick;
-    // Cap idle accumulation at 7 days so the slow L1 still pays out for users
-    // who close the browser for a while.
+    // Cap idle accumulation at 7 days.
     if (elapsed > 7 * 24 * 60 * 60 * 1000) elapsed = 7 * 24 * 60 * 60 * 1000;
-    var rawProduced = Math.floor(elapsed / period);
+    // How many 10-minute ticks have passed?
+    var ticks = Math.floor(elapsed / AUTOLOOM_TICK_INTERVAL_MS);
+    if (ticks <= 0) return;
+    // Weekly target = total textiles to distribute over the whole week.
+    var weeklyTarget = getAutoloomWeeklyTarget();
+    if (weeklyTarget <= 0) {
+      // No manual production = no autoloom output. Still advance the tick.
+      state.lastAutoloomTick = now - (elapsed - ticks * AUTOLOOM_TICK_INTERVAL_MS);
+      return;
+    }
+    // Ticks per week = 7*24*6 = 1008. Each tick distributes its share.
+    var ticksPerWeek = 7 * 24 * 6; // 1008
+    var perTick = weeklyTarget / ticksPerWeek;
+    var rawProduced = Math.floor(perTick * ticks);
+    // Fractional accumulator — carry remainder so small rates still pay out.
+    if (!state._autoloomFrac) state._autoloomFrac = 0;
+    state._autoloomFrac += (perTick * ticks) - rawProduced;
+    if (state._autoloomFrac >= 1) {
+      var extra = Math.floor(state._autoloomFrac);
+      rawProduced += extra;
+      state._autoloomFrac -= extra;
+    }
     if (rawProduced > 0) {
-      // Second Location + Planetary Coverage both multiply textile output.
-      // Quantity is rounded so the cloth beam never shows fractional bolts.
+      // Textile multiplier (Second Location, World Span, etc.)
       var produced = Math.max(1, Math.round(rawProduced * getTotalTextileMult()));
       state.blocks = (state.blocks || 0) + produced;
       state.todayBlocks = (state.todayBlocks || 0) + produced;
       state.totalLifetimeBlocks = (state.totalLifetimeBlocks || 0) + produced;
-      state.lastAutoloomTick = now - (elapsed - rawProduced * period);
-      // Autoloom output chews on the resource pools just like session
-      // textiles do. This is the slow-but-always-on drain that makes
-      // idle accumulation a real trade-off late-game.
+      state.lastAutoloomTick = now - (elapsed - ticks * AUTOLOOM_TICK_INTERVAL_MS);
+      // Drain resource pools.
       try { consumeResources(produced); } catch(_) {}
       save();
       renderStats();
       notify('+' + produced + ' textile' + (produced === 1 ? '' : 's') + ' (autoloom)', '#4ecdc4');
+    } else {
+      state.lastAutoloomTick = now - (elapsed - ticks * AUTOLOOM_TICK_INTERVAL_MS);
     }
   }
 
-  function tickCoins() {
+    function tickCoins() {
     var now = Date.now();
     if (!state.lastCoinTick || state.lastCoinTick === 0) {
       state.lastCoinTick = now;
@@ -5091,6 +5151,37 @@ try {
     if (state.morseInbox.length > 50) state.morseInbox = state.morseInbox.slice(-50);
     save();
     try { renderMorseInbox(); } catch(_) {}
+          // v3.23.467: Wire standalone morse tools buttons
+          (function() {
+            var abcBtn = document.getElementById('morseAbcRefBtn');
+            if (abcBtn) {
+              abcBtn.addEventListener('click', function() {
+                if (typeof MorseMessenger !== 'undefined' && MorseMessenger.openAbcReference) {
+                  MorseMessenger.openAbcReference();
+                }
+              });
+            }
+            var audioBtn = document.getElementById('morseAudioChalBtn');
+            if (audioBtn) {
+              audioBtn.addEventListener('click', function() {
+                var hasSuperCali = (state.badges || []).indexOf('morse_famous_supercali') !== -1;
+                if (!hasSuperCali) {
+                  audioBtn.style.animation = 'none';
+                  audioBtn.offsetHeight;
+                  audioBtn.style.animation = '';
+                  var tip = document.createElement('div');
+                  tip.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#1a1a2a;border:2px solid #8888ff;border-radius:10px;padding:20px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.8);';
+                  tip.innerHTML = '<div style="font-family:\'Press Start 2P\',monospace;font-size:9px;color:#8888ff;margin-bottom:10px;">🔒 LOCKED</div><div style="font-size:11px;color:#888;line-height:1.6;">Earn the <span style="color:#ffd700;">Supercalifragilistic</span> badge first.<br>Send SUPERCALIFRAGILISTICEXPIALIDOCIOUS in morse code.</div><button style="margin-top:12px;font-family:\'Press Start 2P\',monospace;font-size:8px;padding:6px 16px;border-radius:8px;cursor:pointer;border:2px solid #555;background:#222;color:#888;" onclick="this.parentElement.remove()">OK</button>';
+                  document.body.appendChild(tip);
+                  setTimeout(function() { if (tip.parentElement) tip.remove(); }, 5000);
+                  return;
+                }
+                if (typeof MorseMessenger !== 'undefined' && MorseMessenger.openAudioChallenge) {
+                  MorseMessenger.openAudioChallenge();
+                }
+              });
+            }
+          })();
     // Show the incoming animation
     if (typeof MorseMessenger !== 'undefined') {
       try { MorseMessenger.showIncoming(fromName, morseText); } catch(_) {}
@@ -9572,7 +9663,7 @@ try {
           } else {
             doc.body.appendChild(_pipPhaseWrap);
           }
-          // v3.23.437: Resize PiP window to fit phase elements without scrolling
+          // v3.23.459: Resize PiP window to fit phase elements without scrolling
           try { pipWindow.resizeTo(220, 110); } catch(_) {}
         }
         var _pipPhaseFill2 = doc.getElementById('pipPhaseFill');
@@ -14433,7 +14524,8 @@ try {
       opponentName: fromName || fromId,
       opponentProgress: 0,
       startedAt: Date.now(),
-      endsAt: parseInt(endsAt) || (Date.now() + CHALLENGE_DURATION_MS),
+      // v3.23.461: Always start timer from accept time, not send time
+      endsAt: Date.now() + CHALLENGE_DURATION_MS,
       status: 'active',
       tracking: {}
     };
@@ -14448,6 +14540,7 @@ try {
         fromId: state.profileId,
         fromName: state.displayName || state.profileId,
         challengeType: challengeType,
+        acceptedAt: String(Date.now()),
         ts: String(Date.now())
       }).catch(function(e){ console.log('[CHALLENGE] accept notify failed:', e); });
     } catch(_){}
@@ -18293,6 +18386,8 @@ try {
               renderMorseInbox();
             };
           }
+
+
           // Replay a message
           list.querySelectorAll('.morse-replay-btn').forEach(function(btn) {
             btn.style.cursor = 'pointer';
@@ -18599,6 +18694,9 @@ try {
                   try { window.ProfileSync.deleteInboxMessage(state.profileId, msg._id); } catch(_) {}
                   if (state.friendChallenge && state.friendChallenge.status === 'pending' && state.friendChallenge.opponentId === msg.fromId) {
                     state.friendChallenge.status = 'active';
+                    // v3.23.461: Reset timer from accept moment so both sides start fresh
+                    state.friendChallenge.startedAt = Date.now();
+                    state.friendChallenge.endsAt = Date.now() + CHALLENGE_DURATION_MS;
                     _initChallengeTracking();
                     save();
                     try { _publishChallengeToFirestore(); } catch(_){}

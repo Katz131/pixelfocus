@@ -1457,6 +1457,25 @@
     });
   });
 
+  // v3.23.462: Withdraw ALL — one-click pulls all brokerage cash back to wallet
+  document.getElementById('withdrawAllBtn').addEventListener('click', function() {
+    freshState(function() {
+      var b = getB();
+      var amt = Math.floor(b.cash || 0);
+      if (amt < 1) {
+        SFX.lose();
+        showNews('No cash in brokerage to withdraw.');
+        return;
+      }
+      b.cash -= amt;
+      state.coins += amt;
+      b.totalWithdrawn = (b.totalWithdrawn || 0) + amt;
+      SFX.sell();
+      showNews('Withdrew ALL $' + fmt(amt) + ' back to wallet.');
+      save(function() { renderWalletBar(); });
+    });
+  });
+
   // Back buttons (top + bottom)
   function _closeTab() {
     try {
