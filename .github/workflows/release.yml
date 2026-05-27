@@ -79,7 +79,7 @@ jobs:
                    resize-icon.html \
                    badges.html badges-window.js \
                    bedtime-reminder.html bedtime-window.js \
-                   block-alert.html \
+                   block-alert.html export-state.html export-state.js \
                    block-alert-window.js \
                    brokerage.html brokerage-window.js \
                    market-engine.js market-events.js \
@@ -140,5 +140,4 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-          files: ${{ steps.zip.outputs.zip_path }}
-      
+          files: ${{ steps.zip.outputs.

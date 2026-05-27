@@ -19,9 +19,57 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.437 - Main Application Logic
+// PixelFocus v3.23.458 - Main Application Logic
 try {
 (() => {
+  // v3.23.452: Module-scope collapsible open/closed state.
+  // Survives render() calls because it's in JS memory, not DOM.
+  var _collapsibleOpenState = {}; // keys: 'bundles', 'friends' → true/false
+
+  // v3.23.452: Register collapsible click handler IMMEDIATELY at module scope,
+  // before init() or anything that could throw. Uses event delegation on document.
+  document.addEventListener('click', function(e) {
+    var header = e.target.closest('.collapsible-header');
+    if (!header) return;
+    var body = header.nextElementSibling;
+    if (!body || !body.classList.contains('collapsible-body')) return;
+    // Determine a stable key for this collapsible based on header text
+    var headerText = (header.textContent || '').trim().substring(0, 10).toLowerCase();
+    var key = headerText.indexOf('bundle') !== -1 ? 'bundles' : 
+              headerText.indexOf('friend') !== -1 ? 'friends' : 
+              'collapsible_' + headerText.replace(/[^a-z]/g, '');
+    var isOpen = !_collapsibleOpenState[key];
+    _collapsibleOpenState[key] = isOpen;
+    body.classList.toggle('open', isOpen);
+    body.style.display = isOpen ? 'block' : 'none';
+    var arrow = header.querySelector('.collapse-arrow');
+    if (arrow) arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+    try { SFX.tabSwitch(); } catch(_) {}
+    console.log('[COLLAPSIBLE] Toggled ' + key + ' to ' + (isOpen ? 'OPEN' : 'CLOSED'));
+  }, false);
+
+  // v3.23.454: Module-scope morse inbox toggle — same delegated pattern as collapsible fix.
+  // The old handler inside renderMorseInbox() is wired via addEventListener inside init()'s
+  // load callback, which can fail silently if anything throws before it runs. This capture-phase
+  // handler fires FIRST and stops propagation to prevent any double-toggle with the old handler.
+  document.addEventListener('click', function(e) {
+    var header = e.target.closest('#morseInboxHeader');
+    if (!header) return;
+    // Don't toggle when clicking the clear button or tab buttons
+    if (e.target.id === 'morseInboxClearBtn') return;
+    if (e.target.closest && e.target.closest('#morseInboxClearBtn')) return;
+    if (e.target.classList && e.target.classList.contains('morse-tab-btn')) return;
+    var body = document.getElementById('morseInboxBody');
+    var arrow = document.getElementById('morseInboxArrow');
+    if (!body) return;
+    var isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    e.stopPropagation(); // prevent old direct handler from double-toggling
+    console.log('[MORSE INBOX] Toggled to ' + (isOpen ? 'CLOSED' : 'OPEN') + ' (delegated handler v3.23.454)');
+  }, true); // CAPTURE PHASE — fires before any direct handler on morseInboxHeader
+
+
   // ============== MILESTONE COLOR UNLOCKS ==============
   const COLOR_MILESTONES = [
     { color: '#00ff88', mins: 0,      name: 'Green' },        // starter
@@ -1514,6 +1562,146 @@ try {
         console.log('[Load] Recovered profileId from backup key: ' + result.pixelFocusProfileId);
         chrome.storage.local.set({ pixelFocusState: _loaded });
       }
+      // v3.23.455: Comprehensive backup merge — one-time recovery of ALL fields lost in data wipe.
+      // The Firestore recovery only restored 31 of 210 fields. This checks backup_safe and backup_safe2
+      // and merges any richer data into the current state before it's spread into DEFAULT_STATE.
+      if (_loaded && !_loaded._backupMerge455) {
+        var _bs = result.pixelFocusState_backup_safe;
+        var _bs2 = result.pixelFocusState_backup_safe2;
+        var _bk1 = (_bs && (_bs.state || _bs)) || null;
+        var _bk2 = (_bs2 && (_bs2.state || _bs2)) || null;
+        var _backups = [];
+        if (_bk1) _backups.push(_bk1);
+        if (_bk2) _backups.push(_bk2);
+        if (_backups.length > 0) {
+          var _merged = 0;
+          // Numeric fields: take the MAX across all sources
+          var _numFields = [
+            'xp','todayXP','coins','lifetimeCoins','lifetimeFocusMinutes','lifetimeSessions',
+            'totalLifetimeBlocks','totalLifetimeSessions','streak','realStreak','longestStreak',
+            'longestRealStreak','maxCombo','questStreak','questLongestStreak','questsCompletedLifetime',
+            'questsSteadyCompleted','questsAmbitiousCompleted','bedtimeStreak','bedtimeBestStreak',
+            'bedtimeTotalSuccesses','friendChallengeWins','friendChallengeLosses','friendChallengeTies',
+            'morseSentCount','morseReceivedCount','autoloomLevel','marketingLevel','dyeResearchLevel',
+            'qualityControlLevel','employeesLevel','legalDeptLevel','lobbyingLevel','secondLocationLevel',
+            'marketShareLevel','aiLoomLevel','researchDivisionLevel','autoLeadershipLevel','worldSpanLevel',
+            'complianceFrameworkLevel','supervisoryApparatusLevel','juridicalPersonhoodLevel',
+            'opaqueLedgerLevel','conveyanceSurchargeLevel','paralegalSwarmLevel','fiduciaryObscurantLevel',
+            'counterfilingBureauLevel','extraterritorialMandateLevel','metaregulatoryInstituteLevel',
+            'appellateLabyrinthLevel','regulatoryPhantomLevel','subcommitteeProliferationLevel',
+            'interdepartmentalLiaisonLevel','bureaucraticEntropyLevel','crossJurisdictionalLevel',
+            'perpetualAuditLevel','mandatoryRedundancyLevel','proceduralQuagmireLevel',
+            'kafkaesqueComplianceLevel','infiniteAppealLevel','retroactiveStatuteLevel',
+            'loomSemanticianLevel','threadCryptographerLevel','spindleTheoristLevel',
+            'weaveSociologistLevel','lensGrinderTreatyLevel','bobbinDiplomatLevel',
+            'shuttleIntelligenceLevel','warpPropagandistLevel','yarnMonopolistLevel',
+            'textileEschatologistLevel','fabricSpaceTimeLevel','multiverseWarrantLevel',
+            'framesReserve','gearsReserve','dyeReserve','waterReserve','silicaReserve',
+            'framesSubstituteLevel','gearsSubstituteLevel','dyeSubstituteLevel',
+            'waterSubstituteLevel','silicaSubstituteLevel',
+            'bandwidthWrits','dataSachets','cogitationTokens',
+            'aspectExegesis','aspectChromatics','aspectDeftness','aspectOmens','aspectIntrospection',
+            'patsiesRecruited','patsiesLost','patsiesPromoted','patsiesBetrayals',
+            'canvasSize','petFoodCost','incineratorFuelBonus'
+          ];
+          _numFields.forEach(function(f) {
+            var best = _loaded[f] || 0;
+            _backups.forEach(function(bk) {
+              if (typeof bk[f] === 'number' && bk[f] > best) best = bk[f];
+            });
+            if (best > (_loaded[f] || 0)) {
+              _loaded[f] = best;
+              _merged++;
+            }
+          });
+          // Boolean fields: take TRUE if any source has it
+          var _boolFields = [
+            'brokerageUnlocked','ratiocinatoryUnlocked','researchLabUnlocked','incineratorUnlocked',
+            'materialsIncineratorUnlocked','bureauUnlocked','landBridgeBuilt','ledgerRevealed',
+            'hasSeenIntro','hasSeenGalleryIntro','hasSeenFactoryIntro','hasSeenMarketIntro',
+            'hasSeenRatiocinatoryIntro','use24Hour','blurCompletedTasks','dailyRemindersEnabled',
+            'bedtimeReminderEnabled','sleepTimeEnabled','coldTurkeyEnabled','blockAlertEnabled',
+            'autoReopenTodoList','remoteTasksEnabled'
+          ];
+          _boolFields.forEach(function(f) {
+            if (!_loaded[f]) {
+              _backups.forEach(function(bk) {
+                if (bk[f] === true) { _loaded[f] = true; _merged++; }
+              });
+            }
+          });
+          // Array fields: take the LONGEST array
+          var _arrFields = [
+            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent',
+            'projects','blockedTimes','dailyReminders','depletionMilestones',
+            'houseEvents','houseEventHistory','houseFeedLog',
+            'pendingChallengeInvites','friendChallengeHistory',
+            'recentTasks','bundles'
+          ];
+          _arrFields.forEach(function(f) {
+            var curLen = Array.isArray(_loaded[f]) ? _loaded[f].length : 0;
+            _backups.forEach(function(bk) {
+              if (Array.isArray(bk[f]) && bk[f].length > curLen) {
+                _loaded[f] = bk[f];
+                curLen = bk[f].length;
+                _merged++;
+              }
+            });
+          });
+          // Object fields: take the one with MORE keys
+          var _objFields = [
+            'tasks','focusHistory','sessionArchive','distractionCategories','distractionHistory',
+            'friends','housePetTypes','housePetNames','incrementalizeLog','dustPixels',
+            'tutorialUnlocked','seenUpgrades','freshUpgrades','purchasedCanvasSizes',
+            'unlockedColors','brokerage','dailySessionLog','blockedTimeAlerts','blockedTimePopAlerts',
+            'eventsFiredOnce','eventFlags','eventHistory','marketCosts'
+          ];
+          _objFields.forEach(function(f) {
+            var curKeys = (_loaded[f] && typeof _loaded[f] === 'object' && !Array.isArray(_loaded[f])) ? Object.keys(_loaded[f]).length : 0;
+            _backups.forEach(function(bk) {
+              if (bk[f] && typeof bk[f] === 'object' && !Array.isArray(bk[f])) {
+                var bkKeys = Object.keys(bk[f]).length;
+                if (bkKeys > curKeys) {
+                  _loaded[f] = bk[f];
+                  curKeys = bkKeys;
+                  _merged++;
+                }
+              }
+            });
+          });
+          // String fields: take non-empty over empty
+          var _strFields = [
+            'displayName','tagline','profilePicture','coldTurkeyBlockName',
+            'questDate','lastActiveDate'
+          ];
+          _strFields.forEach(function(f) {
+            if (!_loaded[f] || _loaded[f] === '') {
+              _backups.forEach(function(bk) {
+                if (bk[f] && bk[f] !== '') { _loaded[f] = bk[f]; _merged++; }
+              });
+            }
+          });
+          // Pet arrays (special — fixed-length arrays, not objects)
+          ['housePetTypes','housePetNames'].forEach(function(f) {
+            if (Array.isArray(_loaded[f]) && _loaded[f].length === 0) {
+              _backups.forEach(function(bk) {
+                if (Array.isArray(bk[f]) && bk[f].length > 0) { _loaded[f] = bk[f]; _merged++; }
+              });
+            }
+          });
+          _loaded._backupMerge455 = true;
+          if (_merged > 0) {
+            console.log('[v3.23.455] Backup merge recovered ' + _merged + ' fields from backup keys.');
+            chrome.storage.local.set({ pixelFocusState: _loaded });
+          } else {
+            console.log('[v3.23.455] Backup merge found no richer data in backups.');
+          }
+        } else {
+          _loaded._backupMerge455 = true;
+          console.log('[v3.23.455] No backup keys found — skipping backup merge.');
+        }
+      }
+
       if (_loaded) {
         state = { ...DEFAULT_STATE, ..._loaded };
         state.projects.forEach(p => {
@@ -4547,6 +4735,23 @@ try {
     try { renderChallengeUI(); } catch (_) {}
     refreshTrackerBriefBadge();
     attachHoverSounds();
+
+    // v3.23.452: Apply collapsible open/closed state from module-scope variable
+    document.querySelectorAll('.collapsible-header').forEach(function(header) {
+      var headerText = (header.textContent || '').trim().substring(0, 10).toLowerCase();
+      var key = headerText.indexOf('bundle') !== -1 ? 'bundles' : 
+                headerText.indexOf('friend') !== -1 ? 'friends' : 
+                'collapsible_' + headerText.replace(/[^a-z]/g, '');
+      if (_collapsibleOpenState[key]) {
+        var body = header.nextElementSibling;
+        if (body && body.classList.contains('collapsible-body')) {
+          body.classList.add('open');
+          body.style.display = 'block';
+          var arrow = header.querySelector('.collapse-arrow');
+          if (arrow) arrow.style.transform = 'rotate(180deg)';
+        }
+      }
+    });
 
     // GUARD 1: Version monotonicity check — detect version rollbacks
     (function _versionGuard() {
@@ -17007,20 +17212,9 @@ try {
         });
       }
 
-      // Collapsible sections (Bundles, Milestones, Canvas Upgrades)
-      var collapsibleHeaders = document.querySelectorAll('.collapsible-header');
-      collapsibleHeaders.forEach(function(header) {
-        header.addEventListener('click', function() {
-          var body = header.nextElementSibling;
-          if (!body || !body.classList.contains('collapsible-body')) return;
-          var isOpen = body.classList.toggle('open');
-          // Fallback for cases where the .open CSS class rule isn't applied
-          body.style.display = isOpen ? 'block' : 'none';
-          var arrow = header.querySelector('.collapse-arrow');
-          if (arrow) arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
-          SFX.tabSwitch();
-        });
-      });
+      // Collapsible handler at top of IIFE, module-scope variable tracks state (v3.23.452)
+
+      // (v3.23.456: recovery button removed)
 
       // All cross-window opens go through background.js's openPixelFocusWindow
       // helper (sent via runtime message) so we get dedup: a second click
@@ -17958,15 +18152,12 @@ try {
           var sentBox = state.morseSentBox || [];
           panel.style.display = 'block';
           // Wire header toggle once
+          // v3.23.454: DISABLED — now handled by module-scope delegated handler (capture phase)
+          // to prevent double-toggle and ensure it works even if this code path fails.
+          // The delegated handler at the top of the IIFE handles all morseInboxHeader clicks.
           if (!_morseInboxWired && header && body && arrow) {
             _morseInboxWired = true;
-            header.addEventListener('click', function(e) {
-              if (e.target.id === 'morseInboxClearBtn') return;
-              if (e.target.classList && e.target.classList.contains('morse-tab-btn')) return;
-              var open = body.style.display !== 'none';
-              body.style.display = open ? 'none' : 'block';
-              arrow.style.transform = open ? '' : 'rotate(180deg)';
-            });
+            // Old addEventListener removed — delegated handler at module scope replaces it
           }
           // Render tab bar
           var tabBar = document.getElementById('morseTabBar');
@@ -21579,3 +21770,4 @@ try {
   }
   _vLabel.textContent = 'v' + (chrome.runtime.getManifest().version || '?');
 } catch(_appErr) { console.error('[APP.JS FATAL]', _appErr && _appErr.message, _appErr && _appErr.stack); }
+

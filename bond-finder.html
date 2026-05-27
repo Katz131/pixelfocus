@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Bond Finder</title>
+<style>
+body { background: #0a0a0a; color: #00ff88; font-family: 'Courier New', monospace; padding: 20px; }
+h1 { color: #ffd700; }
+.found { background: #0a2a0a; border: 2px solid #00ff88; padding: 12px; margin: 10px 0; border-radius: 8px; }
+.notfound { background: #2a0a0a; border: 2px solid #ff4444; padding: 12px; margin: 10px 0; border-radius: 8px; color: #ff6b6b; }
+.bond { background: #1a1a0a; border: 1px solid #ffd700; padding: 8px; margin: 4px 0; border-radius: 4px; color: #ffd700; }
+pre { white-space: pre-wrap; font-size: 11px; }
+button { background: #0a2a0a; color: #00ff88; border: 2px solid #00ff88; padding: 12px 24px; font-family: 'Courier New'; font-size: 14px; cursor: pointer; border-radius: 6px; margin: 8px 4px; }
+button:hover { background: #1a4a1a; }
+</style>
+</head>
+<body>
+<h1>BOND FINDER</h1>
+<div id="log">Searching all storage keys...</div>
+<div id="actions" style="display:none;">
+  <button id="restoreBtn">RESTORE BONDS TO CURRENT STATE</button>
+  <button id="downloadBtn">DOWNLOAD FULL DUMP</button>
+</div>
+<script>
+var foundBrokerage = null;
+var foundSource = '';
+
+chrome.storage.local.get(null, function(allData) {
+  var html = '';
+  var keys = Object.keys(allData);
+  html += '<div>Found ' + keys.length + ' storage keys: ' + keys.join(', ') + '</div><hr>';
+
+  // Search every key for brokerage data
+  keys.forEach(function(key) {
+    var val = allData[key];
+    if (!val || typeof val !== 'object') return;
+
+    // Could be nested: val.state.brokerage or val.brokerage
+    var candidates = [
+      { path: key + '.brokerage', obj: val.brokerage },
+      { path: key + '.state.brokerage', obj: val.state ? val.state.brokerage : null },
+    ];
+
+    candidates.forEach(function(c) {
+      if (!c.obj) return;
+      var brok = c.obj;
+      var bonds = brok.bonds || [];
+      var stocks = brok.stocks || {};
+      var funds = brok.funds || {};
+      var crypto = brok.crypto || {};
+
+      html += '<div class="found"><strong>BROKERAGE FOUND in ' + c.path + '</strong><br>';
+      html += 'Balance: $' + (brok.balance || 0).toFixed(2) + '<br>';
+      html += 'Bonds: ' + bonds.length + '<br>';
+      bonds.forEach(function(b) {
+        html += '<div class="bond">Bond: $' + b.principal + ' @ ' + (b.rate * 100).toFixed(1) + '% for ' + b.term + ' sessions (held ' + b.sessionsHeld + '/' + b.term + ')</div>';
+      });
+      html += 'Stocks: ' + Object.keys(stocks).length + '<br>';
+      Object.keys(stocks).forEach(function(s) { html += '  ' + s + ': ' + stocks[s].shares + ' shares<br>'; });
+      html += 'Funds: ' + Object.keys(funds).length + '<br>';
+      Object.keys(funds).forEach(function(s) { html += '  ' + s + ': ' + (funds[s].shares || 0).toFixed(2) + ' shares<br>'; });
+      html += 'Crypto: ' + Object.keys(crypto).length + '<br>';
+      Object.keys(crypto).forEach(function(s) { html += '  ' + s + ': ' + (crypto[s].amount || 0).toFixed(4) + '<br>'; });
+      html += '</div>';
+
+      // Remember the best (most bonds) for restore
+      if (!foundBrokerage || bonds.length > (foundBrokerage.bonds || []).length) {
+        foundBrokerage = brok;
+        foundSource = c.path;
+      }
+    });
+  });
+
+  if (!foundBrokerage) {
+    html += '<div class="notfound">NO BROKERAGE DATA FOUND IN ANY STORAGE KEY.<br>Treasury bonds were not preserved in any backup.</div>';
+  } else {
+    html += '<hr><div class="found"><strong>BEST SOURCE: ' + foundSource + ' — ' + (foundBrokerage.bonds || []).length + ' bonds</strong></div>';
+    document.getElementById('actions').style.display = 'block';
+  }
+
+  // Download button
+  document.getElementById('downloadBtn').addEventListener('click', function() {
+    var blob = new Blob([JSON.stringify(allData, null, 2)], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'pixelfocus-FULL-DUMP-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+    a.click();
+  });
+
+  // Restore button
+  document.getElementById('restoreBtn').addEventListener('click', function() {
+    if (!foundBrokerage) { alert('Nothing to restore!'); return; }
+    chrome.storage.local.get('pixelFocusState', function(res) {
+      var state = res.pixelFocusState || {};
+      state.brokerage = JSON.parse(JSON.stringify(foundBrokerage));
+      chrome.storage.local.set({ pixelFocusState: state }, function() {
+        html += '<div class="found" style="font-size:18px;">BONDS RESTORED! Close this tab and reopen the extension.</div>';
+        document.getElementById('log').innerHTML = html;
+      });
+    });
+  });
+
+  document.getElementById('log').innerHTML = html;
+});
+</script>
+</body>
+</html>

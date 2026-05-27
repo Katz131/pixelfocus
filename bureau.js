@@ -352,7 +352,7 @@
       id: 'supplyChainInfiltration',
       title: 'Supply chain infiltration',
       subtitle: 'The Vault Runner follows the thread.',
-      desc: 'Infiltrate a competitor’s supply chain to identify cost advantages. Success reduces your effective production costs via a market bonus.',
+      desc: 'Infiltrate a competitor\'s supply chain to identify cost advantages. Success reduces your effective production costs via a market bonus.',
       slot: 'vaultRunner',
       cost: 600, minSeniority: 2, minLoyalty: 3,
       outcomes: { success: 55, partial: 35, blown: 10 },
@@ -455,7 +455,7 @@
       id: 'gatherKompromat',
       title: 'Gather compromat',
       subtitle: 'The Archivist opens the private file.',
-      desc: 'Dig into an employee’s past for compromising material. Success stores kompromat that can later be used for blackmail or leverage. The target must not know.',
+      desc: 'Dig into an employee\'s past for compromising material. Success stores kompromat that can later be used for blackmail or leverage. The target must not know.',
       slot: 'archivist',
       cost: 600, minSeniority: 3, minLoyalty: 3,
       outcomes: { success: 50, partial: 35, blown: 15 },
@@ -481,7 +481,7 @@
           if (target && typeof Personnel !== 'undefined' && Personnel.addStress) {
             Personnel.addStress(target, 2, 'Learned the Bureau was digging into their past.');
           }
-          return { coins: 0, line: ‘The subject’s former landlord called them. They now know someone has been asking questions.’ };
+          return { coins: 0, line: 'The subject\'s former landlord called them. They now know someone has been asking questions.' };
         }
       }
     },

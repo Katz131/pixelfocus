@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Todo of the Loom - Data Recovery</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a1a; color: #e0e0e0; font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; }
+h1 { color: #ff6644; margin-bottom: 10px; font-size: 24px; }
+h2 { color: #66ccff; margin: 20px 0 10px; font-size: 18px; }
+.status { padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 14px; }
+.status-bad { background: rgba(255,0,0,0.15); border: 1px solid #ff4444; }
+.status-good { background: rgba(0,255,0,0.15); border: 1px solid #44ff44; }
+.status-info { background: rgba(100,100,255,0.15); border: 1px solid #6666ff; }
+pre { background: #111; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 300px; overflow-y: auto; margin: 8px 0; white-space: pre-wrap; word-break: break-all; }
+button { padding: 12px 24px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin: 8px 4px; transition: all 0.15s; }
+button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.btn-restore { background: #22aa22; color: white; font-size: 20px; padding: 16px 32px; }
+.btn-restore:hover { background: #33cc33; }
+.btn-download { background: #2266cc; color: white; }
+.btn-download:hover { background: #3388ee; }
+.btn-open { background: #cc6622; color: white; }
+.btn-open:hover { background: #ee8833; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+td, th { padding: 6px 12px; text-align: left; border-bottom: 1px solid #333; font-size: 13px; }
+th { color: #aaa; }
+.val-zero { color: #ff4444; }
+.val-good { color: #44ff44; }
+#log { background: #0d0d20; border: 1px solid #333; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px; max-height: 400px; overflow-y: auto; margin-top: 10px; }
+.log-line { margin: 2px 0; }
+</style>
+</head>
+<body>
+<h1>Data Recovery Console</h1>
+<p style="color:#888;margin-bottom:20px;">This page reads your Chrome storage and helps restore your data.</p>
+<div id="loading" class="status status-info">Loading storage data...</div>
+<div id="content" style="display:none;">
+<h2>Storage Overview</h2>
+<div id="overview"></div>
+<h2>Main State (pixelFocusState)</h2>
+<div id="mainState"></div>
+<h2>Backup Key 1 (pixelFocusState_backup_safe)</h2>
+<div id="backup1"></div>
+<h2>Backup Key 2 (pixelFocusState_backup_safe2)</h2>
+<div id="backup2"></div>
+<h2>Profile ID Key</h2>
+<div id="profileId"></div>
+<h2>Recovery Actions</h2>
+<div id="actions" style="margin:15px 0;"></div>
+<h2>Recovery Log</h2>
+<div id="log"></div>
+<h2>Full Storage Dump</h2>
+<button class="btn-download" id="downloadBtn">Download Full Storage as JSON</button>
+<button class="btn-open" id="openPopup">Open Extension</button>
+</div>
+<script src="recovery.js"></script>
+</body>
+</html>

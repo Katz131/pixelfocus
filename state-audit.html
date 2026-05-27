@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>State Audit &amp; Full Recovery</title>
+<style>
+body { background:#0a0a0a; color:#ccc; font-family:'Courier New',monospace; padding:20px; max-width:900px; margin:0 auto; }
+h1 { color:#ffd700; font-size:20px; }
+h2 { color:#00ff88; font-size:14px; margin-top:20px; border-bottom:1px solid #1a3a1a; padding-bottom:4px; }
+.key-row { display:flex; gap:8px; padding:2px 0; font-size:11px; border-bottom:1px solid #111; }
+.key-name { flex:0 0 280px; color:#5aadff; }
+.key-main { flex:1; }
+.key-backup { flex:1; color:#ffd700; }
+.val-zero { color:#ff4444; }
+.val-good { color:#00ff88; }
+.val-default { color:#666; }
+.val-better { color:#ffd700; font-weight:bold; }
+.summary { background:#0a2a0a; border:2px solid #00ff88; padding:16px; border-radius:8px; margin:16px 0; }
+.summary-bad { background:#2a0a0a; border-color:#ff4444; }
+button { background:#0a2a0a; color:#00ff88; border:2px solid #00ff88; padding:14px 28px; font-family:'Courier New'; font-size:16px; cursor:pointer; border-radius:6px; margin:8px 4px; display:block; width:100%; }
+button:hover { background:#1a4a1a; }
+button.danger { border-color:#ffd700; color:#ffd700; }
+#log { margin-top:20px; font-size:11px; max-height:300px; overflow-y:auto; background:#050505; padding:10px; border-radius:6px; }
+.log-line { padding:1px 0; }
+.header-row { font-weight:bold; color:#fff; border-bottom:2px solid #333; padding-bottom:4px; margin-bottom:4px; }
+</style>
+</head>
+<body>
+<h1>COMPREHENSIVE STATE AUDIT &amp; RECOVERY</h1>
+<div id="loading">Scanning all Chrome storage keys...</div>
+<div id="content" style="display:none;">
+  <div id="summary"></div>
+  <div id="actions"></div>
+  <h2>FIELD-BY-FIELD COMPARISON</h2>
+  <div class="key-row header-row">
+    <span class="key-name">FIELD</span>
+    <span class="key-main">CURRENT STATE</span>
+    <span class="key-backup">BEST BACKUP</span>
+  </div>
+  <div id="comparison"></div>
+  <h2>RAW STORAGE KEYS</h2>
+  <div id="rawKeys"></div>
+  <div id="log"></div>
+</div>
+<script>
+var _log = [];
+function log(msg) {
+  _log.push(msg);
+  var el = document.getElementById('log');
+  if (el) el.innerHTML = _log.map(function(l){return '<div class="log-line">'+l+'</div>';}).join('');
+}
+
+function summarizeVal(v) {
+  if (v === undefined || v === null) return {text:'null', cls:'val-zero'};
+  if (typeof v === 'boolean') return {text:String(v), cls:v?'val-good':'val-default'};
+  if (typeof v === 'number') return {text:String(v), cls:v===0?'val-zero':'val-good'};
+  if (typeof v === 'string') return {text:v?'"'+v.substring(0,40)+'"':'""', cls:v?'val-good':'val-zero'};
+  if (Array.isArray(v)) return {text:'['+v.length+' items]', cls:v.length?'val-good':'val-zero'};
+  if (typeof v === 'object') {
+    var k = Object.keys(v);
+    return {text:'{'+k.length+' keys}', cls:k.length?'val-good':'val-zero'};
+  }
+  return {text:String(v).substring(0,40), cls:'val-default'};
+}
+
+function scoreState(s) {
+  if (!s) return 0;
+  var score = 0;
+  score += (s.xp||0);
+  score += (s.lifetimeFocusMinutes||0) * 10;
+  score += (s.autoloomLevel||0) * 5000;
+  score += (s.employeesLevel||0) * 5000;
+  score += (s.marketingLevel||0) * 5000;
+  score += (s.dyeResearchLevel||0) * 3000;
+  score += (s.qualityControlLevel||0) * 3000;
+  if (s.tasks) { Object.values(s.tasks).forEach(function(a){if(Array.isArray(a))score+=a.length*1000;}); }
+  if (s.savedArtworks) score += s.savedArtworks.length * 2000;
+  if (s.brokerage && s.brokerage.bonds) score += s.brokerage.bonds.length * 3000;
+  if (s.friends) score += Object.keys(s.friends).length * 1000;
+  if (s.badges) score += Object.keys(s.badges).length * 50;
+  score += (s.lifetimeSessions||0) * 100;
+  if (s.focusHistory) score += Object.keys(s.focusHistory).length * 200;
+  if (s.morseInbox) score += s.morseInbox.length * 100;
+  if (s.housePetTypes) score += s.housePetTypes.length * 500;
+  return score;
+}
+
+// Critical fields — these represent real player progress that can't be regenerated
+var CRITICAL_FIELDS = [
+  'tasks','projects','activeProject','priorityTasks','todayTasks','bundles','tagBundles','taskTags','dailyReminders',
+  'autoloomLevel','marketingLevel','dyeResearchLevel','qualityControlLevel','employeesLevel',
+  'legalDeptLevel','lobbyingLevel','secondLocationLevel','marketShareLevel','aiLoomLevel',
+  'researchDivisionLevel','autoLeadershipLevel','worldSpanLevel','lastAutoloomTick',
+  'brokerage','brokerageUnlocked',
+  'savedArtworks','canvasSize','purchasedCanvasSizes','unlockedColors','pixelCanvas',
+  'friends','friendChallenge','friendChallengeHistory','friendChallengeWins','friendChallengeLosses',
+  'housePetTypes','housePetNames','petFullness','petLastFed','houseEvents','houseEventHistory',
+  'morseInbox','morseSentBox','morseSentCount','morseReceivedCount','morseFamousSent',
+  'focusHistory','sessionArchive','dailySessionLog',
+  'questStreak','questLongestStreak','questsCompletedLifetime','questsSteadyCompleted','questsAmbitiousCompleted',
+  'distractionCategories','distractionHistory','sessionDistractions',
+  'framesReserve','gearsReserve','dyeReserve','waterReserve','silicaReserve',
+  'blockedTimes','sleepTimeEnabled','sleepHour','sleepMinute',
+  'surveillanceActive','surveillanceTier','surveillanceNagInterval',
+  'ratiocinatoryUnlocked','bandwidthWrits','dataSachets','cogitationTokens',
+  'incineratorUnlocked','researchLabUnlocked','bureauUnlocked',
+  'closedLoopWaterLevel','syntheticFramesLevel','reclaimedGearsLevel','labIndigoLevel','sandReclamationLevel',
+  'resourceLedgerLevel','ledgerRevealed','depletionMilestones',
+  'stageEntriesUnlocked','phaseHistory',
+  'coldTurkeyEnabled','coldTurkeyBlockName',
+  'bedtimeReminderEnabled','bedtimeStreak','bedtimeBestStreak',
+  'doNowTask','taskDurations','incrementalizeLog','recentTasks','dustPixels'
+];
+
+chrome.storage.local.get(null, function(allData) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  var keys = Object.keys(allData);
+  log('Found ' + keys.length + ' storage keys: ' + keys.join(', '));
+
+  // Show raw keys
+  document.getElementById('rawKeys').innerHTML = keys.map(function(k) {
+    var v = allData[k];
+    var size = JSON.stringify(v).length;
+    return '<div style="font-size:11px;padding:2px 0;"><span style="color:#5aadff;">' + k + '</span>: ' + (size > 1000 ? (size/1024).toFixed(1)+'KB' : size+'B') + '</div>';
+  }).join('');
+
+  // Extract states from all keys
+  var mainState = allData.pixelFocusState || {};
+  var b1 = allData.pixelFocusState_backup_safe;
+  var b1State = b1 ? (b1.state || b1) : null;
+  var b2 = allData.pixelFocusState_backup_safe2;
+  var b2State = b2 ? (b2.state || b2) : null;
+
+  var mainScore = scoreState(mainState);
+  var b1Score = b1State ? scoreState(b1State) : 0;
+  var b2Score = b2State ? scoreState(b2State) : 0;
+
+  log('Scores — Main: ' + mainScore + ' | Backup1: ' + b1Score + ' | Backup2: ' + b2Score);
+
+  // Find best backup
+  var bestBackup = null;
+  var bestName = 'none';
+  var bestScore = 0;
+  if (b1Score > bestScore) { bestBackup = b1State; bestName = 'backup_safe'; bestScore = b1Score; }
+  if (b2Score > bestScore) { bestBackup = b2State; bestName = 'backup_safe2'; bestScore = b2Score; }
+
+  // Count gaps
+  var gaps = 0;
+  var recoverable = 0;
+  var html = '';
+
+  CRITICAL_FIELDS.forEach(function(field) {
+    var mainVal = mainState[field];
+    var backupVal = bestBackup ? bestBackup[field] : undefined;
+    var mainSum = summarizeVal(mainVal);
+    var backupSum = summarizeVal(backupVal);
+
+    var mainIsEmpty = (mainVal === undefined || mainVal === null || mainVal === 0 || mainVal === false || mainVal === '' ||
+      (Array.isArray(mainVal) && mainVal.length === 0) || (typeof mainVal === 'object' && !Array.isArray(mainVal) && mainVal !== null && Object.keys(mainVal).length === 0));
+    var backupHasData = backupVal !== undefined && backupVal !== null && backupVal !== 0 && backupVal !== false && backupVal !== '' &&
+      !(Array.isArray(backupVal) && backupVal.length === 0) && !(typeof backupVal === 'object' && !Array.isArray(backupVal) && backupVal !== null && Object.keys(backupVal).length === 0);
+
+    if (mainIsEmpty) gaps++;
+    if (mainIsEmpty && backupHasData) { recoverable++; backupSum.cls = 'val-better'; }
+
+    html += '<div class="key-row"><span class="key-name">' + field + '</span>' +
+      '<span class="key-main ' + mainSum.cls + '">' + mainSum.text + '</span>' +
+      '<span class="key-backup ' + backupSum.cls + '">' + backupSum.text + '</span></div>';
+  });
+
+  // Also check brokerage sub-object specifically
+  var mainBrok = mainState.brokerage;
+  var backupBrok = bestBackup ? bestBackup.brokerage : null;
+  if (backupBrok && !mainBrok) {
+    html += '<div class="key-row"><span class="key-name" style="color:#ffd700;">brokerage (sub-object)</span>' +
+      '<span class="key-main val-zero">MISSING</span>' +
+      '<span class="key-backup val-better">{bonds:' + (backupBrok.bonds||[]).length + ', balance:$' + (backupBrok.balance||0).toFixed(0) + '}</span></div>';
+    recoverable++;
+  } else if (mainBrok) {
+    html += '<div class="key-row"><span class="key-name">brokerage (sub-object)</span>' +
+      '<span class="key-main val-good">{bonds:' + (mainBrok.bonds||[]).length + ', balance:$' + (mainBrok.balance||0).toFixed(0) + '}</span>' +
+      '<span class="key-backup">' + (backupBrok ? '{bonds:'+(backupBrok.bonds||[]).length+'}' : 'n/a') + '</span></div>';
+  }
+
+  document.getElementById('comparison').innerHTML = html;
+
+  // Summary
+  var sumHtml = '<h2>AUDIT SUMMARY</h2>';
+  sumHtml += '<div>Main state score: <strong>' + mainScore + '</strong></div>';
+  sumHtml += '<div>Best backup (' + bestName + ') score: <strong>' + bestScore + '</strong></div>';
+  sumHtml += '<div>Critical fields at default/empty: <strong style="color:' + (gaps>10?'#ff4444':'#ffd700') + ';">' + gaps + '</strong> / ' + CRITICAL_FIELDS.length + '</div>';
+  sumHtml += '<div>Recoverable from backup: <strong style="color:#ffd700;">' + recoverable + '</strong></div>';
+
+  if (bestScore > mainScore) {
+    sumHtml += '<div class="summary" style="margin-top:12px;border-color:#ffd700;background:#1a1a0a;">BACKUP HAS BETTER DATA — ' + recoverable + ' fields can be recovered!</div>';
+  } else if (gaps > 10 && bestScore === 0) {
+    sumHtml += '<div class="summary summary-bad" style="margin-top:12px;">NO BACKUP AVAILABLE — local backups were also wiped. Cannot auto-recover.</div>';
+  } else {
+    sumHtml += '<div class="summary" style="margin-top:12px;">State looks reasonably healthy.</div>';
+  }
+
+  document.getElementById('summary').innerHTML = sumHtml;
+
+  // Action buttons
+  var actHtml = '';
+  if (recoverable > 0 && bestBackup) {
+    actHtml += '<button class="danger" id="mergeBtn">MERGE ' + recoverable + ' FIELDS FROM BACKUP INTO CURRENT STATE</button>';
+  }
+  actHtml += '<button id="dumpBtn">DOWNLOAD FULL STORAGE DUMP (all keys)</button>';
+  document.getElementById('actions').innerHTML = actHtml;
+
+  // Wire merge button
+  var mergeBtn = document.getElementById('mergeBtn');
+  if (mergeBtn && bestBackup) {
+    mergeBtn.addEventListener('click', function() {
+      log('Starting merge from ' + bestName + '...');
+      var merged = JSON.parse(JSON.stringify(mainState));
+      var mergedCount = 0;
+
+      CRITICAL_FIELDS.forEach(function(field) {
+        var mainVal = merged[field];
+        var backupVal = bestBackup[field];
+        var mainIsEmpty = (mainVal === undefined || mainVal === null || mainVal === 0 || mainVal === false || mainVal === '' ||
+          (Array.isArray(mainVal) && mainVal.length === 0) || (typeof mainVal === 'object' && !Array.isArray(mainVal) && mainVal !== null && Object.keys(mainVal).length === 0));
+        var backupHasData = backupVal !== undefined && backupVal !== null && backupVal !== 0 && backupVal !== false && backupVal !== '' &&
+          !(Array.isArray(backupVal) && backupVal.length === 0) && !(typeof backupVal === 'object' && !Array.isArray(backupVal) && backupVal !== null && Object.keys(backupVal).length === 0);
+
+        if (mainIsEmpty && backupHasData) {
+          merged[field] = JSON.parse(JSON.stringify(backupVal));
+          log('  Restored: ' + field);
+          mergedCount++;
+        }
+      });
+
+      // Special: merge brokerage sub-object
+      if (!merged.brokerage && bestBackup.brokerage) {
+        merged.brokerage = JSON.parse(JSON.stringify(bestBackup.brokerage));
+        log('  Restored: brokerage (sub-object)');
+        mergedCount++;
+      }
+
+      log('Merged ' + mergedCount + ' fields. Writing...');
+      chrome.storage.local.set({ pixelFocusState: merged }, function() {
+        if (chrome.runtime.lastError) {
+          log('ERROR: ' + chrome.runtime.lastError.message);
+        } else {
+          log('SUCCESS! ' + mergedCount + ' fields restored. Close this tab and reopen the extension.');
+          mergeBtn.textContent = 'DONE — ' + mergedCount + ' FIELDS RESTORED';
+          mergeBtn.style.borderColor = '#00ff88';
+          mergeBtn.style.color = '#00ff88';
+          mergeBtn.disabled = true;
+        }
+      });
+    });
+  }
+
+  // Wire dump button
+  var dumpBtn = document.getElementById('dumpBtn');
+  if (dumpBtn) {
+    dumpBtn.addEventListener('click', function() {
+      var blob = new Blob([JSON.stringify(allData, null, 2)], {type:'application/json'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'pixelfocus-FULL-DUMP-' + new Date().toISOString().replace(/[:.]/g,'-') + '.json';
+      a.click();
+    });
+  }
+});
+</script>
+</body>
+</html>
