@@ -53,7 +53,7 @@ body.mirror-mode #marketCard { display: none !important; }
 body.mirror-mode .msg-console-header,
 body.mirror-mode .msg-console { display: none !important; }
 body.mirror-mode #houseBtn, body.mirror-mode #galleryBtn,
-body.mirror-mode #factoryBtn, body.mirror-mode #ratiocinatoryBtn, body.mirror-mode #brokerageBtn { display: none !important; }
+body.mirror-mode #factoryBtn, body.mirror-mode #ratiocinatoryBtn, body.mirror-mode #brokerageBtn, body.mirror-mode #taxOfficeBtn { display: none !important; }
 body.mirror-mode #editProjectModal, body.mirror-mode #doNowModal,
 body.mirror-mode #focusConfirmModal { display: none !important; }
 body.mirror-mode .block-counter,
@@ -236,18 +236,18 @@ input[type="range"] { transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
 input[type="range"]:hover { transform:scaleY(1.4) scaleX(1.02); }
 input[type="range"]:active { transform:scaleY(1.1) scaleX(0.99); }
 /* Universal button hover — catch-all for inline-styled buttons */
-button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#ratiocinatoryBtn):not(#badgesBtn):not(.btn):not(.tut-btn):not(.collapsible-header):not(.tab):not(.tab-menu-btn):not(.task-checkbox) { transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease; }
-button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#ratiocinatoryBtn):not(#badgesBtn):not(.btn):not(.tut-btn):not(.collapsible-header):not(.tab):not(.tab-menu-btn):not(.task-checkbox):hover { transform:scale(1.06) translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.3); }
-button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#ratiocinatoryBtn):not(#badgesBtn):not(.btn):not(.tut-btn):not(.collapsible-header):not(.tab):not(.tab-menu-btn):not(.task-checkbox):active { transform:scale(0.95) translateY(1px); box-shadow:0 1px 2px rgba(0,0,0,0.2); }
+button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#ratiocinatoryBtn):not(#taxOfficeBtn):not(.btn):not(.tut-btn):not(.collapsible-header):not(.tab):not(.tab-menu-btn):not(.task-checkbox) { transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease; }
+button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#ratiocinatoryBtn):not(#taxOfficeBtn):not(.btn):not(.tut-btn):not(.collapsible-header):not(.tab):not(.tab-menu-btn):not(.task-checkbox):hover { transform:scale(1.06) translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#ratiocinatoryBtn):not(#taxOfficeBtn):not(.btn):not(.tut-btn):not(.collapsible-header):not(.tab):not(.tab-menu-btn):not(.task-checkbox):active { transform:scale(0.95) translateY(1px); box-shadow:0 1px 2px rgba(0,0,0,0.2); }
 /* ========== Duolingo-style juicy game buttons ========== */
 /* Shared transition + transform origin for all game-nav buttons */
-#houseBtn, #galleryBtn, #factoryBtn, #brokerageBtn, #ratiocinatoryBtn, #badgesBtn {
+#houseBtn, #galleryBtn, #factoryBtn, #brokerageBtn, #ratiocinatoryBtn, #taxOfficeBtn {
   transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 /* Shimmer sweep on hover — visible white streak */
-#houseBtn::after, #galleryBtn::after, #factoryBtn::after, #brokerageBtn::after, #ratiocinatoryBtn::after, #badgesBtn::after {
+#houseBtn::after, #galleryBtn::after, #factoryBtn::after, #brokerageBtn::after, #ratiocinatoryBtn::after, #taxOfficeBtn::after {
   content: '';
   position: absolute;
   top: 0; left: -100%; width: 60%; height: 100%;
@@ -286,11 +286,11 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
   border-color: #bdb2ff;
   background: linear-gradient(135deg,#221840,#341e60) !important;
 }
-#badgesBtn:hover {
+#taxOfficeBtn:hover {
   transform: scale(1.08) translateY(-2px);
-  box-shadow: 0 0 28px rgba(255,215,0,0.7), 0 0 60px rgba(255,215,0,0.25), 0 6px 20px rgba(0,0,0,0.5);
-  border-color: #ffe44d;
-  background: linear-gradient(135deg,#2a2014,#3a2a14) !important;
+  box-shadow: 0 0 28px rgba(201,168,76,0.7), 0 0 60px rgba(201,168,76,0.25), 0 6px 20px rgba(0,0,0,0.5);
+  border-color: #dab85c;
+  background: linear-gradient(135deg,#2a2218,#3a3020) !important;
 }
 /* Hover text glow — make the label pop */
 #houseBtn:hover span { text-shadow: 0 0 8px rgba(212,168,87,0.8); }
@@ -298,13 +298,13 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 #factoryBtn:hover span { text-shadow: 0 0 8px rgba(255,215,0,0.8); }
 #brokerageBtn:hover span { text-shadow: 0 0 8px rgba(78,205,196,0.8); }
 #ratiocinatoryBtn:hover span { text-shadow: 0 0 8px rgba(157,142,255,0.8); }
-#badgesBtn:hover span { text-shadow: 0 0 8px rgba(255,215,0,0.8); }
+#taxOfficeBtn:hover span { text-shadow: 0 0 8px rgba(201,168,76,0.8); }
 /* Shimmer sweep on hover */
-#houseBtn:hover::after, #galleryBtn:hover::after, #factoryBtn:hover::after, #brokerageBtn:hover::after, #ratiocinatoryBtn:hover::after, #badgesBtn:hover::after {
+#houseBtn:hover::after, #galleryBtn:hover::after, #factoryBtn:hover::after, #brokerageBtn:hover::after, #ratiocinatoryBtn:hover::after, #taxOfficeBtn:hover::after {
   left: 120%;
 }
 /* Active (mouse-down): press in + squish */
-#houseBtn:active, #galleryBtn:active, #factoryBtn:active, #brokerageBtn:active, #ratiocinatoryBtn:active, #badgesBtn:active {
+#houseBtn:active, #galleryBtn:active, #factoryBtn:active, #brokerageBtn:active, #ratiocinatoryBtn:active, #taxOfficeBtn:active {
   transform: scale(0.94) translateY(1px);
   transition-duration: 0.06s;
   box-shadow: 0 0 12px rgba(255,255,255,0.15), 0 2px 6px rgba(0,0,0,0.5);
@@ -312,12 +312,12 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 /* Release bounce is handled by the 0.15s cubic-bezier on the base transition */
 
 /* Locked state override — dim everything, suppress all hover/active effects */
-#houseBtn[data-tip], #galleryBtn[data-tip], #factoryBtn[data-tip], #brokerageBtn[data-tip], #ratiocinatoryBtn[data-tip] {
+#houseBtn[data-tip], #galleryBtn[data-tip], #factoryBtn[data-tip], #brokerageBtn[data-tip], #ratiocinatoryBtn[data-tip], #taxOfficeBtn[data-tip] {
   transform: none !important;
   box-shadow: none !important;
   position: relative;
 }
-#houseBtn[data-tip]::before, #galleryBtn[data-tip]::before, #factoryBtn[data-tip]::before, #brokerageBtn[data-tip]::before, #ratiocinatoryBtn[data-tip]::before {
+#houseBtn[data-tip]::before, #galleryBtn[data-tip]::before, #factoryBtn[data-tip]::before, #brokerageBtn[data-tip]::before, #ratiocinatoryBtn[data-tip]::before, #taxOfficeBtn[data-tip]::before {
   content: '🔒';
   position: absolute;
   inset: 0;
@@ -332,7 +332,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
   pointer-events: none;
   z-index: 2;
 }
-#houseBtn[data-tip]:hover::before, #galleryBtn[data-tip]:hover::before, #factoryBtn[data-tip]:hover::before, #brokerageBtn[data-tip]:hover::before, #ratiocinatoryBtn[data-tip]:hover::before {
+#houseBtn[data-tip]:hover::before, #galleryBtn[data-tip]:hover::before, #factoryBtn[data-tip]:hover::before, #brokerageBtn[data-tip]:hover::before, #ratiocinatoryBtn[data-tip]:hover::before, #taxOfficeBtn[data-tip]:hover::before {
   opacity: 1;
 }
 
@@ -621,7 +621,7 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
        the player picks a loom via the Gallery PROFILE button. -->
   <div style="display:flex;align-items:center;gap:8px;">
     <canvas id="profileAvatar" width="16" height="16" style="display:none;width:32px;height:32px;image-rendering:pixelated;border:2px solid var(--accent);border-radius:50%;background:#08080f;cursor:pointer;box-shadow:0 0 8px rgba(0,255,136,0.3);" title="Your profile picture. Click to open the gallery and pick a different loom."></canvas>
-  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features."><span id="versionTag"></span></span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button> <span id="menuWrapper" style="position:relative;display:inline-block;vertical-align:middle;margin-left:4px;"><button type="button" id="menuBtn" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;" title="Menu">MENU</button><div id="menuDropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#12121e;border:1px solid var(--accent3);border-radius:6px;min-width:160px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.6);overflow:hidden;"><button type="button" id="menuSettingsBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #1a1a2e;" title="Settings &mdash; Safe Refresh, restore from backup, and other maintenance tools.">&#9881; Settings</button><button type="button" id="menuAboutBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;" title="The history of the automated loom and the Luddite uprising &mdash; the real story behind the game.">&#128220; About the Loom</button></div></span> <button type="button" id="tutorialBtn" style="margin-left:4px;background:transparent;border:1px solid #a855f7;color:#a855f7;font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s,background 0.2s;" title="Encyclopedia &mdash; searchable guide to every feature in the game.">&#x1F393;</button></h1>
+  <h1 title="Todo of the Loom &mdash; gamified Pomodoro tracker. Focus to earn textiles, weave them into pixel art, and stack money for factory upgrades.">Todo of the Loom <span style="font-size:7px;color:var(--text-dim);" title="Extension version. Reload from brave://extensions if you don't see the latest features."><span id="versionTag"></span></span> <button type="button" id="showIntroBtn" style="margin-left:6px;background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;" title="Re-open the standing brief &mdash; the welcome note and the plain-English explanation of how the tracker, loom, and factory fit together.">BRIEF<span id="showIntroBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ffb43c;color:#000;font-size:6px;min-width:10px;height:10px;line-height:10px;padding:0 2px;border-radius:5px;font-family:'Press Start 2P',monospace;box-shadow:0 0 6px rgba(255,180,60,0.7);" title="New standing brief entry. Click BRIEF to read it."></span></button> <span id="menuWrapper" style="position:relative;display:inline-block;vertical-align:middle;margin-left:4px;"><button type="button" id="menuBtn" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;" title="Menu">MENU</button><div id="menuDropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#12121e;border:1px solid var(--accent3);border-radius:6px;min-width:160px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.6);overflow:hidden;"><button type="button" id="menuSettingsBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #1a1a2e;" title="Settings &mdash; Safe Refresh, restore from backup, and other maintenance tools.">&#9881; Settings</button><button type="button" id="menuAboutBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--accent3);font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #1a1a2e;" title="The history of the automated loom and the Luddite uprising &mdash; the real story behind the game.">&#128220; About the Loom</button><button type="button" id="menuBadgesBtn" style="display:block;width:100%;text-align:left;background:transparent;border:none;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 12px;cursor:pointer;" title="View your badges &mdash; achievements earned through focus, sleep, and mastery.">&#x1F3C6; Badges</button></div></span> <button type="button" id="tutorialBtn" style="margin-left:4px;background:transparent;border:1px solid #a855f7;color:#a855f7;font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 6px;border-radius:4px;cursor:pointer;vertical-align:middle;position:relative;transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s,background 0.2s;" title="Encyclopedia &mdash; searchable guide to every feature in the game.">&#x1F393;</button></h1>
   </div>
   <div class="block-counter" id="blockCounter" title="Textiles produced today. One textile per completed 10-minute focus session. Resets at midnight.">
     <div class="block-icon"></div>
@@ -1303,9 +1303,11 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
   <div id="ratiocinatoryBtn" style="display:none;flex:1;padding:10px;background:linear-gradient(135deg,#1a1030,#2a1a50);border:2px solid #9d8eff;border-radius:8px;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 0 14px rgba(157,142,255,0.18);" title="Open The Ratiocinatory (Section IX/b) - the bureaucratic annex where the loom is made to think. Unlocked via the Ratiocinatory requisition in the factory.">
     <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#9d8eff;letter-spacing:1px;">&sect;IX RATIOCINATORY</span>
   </div>
-  <div id="badgesBtn" style="flex:1;min-width:100px;padding:10px;background:linear-gradient(135deg,#1a1610,#2a2010);border:2px solid #ffd700;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 0 14px rgba(255,215,0,0.12);transition:transform 0.15s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s ease;position:relative;overflow:hidden;" title="View your badges — achievements earned through focus, sleep, and mastery. Your badges also appear on your online profile for friends to see.">
-    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#ffd700;">&#x1F3C6; BADGES</span>
+  <div id="taxOfficeBtn" style="display:none;flex:1;min-width:100px;padding:10px;background:linear-gradient(135deg,#1a1510,#2a2218);border:2px solid #c9a84c;border-radius:8px;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 0 14px rgba(201,168,76,0.15);position:relative;" title="The government has noticed your operation. Visit the Tax Office to view and pay your weekly tax bills.">
+    <span style="font-family:'Press Start 2P',monospace;font-size:9px;color:#c9a84c;">&#x1F3DB; TAX OFFICE</span>
+    <span id="taxOfficeDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#4ecdc4;"></span>
   </div>
+
 </div>
 
 <div id="editProjectModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">

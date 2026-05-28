@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.495 - Main Application Logic
+// PixelFocus v3.23.501 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1065,6 +1065,22 @@ try {
     // ------------------------------------------------------------
     ratiocinatoryUnlocked: false,      // flipped by the factory upgrade
     brokerageUnlocked: false,           // flipped by the factory upgrade (Brokerage)
+    // --- Tax Office (v3.23.497) ---
+    taxOfficeUnlocked: false,          // Tax Office building visible (auto at $50K lifetime)
+    taxBracket: 0,                     // current bracket (0-6)
+    taxRateEffective: 0,               // computed effective rate after reductions
+    taxableIncomeThisWeek: 0,          // running tally of taxable earnings (reset weekly)
+    taxWeekStartDate: '',              // date string when current tax week started
+    taxBills: [],                      // [{id, amount, issuedAt, dueAt, status, interest, appealFiled}]
+    taxPaidLifetime: 0,                // all-time taxes paid
+    taxEvadedCount: 0,                 // current number of evaded bills
+    taxEvasionLevel: 0,                // escalating consequence tier (0-5)
+    taxAppealCooldown: '',             // date string of last appeal
+    taxForgivenessDate: '',            // date string of last monthly forgiveness
+    taxAuditHistory: [],               // [{date, result, fine}]
+    taxLastAuditDate: '',              // last audit date
+    taxCharitableDonatedThisWeek: 0,   // charitable donations this week
+    taxOffshoreEnabled: false,         // offshore account active (Lobbying L5+)
     // --- Financial tracking (v3.23.77) ---
     lastPayrollDate: '',               // date string of last payroll deduction
     lastBrokerageSnapshot: 0,          // portfolio value at last day rollover
@@ -1617,7 +1633,8 @@ try {
             'aspectExegesis','aspectChromatics','aspectDeftness','aspectOmens','aspectIntrospection',
             'patsiesRecruited','patsiesLost','patsiesPromoted','patsiesBetrayals',
             'canvasSize','petFoodCost','incineratorFuelBonus',
-            'debtAmount','debtStartedAt','debtSessionsCompleted','debtLastInterestAt','debtPenaltiesApplied','lifetimeDebtIncurred'
+            'debtAmount','debtStartedAt','debtSessionsCompleted','debtLastInterestAt','debtPenaltiesApplied','lifetimeDebtIncurred',
+            'taxBracket','taxRateEffective','taxableIncomeThisWeek','taxPaidLifetime','taxEvadedCount','taxEvasionLevel','taxCharitableDonatedThisWeek'
           ];
           _numFields.forEach(function(f) {
             var best = _loaded[f] || 0;
@@ -2409,6 +2426,9 @@ try {
       // v3.23.495: Accrue debt interest and check overdue penalties on day rollover
       try { _accrueDebtInterest(); _checkDebtPenalties(); } catch(_debtErr) { console.warn('[DayRollover] Debt error:', _debtErr); }
 
+      // v3.23.497: Weekly tax bill check
+      try { _checkTaxWeekRollover(); } catch(_taxErr) { console.warn('[DayRollover] Tax error:', _taxErr); }
+
       // v3.21.59: Archive yesterday's focus minutes into focusHistory
       // v3.22.94: Also archive whatever dailySessionLog holds (even if date
       // doesn't match lastActiveDate — covers edge cases like multi-day gaps).
@@ -2570,7 +2590,7 @@ try {
 
   // ============== HOVER SOUNDS ==============
   let lastHoverTime = 0;
-  const HOVER_SELECTORS = '.btn, .tab, .tab-add, .task-item, .milestone-item, .block-counter, .upgrade-btn, .task-checkbox, .task-delete, .task-select-btn, .xp-section, .collapsible-header, .stat, #galleryBtn, #factoryBtn, #houseBtn, #brokerageBtn, #ratiocinatoryBtn, #blockCounter, #addTaskBtn, #addTabBtn, #profileAvatar, #badgesBtn';
+  const HOVER_SELECTORS = '.btn, .tab, .tab-add, .task-item, .milestone-item, .block-counter, .upgrade-btn, .task-checkbox, .task-delete, .task-select-btn, .xp-section, .collapsible-header, .stat, #galleryBtn, #factoryBtn, #houseBtn, #brokerageBtn, #ratiocinatoryBtn, #taxOfficeBtn, #blockCounter, #addTaskBtn, #addTabBtn, #profileAvatar';
 
   document.addEventListener('mouseover', function(e) {
     const now = Date.now();
@@ -3265,7 +3285,7 @@ try {
     state.petFullness = newFullness;
   }
 
-  function awardCoins(amount, reason) {
+  function awardCoins(amount, reason, opts) {
     if (!amount || amount <= 0) return;
     // Apply the late-game money multiplier stack (automated leadership x
     // second location x world span). Level-0 stacks = 1x so legacy saves
@@ -3280,6 +3300,11 @@ try {
     }
     if (total >= 1 && reason) {
       logHouseFeed('money_gain', '+$' + Math.floor(total) + ' (' + reason + ')', Math.floor(total));
+    }
+    // v3.23.497: Track taxable income for weekly tax bill
+    var taxable = !(opts && opts.taxable === false);
+    if (taxable && (state.taxOfficeUnlocked || (state.lifetimeCoins || 0) >= 50000)) {
+      state.taxableIncomeThisWeek = (state.taxableIncomeThisWeek || 0) + total;
     }
     // v3.23.495: Auto-pay down debt with new earnings
     if ((state.debtAmount || 0) > 0 && (state.coins || 0) > 0) {
@@ -3428,6 +3453,350 @@ try {
       'Clear by earning enough money or completing ' + sessionsLeft + ' more focus session' + (sessionsLeft !== 1 ? 's' : '') + '. ' +
       'Debt accrues ' + (DEBT_INTEREST_RATE * 100) + '% daily interest. ' +
       'While in debt: employee morale drops (more dissidents) and house wellbeing falls.';
+  }
+
+  // ===== TAX OFFICE SYSTEM (v3.23.497) =====
+  // Weekly tax bills based on taxable income. Player pays at the Tax Office building.
+  // Evasion is possible but escalates consequences (audits, surcharges, morale hits).
+
+  var TAX_BRACKETS = [
+    { min: 0,         rate: 0,    label: 'Below the radar' },
+    { min: 50000,     rate: 0.08, label: 'Cottage assessment' },
+    { min: 200000,    rate: 0.15, label: 'Regional levy' },
+    { min: 1000000,   rate: 0.22, label: 'Industrial tariff' },
+    { min: 10000000,  rate: 0.30, label: 'Corporate extraction' },
+    { min: 100000000, rate: 0.38, label: 'Sovereign tithe' },
+    { min: 1000000000,rate: 0.45, label: 'Imperial tribute' }
+  ];
+
+  var TAX_WEEK_DAYS = 7;           // bill every 7 days
+  var TAX_GRACE_WEEKS = 1;         // 1 week grace after issue
+  var TAX_OVERDUE_WEEKS = 2;       // 2 more weeks before evaded
+  var TAX_INTEREST_PER_WEEK = 0.05; // 5% weekly interest on overdue
+
+  function _getTaxBracket() {
+    var lifetime = state.lifetimeCoins || 0;
+    var bracket = 0;
+    for (var i = TAX_BRACKETS.length - 1; i >= 0; i--) {
+      if (lifetime >= TAX_BRACKETS[i].min) { bracket = i; break; }
+    }
+    return bracket;
+  }
+
+  function _getEffectiveTaxRate() {
+    var bracket = _getTaxBracket();
+    var baseRate = TAX_BRACKETS[bracket].rate;
+    if (baseRate === 0) return 0;
+
+    var reduction = 0;
+    // Legal Department: L1-2 = -1% each, L3-4 = -2% each, L5-7 = -3% each
+    var legal = state.legalDeptLevel || 0;
+    if (legal >= 1) reduction += 0.01;
+    if (legal >= 2) reduction += 0.01;
+    if (legal >= 3) reduction += 0.02;
+    if (legal >= 4) reduction += 0.02;
+    if (legal >= 5) reduction += 0.03;
+
+    // Lobbying L7+: flat -5%
+    var lobby = state.lobbyingLevel || 0;
+    if (lobby >= 7) reduction += 0.05;
+
+    // Lobbying L9+: cap at 10%
+    if (lobby >= 9) {
+      return Math.max(0.10, baseRate - reduction);
+    }
+
+    // Ratiocinatory Standing Office: -2% per level (if institution exists)
+    // (Standing office level is tracked via ratiocinatoryUnlocked + aspects)
+
+    var effective = Math.max(0, baseRate - reduction);
+    return Math.round(effective * 100) / 100; // clean float
+  }
+
+  function _generateWeeklyTaxBill() {
+    var bracket = _getTaxBracket();
+    if (bracket === 0) return; // below the radar
+
+    // Auto-unlock Tax Office on first bill
+    if (!state.taxOfficeUnlocked) {
+      state.taxOfficeUnlocked = true;
+      notify('The Tax Office has opened. The government has noticed you.', '#ff6b6b');
+    }
+
+    var taxable = state.taxableIncomeThisWeek || 0;
+
+    // Offshore shelter: Lobbying L5+ shelters 20%
+    if (state.taxOffshoreEnabled && (state.lobbyingLevel || 0) >= 5) {
+      taxable = taxable * 0.80;
+    }
+
+    // Personnel Ministry: deduct payroll from taxable income
+    // (simplified: deduct weekly payroll equivalent)
+    // TODO: wire when Personnel Ministry institution is trackable
+
+    // Charitable deductions: reduce taxable income
+    var charitable = state.taxCharitableDonatedThisWeek || 0;
+    if (charitable > 0) {
+      taxable = Math.max(0, taxable - (charitable * 2)); // 2x deduction
+    }
+
+    var rate = _getEffectiveTaxRate();
+    var billAmount = Math.floor(taxable * rate);
+
+    // Reset weekly tracker
+    state.taxableIncomeThisWeek = 0;
+    state.taxCharitableDonatedThisWeek = 0;
+    state.taxWeekStartDate = todayStr();
+
+    if (billAmount <= 0) return; // no bill if nothing owed
+
+    var billId = Date.now();
+    var dueAt = Date.now() + (TAX_WEEK_DAYS * 24 * 60 * 60 * 1000); // due in 7 days
+
+    var bill = {
+      id: billId,
+      amount: billAmount,
+      issuedAt: Date.now(),
+      dueAt: dueAt,
+      status: 'unpaid',   // unpaid -> paid / overdue / evaded
+      interest: 0,
+      appealFiled: false,
+      bracket: bracket,
+      rate: rate
+    };
+
+    if (!Array.isArray(state.taxBills)) state.taxBills = [];
+    state.taxBills.push(bill);
+
+    // Update bracket tracking
+    state.taxBracket = bracket;
+    state.taxRateEffective = rate;
+
+    console.log('[Tax] Generated weekly bill: $' + billAmount + ' (bracket ' + bracket + ', rate ' + (rate * 100).toFixed(1) + '%)');
+  }
+
+  function _updateTaxBillStatuses() {
+    if (!Array.isArray(state.taxBills)) return;
+    var now = Date.now();
+    var overdueThreshold = TAX_GRACE_WEEKS * TAX_WEEK_DAYS * 24 * 60 * 60 * 1000;
+    var evadedThreshold = (TAX_GRACE_WEEKS + TAX_OVERDUE_WEEKS) * TAX_WEEK_DAYS * 24 * 60 * 60 * 1000;
+
+    for (var i = 0; i < state.taxBills.length; i++) {
+      var b = state.taxBills[i];
+      if (b.status === 'paid') continue;
+
+      var age = now - b.issuedAt;
+
+      if (b.status === 'unpaid' && age > overdueThreshold) {
+        b.status = 'overdue';
+        // Accrue interest
+        b.interest = Math.floor(b.amount * TAX_INTEREST_PER_WEEK);
+        console.log('[Tax] Bill #' + b.id + ' is now OVERDUE. Interest: $' + b.interest);
+      }
+
+      if (b.status === 'overdue') {
+        // Continue accruing weekly interest
+        var weeksOverdue = Math.floor((age - overdueThreshold) / (TAX_WEEK_DAYS * 24 * 60 * 60 * 1000)) + 1;
+        b.interest = Math.floor(b.amount * TAX_INTEREST_PER_WEEK * weeksOverdue);
+
+        if (age > evadedThreshold) {
+          b.status = 'evaded';
+          state.taxEvadedCount = (state.taxEvadedCount || 0) + 1;
+          _updateEvasionLevel();
+          console.log('[Tax] Bill #' + b.id + ' is now EVADED. Evasion count: ' + state.taxEvadedCount);
+        }
+      }
+    }
+  }
+
+  function _updateEvasionLevel() {
+    var evaded = state.taxEvadedCount || 0;
+    if (evaded >= 10) state.taxEvasionLevel = 5;
+    else if (evaded >= 5) state.taxEvasionLevel = 4;
+    else if (evaded >= 3) state.taxEvasionLevel = 3;
+    else if (evaded >= 2) state.taxEvasionLevel = 2;
+    else if (evaded >= 1) state.taxEvasionLevel = 1;
+    else state.taxEvasionLevel = 0;
+  }
+
+  function payTaxBill(billId) {
+    if (!Array.isArray(state.taxBills)) return false;
+    for (var i = 0; i < state.taxBills.length; i++) {
+      var b = state.taxBills[i];
+      if (b.id === billId && b.status !== 'paid') {
+        var totalOwed = b.amount + (b.interest || 0);
+        state.coins = (state.coins || 0) - totalOwed;
+        b.status = 'paid';
+        state.taxPaidLifetime = (state.taxPaidLifetime || 0) + totalOwed;
+
+        // If this was evaded, decrement evaded count
+        if (b.status === 'evaded' || (state.taxEvadedCount || 0) > 0) {
+          // Recount actual evaded bills
+          var stillEvaded = 0;
+          for (var j = 0; j < state.taxBills.length; j++) {
+            if (state.taxBills[j].status === 'evaded') stillEvaded++;
+          }
+          state.taxEvadedCount = stillEvaded;
+          _updateEvasionLevel();
+        }
+
+        // Push into debt if broke
+        if (state.coins < 0) {
+          _recordDebt(-state.coins, 'tax payment');
+        }
+
+        notify('Tax bill paid: $' + totalOwed, '#4ecdc4');
+        save();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function payAllTaxBills() {
+    if (!Array.isArray(state.taxBills)) return;
+    var unpaid = state.taxBills.filter(function(b) { return b.status !== 'paid'; });
+    for (var i = 0; i < unpaid.length; i++) {
+      payTaxBill(unpaid[i].id);
+    }
+  }
+
+  function _runTaxAudit() {
+    var baseChance = 0.05;
+    var overdue = 0;
+    var evaded = 0;
+    if (Array.isArray(state.taxBills)) {
+      for (var i = 0; i < state.taxBills.length; i++) {
+        if (state.taxBills[i].status === 'overdue') overdue++;
+        if (state.taxBills[i].status === 'evaded') evaded++;
+      }
+    }
+    var chance = baseChance + (overdue * 0.03) + (evaded * 0.05);
+
+    // Reductions from upgrades (placeholder for institution levels)
+    // Clean record bonus
+    if (evaded === 0 && overdue === 0) chance -= 0.02;
+    chance = Math.max(0, Math.min(1, chance));
+
+    if (Math.random() > chance) return; // no audit this week
+
+    var result = { date: todayStr(), result: 'clean', fine: 0 };
+
+    if (evaded > 0) {
+      // Force-collect evaded bills with 2x fine
+      var totalEvaded = 0;
+      for (var i = 0; i < state.taxBills.length; i++) {
+        var b = state.taxBills[i];
+        if (b.status === 'evaded') {
+          totalEvaded += b.amount + (b.interest || 0);
+          b.status = 'paid'; // force-collected
+        }
+      }
+      var fine = totalEvaded * 2;
+      state.coins = (state.coins || 0) - fine;
+      if (state.coins < 0) _recordDebt(-state.coins, 'tax audit fine');
+      state.taxPaidLifetime = (state.taxPaidLifetime || 0) + fine;
+      state.taxEvadedCount = 0;
+      _updateEvasionLevel();
+      result.result = 'evaded_caught';
+      result.fine = fine;
+      notify('TAX AUDIT: $' + fine + ' in fines collected!', '#ff4444');
+    } else if (overdue > 0) {
+      // Double interest on overdue bills
+      for (var i = 0; i < state.taxBills.length; i++) {
+        if (state.taxBills[i].status === 'overdue') {
+          state.taxBills[i].interest = (state.taxBills[i].interest || 0) * 2;
+        }
+      }
+      result.result = 'overdue_warning';
+      notify('Tax audit: interest doubled on overdue bills.', '#ff8844');
+    } else {
+      // Clean audit — token refund
+      state.coins = (state.coins || 0) + 50;
+      result.result = 'clean';
+      result.fine = -50;
+      notify('Tax audit passed! +$50 refund.', '#4ecdc4');
+    }
+
+    if (!Array.isArray(state.taxAuditHistory)) state.taxAuditHistory = [];
+    state.taxAuditHistory.unshift(result);
+    if (state.taxAuditHistory.length > 20) state.taxAuditHistory = state.taxAuditHistory.slice(0, 20);
+    state.taxLastAuditDate = todayStr();
+  }
+
+  function getEvasionPenalties() {
+    var level = state.taxEvasionLevel || 0;
+    return {
+      upgradeCostMult: level >= 2 ? 1.10 : 1.0,      // +10% upgrade costs
+      wellbeingPenalty: level >= 3 ? 10 : 0,           // -10 wellbeing
+      passiveIncomeMult: level >= 4 ? 0.5 : 1.0,      // halve passive income
+      auditRiskBonus: level >= 1 ? 0.15 : 0            // +15% audit risk
+    };
+  }
+
+  function _checkTaxWeekRollover() {
+    // Called during day rollover. Check if 7 days have passed.
+    var weekStart = state.taxWeekStartDate || '';
+    if (!weekStart) {
+      // First time — initialize tax week
+      state.taxWeekStartDate = todayStr();
+      return;
+    }
+
+    var startDate = new Date(weekStart + 'T00:00:00');
+    var today = new Date(todayStr() + 'T00:00:00');
+    var daysSince = Math.floor((today - startDate) / (24 * 60 * 60 * 1000));
+
+    if (daysSince >= TAX_WEEK_DAYS) {
+      // Tax week complete — generate bill, run audit, update statuses
+      _updateTaxBillStatuses();
+      _generateWeeklyTaxBill();
+      _runTaxAudit();
+
+      // Prune old paid bills (keep last 20)
+      if (Array.isArray(state.taxBills) && state.taxBills.length > 30) {
+        var paid = state.taxBills.filter(function(b) { return b.status === 'paid'; });
+        var unpaid = state.taxBills.filter(function(b) { return b.status !== 'paid'; });
+        if (paid.length > 10) paid = paid.slice(paid.length - 10);
+        state.taxBills = paid.concat(unpaid);
+      }
+    }
+  }
+
+  function renderTaxDot() {
+    // Update the status dot on the Tax Office button
+    var dot = document.getElementById('taxOfficeDot');
+    if (!dot) return;
+    if (!state.taxOfficeUnlocked) { dot.style.display = 'none'; return; }
+    dot.style.display = 'inline-block';
+
+    var hasEvaded = false, hasOverdue = false, hasUnpaid = false;
+    if (Array.isArray(state.taxBills)) {
+      for (var i = 0; i < state.taxBills.length; i++) {
+        var s = state.taxBills[i].status;
+        if (s === 'evaded') hasEvaded = true;
+        if (s === 'overdue') hasOverdue = true;
+        if (s === 'unpaid') hasUnpaid = true;
+      }
+    }
+
+    if (hasEvaded) {
+      dot.style.background = '#ff4444';
+      dot.style.animation = 'pulse 1s infinite';
+      dot.title = 'Evaded tax bills! Consequences active.';
+    } else if (hasOverdue) {
+      dot.style.background = '#ff8844';
+      dot.style.animation = 'none';
+      dot.title = 'Overdue tax bills accruing interest.';
+    } else if (hasUnpaid) {
+      dot.style.background = '#ffd700';
+      dot.style.animation = 'none';
+      dot.title = 'Tax bill due — visit the Tax Office.';
+    } else {
+      dot.style.background = '#4ecdc4';
+      dot.style.animation = 'none';
+      dot.title = 'All taxes paid. Good standing.';
+    }
   }
 
   // ===== Employee Payroll System (v3.23.77) =====
@@ -4978,6 +5347,7 @@ try {
     renderProfileAvatar();
     renderRatiocinatoryBtn();
     renderBrokerageBtn();
+    renderTaxOfficeBtn();
     renderMarketCard();
     renderGameLockout();
     renderGraceCountdown();
@@ -5055,6 +5425,18 @@ try {
     } else {
       btn.style.display = 'none';
     }
+  }
+
+  // v3.23.497: Tax Office button visibility — auto-unlocks at $50K lifetime.
+  function renderTaxOfficeBtn() {
+    var btn = document.getElementById('taxOfficeBtn');
+    if (!btn) return;
+    var shouldShow = state.taxOfficeUnlocked || (state.lifetimeCoins || 0) >= 50000;
+    if (shouldShow && !state.taxOfficeUnlocked) {
+      state.taxOfficeUnlocked = true;
+    }
+    btn.style.display = shouldShow ? 'flex' : 'none';
+    renderTaxDot();
   }
 
   // v3.23.82: Market card visibility — appears once marketingLevel >= 1.
@@ -5232,7 +5614,7 @@ try {
   function renderGameLockout() {
     var locked = isGameLocked();
     var reason = locked ? getGameLockReason() : '';
-    var ids = ['galleryBtn', 'factoryBtn', 'houseBtn', 'ratiocinatoryBtn', 'brokerageBtn'];
+    var ids = ['galleryBtn', 'factoryBtn', 'houseBtn', 'ratiocinatoryBtn', 'brokerageBtn', 'taxOfficeBtn'];
     for (var i = 0; i < ids.length; i++) {
       var btn = document.getElementById(ids[i]);
       if (!btn) continue;
@@ -10329,7 +10711,7 @@ try {
           // Bonus = (MULT - 1) * extension earnings (since base is already paid)
           var _ddBonus = Math.round(_ddExtEarnings * (DOUBLE_DOWN_BONUS_MULT - 1));
           if (_ddBonus > 0) {
-            awardCoins(_ddBonus, 'Double down bonus (' + DOUBLE_DOWN_BONUS_MULT + 'x on extension)');
+            awardCoins(_ddBonus, 'Double down bonus (' + DOUBLE_DOWN_BONUS_MULT + 'x on extension)', { taxable: false });
           }
           state._lastDoubleDownBonus = _ddBonus;
           state._lastDoubleDownOrigMin = Math.round((state.doubleDownOriginalSec || 0) / 60);
@@ -17760,12 +18142,24 @@ try {
         });
       }
 
-      // v3.23.96: Badges button (always visible — not a game page, no lockout)
-      var badgesBtn = $('badgesBtn');
-      if (badgesBtn) {
-        badgesBtn.addEventListener('click', function() {
+      // v3.23.497: Tax Office button (visible when taxOfficeUnlocked or lifetimeCoins >= 50K)
+      var taxOfficeBtn = $('taxOfficeBtn');
+      if (taxOfficeBtn) {
+        taxOfficeBtn.addEventListener('click', function() {
+          SFX.tabSwitch();
+          openPFWindow('tax-office.html');
+        });
+      }
+
+      // v3.23.500: Badges button moved to Menu dropdown
+      var menuBadgesBtn = $('menuBadgesBtn');
+      if (menuBadgesBtn) {
+        menuBadgesBtn.addEventListener('click', function() {
           SFX.tabSwitch();
           openPFWindow('badges.html');
+          // Close menu dropdown after clicking
+          var dd = $('menuDropdown');
+          if (dd) dd.style.display = 'none';
         });
       }
 
@@ -18707,7 +19101,15 @@ try {
             html += '<button class="morse-inbox-delete-btn" data-idx="' + mi + '" style="font-size:9px;color:#ff4444;background:rgba(51,17,17,0.3);border:1px solid #441111;border-bottom:3px solid #331111;border-radius:6px;padding:4px 8px;cursor:pointer;transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 2px 0 #220808,0 3px 6px rgba(0,0,0,0.3);opacity:0.5;" title="Delete this telegram">&#x2716;</button>';
             html += '</div></div>';
             html += '<div class="morse-replay-btn" data-idx="' + mi + '" style="font-size:12px;color:#ffd700;letter-spacing:2px;word-break:break-all;margin-bottom:4px;cursor:pointer;" title="Click to replay">' + escHtml(msg.morseText || '') + '</div>';
-            html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:' + _decodedColor + ';letter-spacing:1px;">' + escHtml(decoded) + '</div>';
+            if (_isSent) {
+              html += '<div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:' + _decodedColor + ';letter-spacing:1px;">' + escHtml(decoded) + '</div>';
+            } else {
+              html += '<div class="morse-decoded-wrap" data-idx="' + mi + '" style="margin-top:4px;">';
+              html += '<div class="morse-decoded-text" data-idx="' + mi + '" style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:' + _decodedColor + ';letter-spacing:1px;display:none;">' + escHtml(decoded) + '</div>';
+              html += '<button class="morse-listen-btn" data-idx="' + mi + '" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid #ffd700;border-bottom:3px solid #aa8800;background:linear-gradient(180deg,#1a1a0a,#0d0d05);color:#ffd700;box-shadow:0 2px 0 #0a0a04,0 3px 6px rgba(0,0,0,0.3);transition:all 0.1s;margin-right:6px;">\u{1F50A} LISTEN</button>';
+              html += '<button class="morse-reveal-btn" data-idx="' + mi + '" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid #00ff88;border-bottom:3px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 2px 0 #030a06,0 3px 6px rgba(0,0,0,0.3);transition:all 0.1s;">\u{1F441} REVEAL</button>';
+              html += '</div>';
+            }
             html += '</div>';
           }
           list.innerHTML = html;
@@ -18786,6 +19188,75 @@ try {
               var m = (_morseInboxTab === 'sent' ? (state.morseSentBox || []) : (state.morseInbox || []))[i];
               if (m && typeof MorseMessenger !== 'undefined') {
                 try { MorseMessenger.showIncoming(m.fromName || 'Unknown', m.morseText || ''); } catch(_) {}
+              }
+            });
+          });
+
+          // v3.23.501: Listen buttons for received messages (play morse audio)
+          list.querySelectorAll('.morse-listen-btn').forEach(function(btn) {
+            _juiceBtn(btn, '#ffd700', 'rgba(26,26,10,0.5)');
+            btn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              var idx = parseInt(btn.getAttribute('data-idx'), 10);
+              var m = (state.morseInbox || [])[idx];
+              if (!m || !m.morseText) return;
+              if (btn._playing) return;
+              btn._playing = true;
+              btn.textContent = '\u{1F50A} ...';
+              btn.style.opacity = '0.5';
+              try {
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (ctx.state === 'suspended') ctx.resume();
+                var ditLen = 0.08;
+                var dahLen = ditLen * 3;
+                var symbolGap = ditLen;
+                var letterGap = ditLen * 3;
+                var wordGap = ditLen * 7;
+                var t = ctx.currentTime + 0.05;
+                var symbols = m.morseText.split('');
+                for (var si = 0; si < symbols.length; si++) {
+                  var sym = symbols[si];
+                  if (sym === '/') { t += wordGap; continue; }
+                  if (sym === ' ') { t += letterGap; continue; }
+                  if (sym === '.' || sym === '-') {
+                    var dur = sym === '.' ? ditLen : dahLen;
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = 660;
+                    gain.gain.setValueAtTime(0.3, t);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(t);
+                    osc.stop(t + dur + 0.01);
+                    t += dur + symbolGap;
+                  }
+                }
+                var totalMs = (t - ctx.currentTime) * 1000 + 300;
+                setTimeout(function() {
+                  btn._playing = false;
+                  btn.textContent = '\u{1F50A} LISTEN';
+                  btn.style.opacity = '';
+                }, totalMs);
+              } catch(_) {
+                btn._playing = false;
+                btn.textContent = '\u{1F50A} LISTEN';
+                btn.style.opacity = '';
+              }
+            });
+          });
+
+          // v3.23.501: Reveal buttons for received messages (decode on demand)
+          list.querySelectorAll('.morse-reveal-btn').forEach(function(btn) {
+            _juiceBtn(btn, '#00ff88', 'rgba(10,42,26,0.5)');
+            btn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              var idx = parseInt(btn.getAttribute('data-idx'), 10);
+              var textEl = list.querySelector('.morse-decoded-text[data-idx="' + idx + '"]');
+              if (textEl) {
+                textEl.style.display = 'block';
+                btn.style.display = 'none';
               }
             });
           });

@@ -170,7 +170,10 @@
       debtPenalty = clamp(10 + Math.floor(state.debtAmount / 100), 0, 30);
     }
 
-    var wb = clamp(55 + goodness - darkness - debtPenalty, 0, 100);
+    // v3.23.497: Tax evasion wellbeing penalty (evasion level 3+)
+    var taxPenalty = 0;
+    if ((state.taxEvasionLevel || 0) >= 3) taxPenalty = 10;
+    var wb = clamp(55 + goodness - darkness - debtPenalty - taxPenalty, 0, 100);
     return Math.round(wb);
   }
 

@@ -1042,6 +1042,32 @@
     });
   }
 
+  
+  // ===== Digital clock (v3.23.496) =====
+  var _clockEl = document.getElementById('brokerageClock');
+  function _tickClock() {
+    if (!_clockEl) return;
+    var now = new Date();
+    var h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+    var use24 = false;
+    try { use24 = !!(state && state.use24Hour); } catch(_) {}
+    var ampm = '';
+    if (!use24) {
+      ampm = h >= 12 ? ' PM' : ' AM';
+      h = h % 12 || 12;
+    }
+    var timeStr = (h < 10 && use24 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + ampm;
+    _clockEl.textContent = timeStr;
+    // Pulse the colon for that terminal feel
+    if (s % 2 === 0) {
+      _clockEl.style.opacity = '0.85';
+    } else {
+      _clockEl.style.opacity = '0.7';
+    }
+  }
+  _tickClock();
+  setInterval(_tickClock, 1000);
+
   // ===== News ticker =====
   var _newsQueue = [];
   function showNews(msg) {

@@ -82,6 +82,7 @@ jobs:
                    block-alert.html export-state.html export-state.js \
                    block-alert-window.js \
                    brokerage.html brokerage-window.js \
+                   tax-office.html tax-office-window.js \
                    market-engine.js market-events.js \
                    morning-checkin.html morning-checkin-window.js \
                    app-main.js tutorial-data.js tutorial-ui.js \

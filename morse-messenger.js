@@ -715,6 +715,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
   // ===== Incoming message display =====
   function showIncoming(fromName, morseText) {
     var decoded = decode(morseText);
+    var _revealed = false;
 
     function _dismiss() {
       if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
@@ -739,30 +740,109 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     morseDiv.textContent = morseText;
     box.appendChild(morseDiv);
 
+    // Hidden decoded text area — only shown after REVEAL
     var out = document.createElement('div');
-    out.style.cssText = "font-family:'Press Start 2P',monospace;font-size:16px;color:#00ff88;min-height:24px;letter-spacing:2px;";
+    out.style.cssText = "font-family:'Press Start 2P',monospace;font-size:16px;color:#00ff88;min-height:24px;letter-spacing:2px;display:none;";
     box.appendChild(out);
 
-    var btn = document.createElement('button');
-    btn.style.cssText = "margin-top:16px;font-family:'Press Start 2P',monospace;font-size:8px;padding:8px 20px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);";
-    btn.textContent = 'DISMISS';
-    btn.addEventListener('click', function(e) { e.stopPropagation(); _dismiss(); });
-    box.appendChild(btn);
+    // Button row
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;';
 
+    var _btnStyle = "font-family:'Press Start 2P',monospace;font-size:8px;padding:8px 20px;border-radius:8px;cursor:pointer;border:2px solid #00ff88;border-bottom:4px solid #00aa55;background:linear-gradient(180deg,#0a2a1a,#05150d);color:#00ff88;box-shadow:0 4px 0 #030a06,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,136,0.15);transition:all 0.1s cubic-bezier(0.34,1.56,0.64,1);";
+
+    // LISTEN button — plays morse audio
+    var listenBtn = document.createElement('button');
+    listenBtn.style.cssText = _btnStyle.replace('#00ff88', '#ffd700').replace('#00aa55', '#aa8800').replace('rgba(0,255,136,0.15)', 'rgba(255,215,0,0.15)');
+    listenBtn.textContent = '\u{1F50A} LISTEN';
+    listenBtn.title = 'Hear the morse code audio';
+    var _listenPlaying = false;
+    listenBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (_listenPlaying) return;
+      _listenPlaying = true;
+      listenBtn.style.opacity = '0.5';
+      listenBtn.textContent = '\u{1F50A} PLAYING...';
+      // Play morse audio inline from dots/dashes string
+      try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+        var ditLen = 0.08; // seconds
+        var dahLen = ditLen * 3;
+        var symbolGap = ditLen;
+        var letterGap = ditLen * 3;
+        var wordGap = ditLen * 7;
+        var t = ctx.currentTime + 0.05;
+        var symbols = morseText.split('');
+        for (var si = 0; si < symbols.length; si++) {
+          var sym = symbols[si];
+          if (sym === '/') { t += wordGap; continue; }
+          if (sym === ' ') { t += letterGap; continue; }
+          if (sym === '.' || sym === '-') {
+            var dur = sym === '.' ? ditLen : dahLen;
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 660;
+            gain.gain.setValueAtTime(0.3, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + dur + 0.01);
+            t += dur + symbolGap;
+          }
+        }
+        var totalMs = (t - ctx.currentTime) * 1000 + 300;
+        setTimeout(function() {
+          _listenPlaying = false;
+          listenBtn.style.opacity = '';
+          listenBtn.textContent = '\u{1F50A} LISTEN';
+        }, totalMs);
+      } catch(_) {
+        _listenPlaying = false;
+        listenBtn.style.opacity = '';
+        listenBtn.textContent = '\u{1F50A} LISTEN';
+      }
+    });
+    btnRow.appendChild(listenBtn);
+
+    // REVEAL button — shows decoded text with typewriter
+    var revealBtn = document.createElement('button');
+    revealBtn.style.cssText = _btnStyle;
+    revealBtn.textContent = '\u{1F441} REVEAL';
+    revealBtn.title = 'Decode and show the plaintext message';
+    revealBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (_revealed) return;
+      _revealed = true;
+      revealBtn.style.opacity = '0.4';
+      revealBtn.style.cursor = 'default';
+      out.style.display = 'block';
+      // Typewriter decode animation
+      var idx = 0;
+      function typeChar() {
+        if (idx < decoded.length) {
+          out.textContent += decoded[idx];
+          idx++;
+          setTimeout(typeChar, 80);
+        }
+      }
+      typeChar();
+    });
+    btnRow.appendChild(revealBtn);
+
+    // DISMISS button
+    var dismissBtn = document.createElement('button');
+    dismissBtn.style.cssText = _btnStyle.replace('#00ff88', '#888888').replace('#00aa55', '#555555').replace('rgba(0,255,136,0.15)', 'rgba(136,136,136,0.15)');
+    dismissBtn.textContent = 'DISMISS';
+    dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); _dismiss(); });
+    btnRow.appendChild(dismissBtn);
+
+    box.appendChild(btnRow);
     ov.appendChild(box);
     document.body.appendChild(ov);
     document.addEventListener('keydown', _escHandler);
-
-    // Typewriter decode animation
-    var idx = 0;
-    function typeChar() {
-      if (idx < decoded.length) {
-        out.textContent += decoded[idx];
-        idx++;
-        setTimeout(typeChar, 80);
-      }
-    }
-    setTimeout(typeChar, 600);
   }
 
   // ===== Encode / Decode helpers =====

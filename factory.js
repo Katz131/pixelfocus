@@ -2050,8 +2050,11 @@
   }
   function discountedCost(rawCost, upgradeId) {
     var d = getTotalDiscountFraction(upgradeId);
-    if (d <= 0) return rawCost;
-    return Math.max(1, Math.round(rawCost * (1 - d)));
+    var base = (d <= 0) ? rawCost : Math.max(1, Math.round(rawCost * (1 - d)));
+    // v3.23.497: Tax evasion surcharge (+10% at evasion level 2+)
+    var evasionLevel = state.taxEvasionLevel || 0;
+    if (evasionLevel >= 2) base = Math.round(base * 1.10);
+    return base;
   }
 
   function getStreakRate() {

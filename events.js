@@ -340,26 +340,26 @@
     switch (cq.kind) {
       case 'addCoins': {
         var amt = Math.max(0, cq.amount || 0);
-        state.coins = (state.coins || 0) + amt;
+        state.coins = Math.round((state.coins || 0) + amt);
         state.lifetimeMoneyEarned = (state.lifetimeMoneyEarned || 0) + amt;
-        return { kind: cq.kind, applied: amt, summary: '+$' + amt };
+        return { kind: cq.kind, applied: amt, summary: '+$' + Math.round(amt).toLocaleString() };
       }
       case 'loseCoins': {
         var loss = Math.max(0, cq.amount || 0);
         var actual = Math.min(loss, state.coins || 0);
-        state.coins = Math.max(0, (state.coins || 0) - loss);
-        return { kind: cq.kind, applied: actual, summary: '-$' + actual };
+        state.coins = Math.round(Math.max(0, (state.coins || 0) - loss));
+        return { kind: cq.kind, applied: actual, summary: '-$' + Math.round(actual).toLocaleString() };
       }
       case 'addTextiles': {
         var tg = Math.max(0, cq.amount || 0);
         state.textiles = (state.textiles || 0) + tg;
-        return { kind: cq.kind, applied: tg, summary: '+' + tg + ' textiles' };
+        return { kind: cq.kind, applied: tg, summary: '+' + Math.round(tg).toLocaleString() + ' textiles' };
       }
       case 'loseTextiles': {
         var tl = Math.max(0, cq.amount || 0);
         var tlActual = Math.min(tl, state.textiles || 0);
         state.textiles = Math.max(0, (state.textiles || 0) - tl);
-        return { kind: cq.kind, applied: tlActual, summary: '-' + tlActual + ' textiles' };
+        return { kind: cq.kind, applied: tlActual, summary: '-' + Math.round(tlActual).toLocaleString() + ' textiles' };
       }
       case 'incomeMultiplier':
       case 'marketingMultiplier':
@@ -378,7 +378,7 @@
         var lbl = cq.kind === 'incomeMultiplier' ? 'income'
                 : cq.kind === 'marketingMultiplier' ? 'marketing'
                 : 'textiles';
-        return { kind: cq.kind, applied: effect, summary: sign + pct + '% ' + lbl + ' for ' + (cq.durationHours || 24) + 'h' };
+        return { kind: cq.kind, applied: effect, summary: sign + pct + '% ' + lbl + ' for ' + ((cq.durationHours || 24) >= 24 ? Math.round((cq.durationHours || 24) / 24) + 'd' : (cq.durationHours || 24) + 'h') };
       }
       case 'suspendUpgrade': {
         if (!cq.upgradeId) return null;
