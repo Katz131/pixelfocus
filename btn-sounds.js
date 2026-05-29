@@ -2,8 +2,23 @@
 // v3.23.182: One file, included everywhere. Catches <button>, <a>, and cursor:pointer elements.
 (function() {
   var _ctx = null;
+  // v3.23.509: Respect global mute flag from chrome.storage
+  var _pfMuted = false;
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get('pixelFocusState', function(d) {
+        _pfMuted = !!(d.pixelFocusState && d.pixelFocusState.phaseTtsMuted);
+      });
+      chrome.storage.onChanged.addListener(function(changes) {
+        if (changes.pixelFocusState && changes.pixelFocusState.newValue) {
+          _pfMuted = !!changes.pixelFocusState.newValue.phaseTtsMuted;
+        }
+      });
+    }
+  } catch(_) {}
   function blip(freq, ms, vol) {
     try {
+      if (_pfMuted) return; // v3.23.509: skip when muted
       if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
       if (_ctx.state === 'suspended') _ctx.resume();
       var o = _ctx.createOscillator(), g = _ctx.createGain();

@@ -2060,6 +2060,13 @@ chrome.runtime.onMessageExternal.addListener(function(msg, sender, sendResponse)
       }
 
     } else if (msg.type === 'CKRB_BLOCK_COMPLETED') {
+      // v3.23.440: Dedup guard — ignore if same timestamp already processed
+      if (msg.timestamp && msg.timestamp === state._lastCkrbBlockTs) {
+        console.log('[CK-BRIDGE] Ignoring duplicate BLOCK_COMPLETED (ts=' + msg.timestamp + ')');
+        sendResponse({ ok: true, duplicate: true });
+        return true;
+      }
+      if (msg.timestamp) { state._lastCkrbBlockTs = msg.timestamp; }
       // Award bonus — use CK Buddy's penalty-adjusted calculation if provided
       var total = msg.totalQuestions || 1;
       var totalMs = msg.totalMs || msg.totalTimeMs || 0;

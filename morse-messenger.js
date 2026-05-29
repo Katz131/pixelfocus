@@ -1196,7 +1196,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     // Play area
     html += '<div id="acPlayArea" style="display:none;width:100%;max-width:680px;background:linear-gradient(135deg,#0a1a0a,#001a0a);border:2px solid #2a4a2a;border-radius:10px;padding:20px;text-align:center;">';
     // Status
-    html += '<div id="acStatus" style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#00ff88;margin-bottom:16px;">READY</div>';
+    html += '<div id="acStatus" style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#ffd700;margin-bottom:16px;">CHOOSE A SPEED, THEN PRESS PLAY</div>';
     // Hint (letter count)
     html += '<div id="acHint" style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#555;margin-bottom:12px;"></div>';
     // Play button
@@ -1208,7 +1208,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     html += '<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:10px;">';
     html += '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#555;">SPEED:</span>';
     html += '<button class="ac-speed-btn" data-speed="0.12" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #3a3a3a;background:#1a1a1a;color:#888;transition:all 0.1s;">SLOW</button>';
-    html += '<button class="ac-speed-btn ac-speed-active" data-speed="0.08" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #ffd700;background:#2a2010;color:#ffd700;transition:all 0.1s;">NORMAL</button>';
+    html += '<button class="ac-speed-btn" data-speed="0.08" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #3a3a3a;background:#1a1a1a;color:#888;transition:all 0.1s;">NORMAL</button>';
     html += '<button class="ac-speed-btn" data-speed="0.05" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid #3a3a3a;background:#1a1a1a;color:#888;transition:all 0.1s;">FAST</button>';
     html += '</div>';
     // Input
@@ -1231,7 +1231,9 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     document.body.appendChild(_acOverlay);
 
     var currentDiff = 'medium';
-    var currentSpeed = 0.08;
+    var currentSpeed = null; // v3.23.507: null until user picks — forces speed choice for star rating
+    // v3.23.507: Track speeds used per word for star rating (3=fast only, 2=medium, 1=slow)
+    var _acSpeedsUsed = {};  // keyed by word, value is Set-like array of speeds used
     var acCorrect = 0;
     var acAttempts = 0;
 
@@ -1309,6 +1311,16 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
       }
     }
 
+    var _acStarsCache = {}; // v3.23.507: Cached star ratings from state
+    function _acLoadStars() {
+      try {
+        chrome.storage.local.get('pixelFocusState', function(d) {
+          _acStarsCache = (d.pixelFocusState || {}).morseAudioStars || {};
+        });
+      } catch(_){}
+    }
+    _acLoadStars();
+
     function _renderProgressBar(diff, blinkIdx) {
       var el = document.getElementById('acProgress');
       if (!el) return;
@@ -1324,23 +1336,33 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
       // If blinkIdx provided use it, otherwise use _nextUnsolved
       var _effectiveBlink = (typeof blinkIdx === 'number') ? blinkIdx : _nextUnsolved;
       var html = '<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#888;margin-bottom:4px;text-align:center;">' + info[0] + ' / ' + info[1] + ' WORDS</div>';
-      html += '<style>@keyframes acTileBlink{0%,100%{opacity:1;box-shadow:0 0 6px #ffd700}50%{opacity:0.4;box-shadow:none}}</style>';
+      html += '<style>@keyframes acTileBlink{0%,100%{opacity:1;box-shadow:0 0 8px #ffd700;transform:scaleY(1.6)}50%{opacity:0.6;box-shadow:0 0 2px #ffd700;transform:scaleY(1)}}@keyframes acArrowBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}</style>';
       html += '<div style="display:flex;gap:3px;justify-content:center;">';
       for (var i = 0; i < tier.length; i++) {
         var isDone = done.indexOf(tier[i][0]) !== -1;
         var isCurrent = tier[i][0] === _acCurrentWord;
         var isNextUnsolved = (i === _nextUnsolved);
         var shouldBlink = (typeof blinkIdx === 'number' && i === blinkIdx);
-        var bg = isDone ? '#00ff88' : (isCurrent ? '#ffd700' : (shouldBlink ? '#ffd700' : '#222'));
+        // v3.23.507: Color tiles by star rating — gold=3★, green=2★, dim green=1★
+        var _tws = isDone ? (_acStarsCache[tier[i][0]] || 1) : 0;
+        var bg = isDone ? (_tws >= 3 ? '#ffd700' : (_tws >= 2 ? '#00ff88' : '#228855')) : (isCurrent ? '#ffd700' : (shouldBlink ? '#ffd700' : '#222'));
         var border = isCurrent ? '2px solid #fff' : (shouldBlink ? '2px solid #ffd700' : (isNextUnsolved ? '2px solid #555' : '1px solid #333'));
         // Clickable: completed, current, next unsolved, or blinking
         var clickable = isDone || isCurrent || isNextUnsolved || shouldBlink;
         var cursor = clickable ? 'pointer' : 'default';
         var anim = shouldBlink ? 'animation:acTileBlink 0.8s ease-in-out infinite;background:#ffd700;' : '';
-        var title = isDone ? ('\u2713 ' + tier[i][0] + ' (click to replay)') : (isNextUnsolved ? 'Click to start this word!' : (isCurrent ? tier[i][0] : (i+1) + '/' + tier.length));
+        var _starTip = _tws >= 3 ? '⭐⭐⭐' : (_tws >= 2 ? '⭐⭐☆' : (_tws >= 1 ? '⭐☆☆' : ''));
+        var _starExplain = _tws >= 3 ? ' (FAST only)' : (_tws >= 2 ? ' (no SLOW)' : (_tws >= 1 ? ' (used SLOW)' : ''));
+        var title = isDone ? (_starTip + _starExplain + ' \u2014 ' + tier[i][0] + ' (click to replay)') : (isNextUnsolved ? 'Click to start this word!' : (isCurrent ? tier[i][0] : (i+1) + '/' + tier.length));
         html += '<div class="ac-tile" data-tidx="' + i + '" style="width:' + Math.floor(100/tier.length) + '%;height:12px;background:' + bg + ';border-radius:4px;border:' + border + ';cursor:' + cursor + ';transition:all 0.15s;' + anim + '" title="' + title + '"></div>';
       }
       html += '</div>';
+      // v3.23.506: Add bouncing arrow indicator below the next tile to click
+      if (typeof blinkIdx === 'number' && blinkIdx >= 0 && blinkIdx < tier.length) {
+        var _tileW = Math.floor(100/tier.length);
+        var _arrowLeft = (blinkIdx * _tileW) + (_tileW / 2);
+        html += '<div style="position:relative;height:16px;"><div style="position:absolute;left:' + _arrowLeft + '%;transform:translateX(-50%);animation:acArrowBounce 0.8s ease-in-out infinite;font-size:10px;color:#ffd700;text-shadow:0 0 6px #ffd700;">▲ TAP</div></div>';
+      }
       el.innerHTML = html;
       // v3.23.485: Clickable tiles
       var _tiles = el.querySelectorAll('.ac-tile');
@@ -1353,8 +1375,17 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             var _tBlink = (typeof blinkIdx === 'number' && _tIdx === blinkIdx);
             if (_tDone || _tBlink || _tIsNext || _tw === _acCurrentWord) {
               _acCurrentWord = _tw;
+              _acSpeedsUsed[_tw] = []; // v3.23.507: Reset speed tracking for new/replayed word
               document.getElementById('acHint').textContent = _acCurrentWord.length + ((diff === 'pi' || diff === 'fibonacci') ? ' DIGITS' : (diff === 'alphabet' ? ' CHARACTERS' : ' LETTERS'));
-              document.getElementById('acStatus').textContent = _tDone ? 'REPLAYING: ' + _tw : 'PRESS PLAY TO HEAR THE WORD';
+              if (!_tDone) { currentSpeed = null; }
+              document.getElementById('acStatus').textContent = _tDone ? 'REPLAYING: ' + _tw : 'CHOOSE A SPEED, THEN PRESS PLAY';
+              // v3.23.507: Deselect all speed buttons when starting fresh word
+              if (!_tDone) {
+                _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(sb) {
+                  sb.style.border = '1px solid #3a3a3a'; sb.style.background = '#1a1a1a'; sb.style.color = '#888';
+                  sb.classList.remove('ac-speed-active');
+                });
+              }
               document.getElementById('acStatus').style.color = '#ffd700';
               document.getElementById('acInput').value = '';
               document.getElementById('acResult').textContent = '';
@@ -1387,7 +1418,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
         currentDiff = btn.getAttribute('data-diff');
         _acCurrentWord = _acPickWord(currentDiff);
         document.getElementById('acPlayArea').style.display = 'block';
-        document.getElementById('acStatus').textContent = 'PRESS PLAY TO HEAR THE WORD';
+        document.getElementById('acStatus').textContent = currentSpeed === null ? 'CHOOSE A SPEED, THEN PRESS PLAY' : 'PRESS PLAY TO HEAR THE WORD';
         document.getElementById('acStatus').style.color = '#ffd700';
         document.getElementById('acHint').textContent = _acCurrentWord.length + ((currentDiff === 'pi' || currentDiff === 'fibonacci') ? ' DIGITS' : (currentDiff === 'alphabet' ? ' CHARACTERS' : ' LETTERS'));
         document.getElementById('acInput').value = '';
@@ -1406,7 +1437,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
           _slowBtn.style.display = _isHard ? 'none' : '';
           // If SLOW was active and we're now hard+, reset to NORMAL
           if (_isHard && currentSpeed === 0.12) {
-            currentSpeed = 0.08;
+            currentSpeed = null; // v3.23.507: Force re-pick
             _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(b) {
               var isNormal = b.getAttribute('data-speed') === '0.08';
               b.style.border = '1px solid ' + (isNormal ? '#ffd700' : '#3a3a3a');
@@ -1422,6 +1453,12 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         currentSpeed = parseFloat(btn.getAttribute('data-speed'));
+        // v3.23.507: Update status now that speed is picked
+        var _acSt = document.getElementById('acStatus');
+        if (_acSt && (_acSt.textContent.indexOf('CHOOSE') !== -1 || _acSt.textContent.indexOf('SPEED FIRST') !== -1)) {
+          _acSt.textContent = 'PRESS PLAY TO HEAR THE WORD';
+          _acSt.style.color = '#ffd700';
+        }
         _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(b) {
           var isActive = b === btn;
           b.style.border = '1px solid ' + (isActive ? '#ffd700' : '#3a3a3a');
@@ -1434,6 +1471,17 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     // Play button
     document.getElementById('acPlayBtn').addEventListener('click', function() {
       if (_acPlaying || !_acCurrentWord) return;
+      // v3.23.507: Must pick a speed first
+      if (currentSpeed === null) {
+        document.getElementById('acStatus').textContent = 'CHOOSE A SPEED FIRST ▼';
+        document.getElementById('acStatus').style.color = '#ff5a5a';
+        // Flash speed buttons
+        _acOverlay.querySelectorAll('.ac-speed-btn').forEach(function(b) {
+          b.style.border = '2px solid #ff5a5a'; b.style.color = '#ff5a5a';
+          setTimeout(function() { b.style.border = '1px solid #3a3a3a'; b.style.color = '#888'; }, 800);
+        });
+        return;
+      }
       var playBtn = document.getElementById('acPlayBtn');
       var stopBtn = document.getElementById('acStopBtn');
       playBtn.textContent = '🔊 PLAYING...';
@@ -1442,6 +1490,9 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
       document.getElementById('acStatus').textContent = 'LISTENING...';
       document.getElementById('acStatus').style.color = '#00ff88';
       document.getElementById('acHistory').textContent = '';
+      // v3.23.507: Track speed used for star rating
+      if (!_acSpeedsUsed[_acCurrentWord]) _acSpeedsUsed[_acCurrentWord] = [];
+      if (_acSpeedsUsed[_acCurrentWord].indexOf(currentSpeed) === -1) _acSpeedsUsed[_acCurrentWord].push(currentSpeed);
       _acPlayMorse(_acCurrentWord, currentSpeed, function() {
         playBtn.textContent = '🔊 REPLAY';
         playBtn.style.color = '#ffd700';
@@ -1463,6 +1514,30 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
     });
 
     // Submit
+    // v3.23.507: Compute star rating based on speeds used
+    function _acGetStars(word) {
+      var speeds = _acSpeedsUsed[word] || [];
+      if (speeds.length === 0) return 1; // no plays recorded, default 1
+      var usedSlow = speeds.indexOf(0.12) !== -1;
+      var usedNormal = speeds.indexOf(0.08) !== -1;
+      var usedFast = speeds.indexOf(0.05) !== -1;
+      if (usedFast && !usedNormal && !usedSlow) return 3;
+      if (!usedSlow) return 2; // used medium or fast, but not slow
+      return 1; // used slow at any point
+    }
+    function _acStarStr(n) {
+      var s = '';
+      for (var i = 0; i < n; i++) s += '⭐';
+      for (var j = n; j < 3; j++) s += '☆';
+      return s;
+    }
+    // v3.23.508: Explanation text for star rating
+    function _acStarExplain(n) {
+      if (n >= 3) return 'FAST speed only — perfect ear!';
+      if (n >= 2) return 'No SLOW used — good listening!';
+      return 'Used SLOW speed';
+    }
+
     function checkAnswer() {
       var input = document.getElementById('acInput');
       var result = document.getElementById('acResult');
@@ -1475,7 +1550,8 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
         var _hist = _acGetHistory(currentDiff, _acCurrentWord);
         // v3.23.485: Big celebration flash + sound
         _acPlaySuccessSound();
-        result.innerHTML = '<span style="color:#00ff88;font-size:12px;">✓ CORRECT!</span> <span style="color:#aaffaa;font-size:10px;">' + _acCurrentWord + '</span>';
+        var _acWordStars = _acGetStars(_acCurrentWord);
+        result.innerHTML = '<span style="color:#00ff88;font-size:12px;">✓ CORRECT!</span> <span style="color:#aaffaa;font-size:10px;">' + _acCurrentWord + '</span><br><span style="font-size:14px;letter-spacing:2px;">' + _acStarStr(_acWordStars) + '</span><br><span style="font-size:8px;color:' + (_acWordStars >= 3 ? '#ffd700' : (_acWordStars >= 2 ? '#88ffaa' : '#888')) + ';font-family:monospace;">' + _acStarExplain(_acWordStars) + '</span>';
         // Flash the play area green briefly
         var _playArea = document.getElementById('acPlayArea');
         if (_playArea) {
@@ -1502,6 +1578,12 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             if (st.morseAudioTierProgress[currentDiff].indexOf(_acCurrentWord) === -1) {
               st.morseAudioTierProgress[currentDiff].push(_acCurrentWord);
             }
+            // v3.23.507: Store star rating per word (keep best)
+            if (!st.morseAudioStars) st.morseAudioStars = {};
+            var _wordStars = _acGetStars(_acCurrentWord);
+            var _prevStars = st.morseAudioStars[_acCurrentWord] || 0;
+            if (_wordStars > _prevStars) st.morseAudioStars[_acCurrentWord] = _wordStars;
+            _acStarsCache = st.morseAudioStars; // v3.23.507: refresh cache
             _acTierProgress = st.morseAudioTierProgress;
             // Check if tier is now complete
             if (!st.morseAudioTiersCompleted) st.morseAudioTiersCompleted = [];

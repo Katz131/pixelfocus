@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.501 - Main Application Logic
+// PixelFocus v3.23.510 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -902,6 +902,7 @@ try {
     morseAudioCorrect: 0,        // v3.23.466: Total audio morse challenges correctly answered
     morseAudioTiersCompleted: [], // v3.23.477: Completed audio challenge difficulty tiers
     morseAudioTierProgress: {},  // v3.23.481: Per-word progress within each audio challenge tier
+    morseAudioStars: {},  // v3.23.507: Per-word best star rating in audio challenge
     popOutTimerOpen: false,
     gameLockGraceUntil: 0,            // v3.23.187: persisted grace period epoch
     friendChallengeLosses: 0,
@@ -1664,7 +1665,7 @@ try {
           });
           // Array fields: take the LONGEST array
           var _arrFields = [
-            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent','morseAudioWins','morseAudioCorrect','morseAudioTiersCompleted','morseAudioTierProgress',
+            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent','morseAudioWins','morseAudioCorrect','morseAudioTiersCompleted','morseAudioTierProgress','morseAudioStars',
             'projects','blockedTimes','dailyReminders','depletionMilestones',
             'houseEvents','houseEventHistory','houseFeedLog',
             'pendingChallengeInvites','friendChallengeHistory',
@@ -2262,7 +2263,7 @@ try {
           console.log('[CHALLENGE] Converting active focus_marathon → focus_minutes (post-load migration)');
           state.friendChallenge.type = 'focus_minutes';
           state.friendChallenge.label = 'Focus Minutes';
-          state.friendChallenge.desc = 'Log the most focus minutes (Double Down extends sessions past 90m!)';
+          state.friendChallenge.desc = 'Log the most total focus minutes before time runs out!';
           state.friendChallenge.tier = 'standard';
           if (!state.friendChallenge.tracking) state.friendChallenge.tracking = {};
           // Recalculate total focus minutes from sessions since challenge started
@@ -9280,7 +9281,7 @@ try {
       try {
         if (state.timerRemaining > 0) {
           state.timerRemaining--;
-          if (state.timerRemaining % 60 === 0 && state.timerRemaining > 0) SFX.tick();
+          if (state.timerRemaining % 60 === 0 && state.timerRemaining > 0 && !state.phaseTtsMuted) SFX.tick();
           // v3.23.127: Refresh quest progress every minute during focus
           // Quest progress checked by standalone 30s interval, not here
           save();
@@ -9450,6 +9451,11 @@ try {
       '  .pip-menu-btn:hover{background:rgba(78,205,196,0.15);transform:scale(1.15);text-shadow:0 0 8px rgba(78,205,196,0.6);}' +
       '  .pip-menu-btn:active{transform:scale(0.9);}' +
       '  .pip-menu-btn.active{color:#ffd700;}' +
+      '  .pip-mute-btn{flex:0 0 auto;width:28px;height:28px;border:1px solid #3a3a5a;background:linear-gradient(180deg,#1a1a2e,#12122a);color:#888;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px;border-bottom:3px solid #0a0a1a;box-shadow:0 2px 0 #0a0a1a,0 1px 6px rgba(0,0,0,0.3);transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);font-size:14px;line-height:1;user-select:none;}' +
+      '  .pip-mute-btn:hover{background:linear-gradient(180deg,#2a2a4e,#1a1a3a);color:#4ecdc4;transform:scale(1.12) translateY(-2px);box-shadow:0 0 12px rgba(78,205,196,0.3),0 4px 8px rgba(0,0,0,0.4);border-color:#4ecdc4;border-bottom-color:#1a3a3a;}' +
+      '  .pip-mute-btn:active{transform:scale(0.92) translateY(2px);border-bottom-width:1px;box-shadow:0 1px 0 #0a0a1a,0 1px 4px rgba(0,0,0,0.3);}' +
+      '  .pip-mute-btn.muted{color:#ff6b6b;border-color:#ff4444;background:linear-gradient(180deg,#2a1a1a,#1a0a0a);border-bottom-color:#1a0505;box-shadow:0 2px 0 #1a0505,0 1px 6px rgba(255,68,68,0.2);}' +
+      '  .pip-mute-btn.muted:hover{color:#ff8888;box-shadow:0 0 12px rgba(255,68,68,0.3),0 4px 8px rgba(0,0,0,0.4);}' +
       '  .dist-panel{position:relative;display:none;flex:1 1 auto;background:#0d0d1a;border:1px solid #1f1f30;border-radius:12px;margin-top:4px;padding:8px;overflow-y:auto;overflow-x:hidden;}' +
       '  .dist-panel.open{display:block;}' +
       '  .dist-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}' +
@@ -9491,6 +9497,7 @@ try {
       '    <div class="pip-label" id="pipLabel">FOCUS</div>' +
       '    <div class="pip-clock" id="pipClock">00:00</div>' +
       '  </div>' +
+      '  <button type="button" class="pip-mute-btn' + (state.phaseTtsMuted ? ' muted' : '') + '" id="pipMuteBtn" title="' + (state.phaseTtsMuted ? 'All sounds muted \u2014 click to unmute' : 'Mute all sounds') + '">' + (state.phaseTtsMuted ? '\u{1F507}' : '\u{1F50A}') + '</button>' +
       '  <button type="button" class="pip-menu-btn" id="pipMenuBtn" title="Distractions tracker">&#9776;</button>' +
       '  <div class="pip-bar"><div class="pip-bar-fill" id="pipBarFill" style="width:0%"></div></div>' +
       '</div>' +
@@ -9557,24 +9564,55 @@ try {
 
     // Toggle panel open/close + resize window
     var _panelOpen = false;
-    // v3.23.493: Dynamic height — measure actual content each time menu closes
+    // v3.23.504: Fixed closed-height calculation — measure AFTER reflow, cap tightly
     var OPEN_H = 280;
     function _pipClosedH() {
+      // v3.23.505: Phase mode needs room for task name + purple bar
+      // Phase mode: timer (~72) + phase label (~18) + task text (~20) + bar (~16) + margins
+      if (state.phaseModeEnabled && state.phases && state.phases.length > 0) return 160;
+      return 82;
+    }
+    function _pipResizeClosed() {
+      // v3.23.505: Delay resize until after browser reflows hidden panel
       try {
-        var _bh = doc.body.scrollHeight + 12;
-        if (state.phaseModeEnabled && state.phases && state.phases.length > 0) return Math.max(110, _bh);
-        return Math.max(78, _bh);
-      } catch(_) { return 78; }
+        win.resizeTo(220, _pipClosedH());
+        requestAnimationFrame(function() {
+          try {
+            var _bh = doc.body.scrollHeight + 8;
+            var _cap = state.phaseModeEnabled && state.phases && state.phases.length > 0 ? 180 : 90;
+            win.resizeTo(220, Math.min(Math.max(_bh, _pipClosedH()), _cap));
+          } catch(_){}
+        });
+      } catch(_){}
     }
 
-    menuBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+    // v3.23.503: Wire TTS mute/unmute button
+    var muteBtn = doc.getElementById('pipMuteBtn');
+    if (muteBtn) {
+      muteBtn.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
+      muteBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){}
+        state.phaseTtsMuted = !state.phaseTtsMuted;
+        muteBtn.textContent = state.phaseTtsMuted ? '\u{1F507}' : '\u{1F50A}';
+        muteBtn.title = state.phaseTtsMuted ? 'All sounds muted \u2014 click to unmute' : 'Mute all sounds';
+        muteBtn.classList.toggle('muted', state.phaseTtsMuted);
+        // Cancel any currently speaking utterance
+        if (state.phaseTtsMuted && window.speechSynthesis) {
+          try { window.speechSynthesis.cancel(); } catch(_){}
+        }
+        save();
+      });
+    }
+
+    menuBtn.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
     menuBtn.addEventListener('click', function(e) {
       e.stopPropagation();
-      try { SFX.tabSwitch(); } catch(_){}
+      try { if (!state.phaseTtsMuted) SFX.tabSwitch(); } catch(_){}
       _panelOpen = !_panelOpen;
       panel.classList.toggle('open', _panelOpen);
       menuBtn.classList.toggle('active', _panelOpen);
-      try { win.resizeTo(_panelOpen ? 260 : 220, _panelOpen ? OPEN_H : _pipClosedH()); } catch(_){}
+      if (_panelOpen) { try { win.resizeTo(260, OPEN_H); } catch(_){} } else { _pipResizeClosed(); }
     });
 
     // v3.23.335: Wire double-down buttons in PiP menu
@@ -9608,7 +9646,7 @@ try {
         // Wire click handlers
         var ddCats = ddBtns.querySelectorAll('[data-dd-min]');
         for (var i = 0; i < ddCats.length; i++) {
-          ddCats[i].addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+          ddCats[i].addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
           ddCats[i].addEventListener('click', function(e) {
             var min = parseInt(this.getAttribute('data-dd-min'), 10);
             if (min && activateDoubleDown(min)) {
@@ -9656,14 +9694,14 @@ try {
           // Left click = +1
           el.addEventListener('click', function(ev) {
             ev.stopPropagation();
-            try { SFX.click(); } catch(_){}
+            try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){}
             if (!state.sessionDistractions) state.sessionDistractions = {};
             state.sessionDistractions[catId] = (state.sessionDistractions[catId] || 0) + 1;
             save();
             _refreshPanel();
           });
           // Hover sound
-          el.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+          el.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
 
         })(catEls[j]);
       }
@@ -9675,14 +9713,14 @@ try {
           var mCatId = mel.getAttribute('data-minus-id');
           mel.addEventListener('click', function(ev) {
             ev.stopPropagation();
-            try { SFX.click(); } catch(_){}
+            try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){}
             if (!state.sessionDistractions || !state.sessionDistractions[mCatId]) return;
             state.sessionDistractions[mCatId]--;
             if (state.sessionDistractions[mCatId] <= 0) delete state.sessionDistractions[mCatId];
             save();
             _refreshPanel();
           });
-          mel.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+          mel.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
         })(minusEls[m]);
       }
 
@@ -9715,7 +9753,7 @@ try {
       // Hide the in-window overlay permanently — tooltip is now external
       if (_helpOverlay) _helpOverlay.style.display = 'none';
       _helpBtn.addEventListener('mouseenter', function() {
-        try { SFX.hover(); } catch(_){}
+        try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){}
         if (_distTipTimer) { clearTimeout(_distTipTimer); _distTipTimer = null; }
         if (_distTipWin && !_distTipWin.closed) return; // already open
         // Position to the left of the PiP window
@@ -9779,7 +9817,7 @@ try {
         }, 400);
       });
       _helpBtn.addEventListener('click', function() {
-        try { SFX.click(); } catch(_){}
+        try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){}
         // Toggle — if open, close it
         if (_distTipWin && !_distTipWin.closed) {
           _distTipWin.close();
@@ -9797,13 +9835,13 @@ try {
     var _editingId = null;
 
     // Hover sounds on toolbar
-    if (addBtn) addBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
-    if (editBtn) editBtn.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
-    if (inputOk) inputOk.addEventListener('mouseenter', function() { try { SFX.hover(); } catch(_){} });
+    if (addBtn) addBtn.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
+    if (editBtn) editBtn.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
+    if (inputOk) inputOk.addEventListener('mouseenter', function() { try { if (!state.phaseTtsMuted) SFX.hover(); } catch(_){} });
     if (addBtn && inputRow && inputEl && inputOk) {
       addBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        try { SFX.click(); } catch(_){}
+        try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){}
         _editMode = false;
         _editingId = null;
         inputEl.value = '';
@@ -9838,7 +9876,7 @@ try {
         _refreshPanel();
       }
 
-      inputOk.addEventListener('click', function(e) { e.stopPropagation(); try { SFX.click(); } catch(_){} _submitInput(); });
+      inputOk.addEventListener('click', function(e) { e.stopPropagation(); try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){} _submitInput(); });
       inputEl.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); _submitInput(); }
         if (e.key === 'Escape') { inputRow.classList.remove('open'); }
@@ -9851,7 +9889,7 @@ try {
     if (editBtn) {
       editBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        try { SFX.click(); } catch(_){}
+        try { if (!state.phaseTtsMuted) SFX.click(); } catch(_){}
         _inEditMode = !_inEditMode;
         editBtn.textContent = _inEditMode ? 'DONE' : 'EDIT';
         editBtn.style.color = _inEditMode ? '#ffd700' : '#aaa';
@@ -14554,7 +14592,7 @@ try {
   // ═══════════════════════════════════════════════════════════════════════
 
   var CHALLENGE_POOL = [
-    { id: 'focus_minutes',    label: 'Focus Minutes',       unit: 'min',      tier: 'standard', desc: 'Log the most focus minutes (Double Down extends sessions past 90m!)' },
+    { id: 'focus_minutes',    label: 'Focus Minutes',       unit: 'min',      tier: 'standard', desc: 'Log the most total focus minutes before time runs out!' },
     { id: 'session_count',    label: 'Sessions Completed',  unit: 'sessions', tier: 'low',      desc: 'Complete the most focus sessions' },
     { id: 'best_combo',       label: 'Best Combo',          unit: 'x',        tier: 'high',     desc: 'Reach the highest combo multiplier' },
     { id: 'quest_completions',label: 'Quests Completed',    unit: 'quests',   tier: 'high',     desc: 'Complete the most daily quests' },
@@ -14741,6 +14779,7 @@ try {
         // Use the friend's display name for them, not what they stored as opponentName (which is us)
         var theirName = (state.friends[fid] && state.friends[fid].displayName) || fid;
         state.friendChallenge = {
+          challengeId: ac.challengeId || (fid + '_' + Date.now()),
           type: ac.type,
           label: ac.label || ac.type,
           desc: ac.desc || '',
@@ -14773,6 +14812,7 @@ try {
       var myProgress = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
       window.ProfileSync.putSocialData(state.profileId, {
         activeChallenge: {
+          challengeId: ch.challengeId || '',
           type: ch.type,
           label: ch.label || '',
           desc: ch.desc || '',
@@ -14858,43 +14898,65 @@ try {
     if (!state.profileId || !window.ProfileSync || !window.ProfileSync.getProfile) return;
     var ch = state.friendChallenge;
     if (!ch.opponentId) return;
-    // v3.23.395: Fetch their full profile to get focusHistory, then compute
-    // their challenge progress ourselves — same formula we use for our own.
-    window.ProfileSync.getProfile(ch.opponentId).then(function(profile) {
-      if (!profile) return;
-      var newProg;
+    // v3.23.503: First verify opponent has a matching challenge targeting us.
+    // Without this, stale focusHistory from a withdrawn challenge bleeds in.
+    var _socialP = (window.ProfileSync.getSocialData) ?
+      window.ProfileSync.getSocialData(ch.opponentId) : Promise.resolve(null);
+    _socialP.then(function(social) {
+      var opponentMatchesUs = false;
+      if (social && social.activeChallenge) {
+        var ac = social.activeChallenge;
+        if (ac.opponentId === state.profileId && ac.type === ch.type) {
+          if (ch.challengeId && ac.challengeId) {
+            opponentMatchesUs = (ac.challengeId === ch.challengeId);
+          } else {
+            // Older versions without challengeId — match by startedAt within 2h
+            var startDiff = Math.abs((ac.startedAt || 0) - (ch.startedAt || 0));
+            opponentMatchesUs = (startDiff < 7200000);
+          }
+        }
+      }
       if (ch.type === 'focus_minutes' && ch.startedAt) {
-        // Compute from their focusHistory — authoritative source
-        newProg = _calcFocusMinutesFromHistory(
-          profile.focusHistory,
-          profile.dailySessionLog,
-          ch.startedAt
-        );
-        console.log('[CHALLENGE-POLL] Computed opponent focus_minutes from their focusHistory: ' + newProg);
-      } else {
-        // For non-focus_minutes challenges, fall back to their published social data
-        // (need a separate getSocialData call for that)
-        return window.ProfileSync.getSocialData(ch.opponentId).then(function(social) {
-          if (!social || !social.activeChallenge) return;
-          var ac = social.activeChallenge;
-          if (ac.opponentId !== state.profileId) return;
-          if (ac.type !== ch.type) return;
-          newProg = parseInt(ac.myProgress) || 0;
-          var oldProg = ch.opponentProgress || 0;
-          if (newProg !== oldProg) {
-            console.log('[CHALLENGE-POLL] Opponent progress updated via social data: ' + oldProg + ' -> ' + newProg);
+        if (!opponentMatchesUs) {
+          // v3.23.503: No matching challenge — don't use their focusHistory (stale data).
+          // Fall back to their published myProgress if they at least target us, else 0.
+          var fallback = 0;
+          if (social && social.activeChallenge && social.activeChallenge.opponentId === state.profileId) {
+            fallback = parseInt(social.activeChallenge.myProgress) || 0;
+          }
+          console.log('[CHALLENGE-POLL] No matching challenge on opponent, fallback=' + fallback);
+          if (fallback !== (ch.opponentProgress || 0)) {
+            ch.opponentProgress = fallback;
+            save();
+            try { renderChallengeUI(); } catch(_){}
+          }
+          return;
+        }
+        // Matching challenge confirmed — compute from their focusHistory
+        return window.ProfileSync.getProfile(ch.opponentId).then(function(profile) {
+          if (!profile) return;
+          var newProg = _calcFocusMinutesFromHistory(
+            profile.focusHistory, profile.dailySessionLog, ch.startedAt
+          );
+          console.log('[CHALLENGE-POLL] Computed opponent focus_minutes from focusHistory: ' + newProg);
+          if (newProg !== (ch.opponentProgress || 0)) {
             ch.opponentProgress = newProg;
             save();
             try { renderChallengeUI(); } catch(_){}
           }
         });
-      }
-      var oldProg = ch.opponentProgress || 0;
-      if (newProg !== oldProg) {
-        console.log('[CHALLENGE-POLL] Opponent progress updated: ' + oldProg + ' -> ' + newProg);
-        ch.opponentProgress = newProg;
-        save();
-        try { renderChallengeUI(); } catch(_){}
+      } else {
+        // Non-focus_minutes: use published social data
+        if (!social || !social.activeChallenge) return;
+        var ac = social.activeChallenge;
+        if (ac.opponentId !== state.profileId || ac.type !== ch.type) return;
+        var newProg = parseInt(ac.myProgress) || 0;
+        if (newProg !== (ch.opponentProgress || 0)) {
+          console.log('[CHALLENGE-POLL] Opponent progress via social: ' + newProg);
+          ch.opponentProgress = newProg;
+          save();
+          try { renderChallengeUI(); } catch(_){}
+        }
       }
     }).catch(function(e){ console.log('[CHALLENGE-POLL] Error: ' + e); });
   }
@@ -14904,6 +14966,24 @@ try {
     var ch = state.friendChallenge;
     if (Date.now() >= ch.endsAt) {
       _resolveChallenge();
+      return;
+    }
+    // v3.23.502: Auto-end unwinnable challenges — if remaining time (in minutes)
+    // is less than the opponent's lead, catching up is mathematically impossible
+    if (ch.startedAt && Date.now() >= ch.startedAt && ch.type === 'focus_minutes') {
+      var myProg = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
+      // Recalculate from focusHistory for accuracy
+      if (typeof _calcFocusMinutesSince === 'function') {
+        myProg = _calcFocusMinutesSince(ch.startedAt);
+      }
+      var theirProg = ch.opponentProgress || 0;
+      var remainingMin = Math.max(0, ch.endsAt - Date.now()) / 60000;
+      var deficit = theirProg - myProg;
+      // If losing and remaining minutes < deficit, it's unwinnable
+      if (deficit > 0 && remainingMin < deficit) {
+        console.log('[CHALLENGE] Auto-ending unwinnable challenge: deficit=' + deficit.toFixed(1) + ' remainingMin=' + remainingMin.toFixed(1));
+        _resolveChallenge();
+      }
     }
   }
 
@@ -15128,6 +15208,7 @@ try {
         console.log('[CHALLENGE] delivery confirmed for ' + displayName);
         try {
           state.friendChallenge = {
+            challengeId: state.profileId + '_' + Date.now(),
             type: pick.id,
             label: pick.label,
             desc: pick.desc,
@@ -15182,6 +15263,7 @@ try {
     // v3.23.301: Clear all pending invites when accepting one
     state.pendingChallengeInvites = [];
     state.friendChallenge = {
+      challengeId: fromId + '_' + Date.now(),
       type: challengeType,
       label: challengeLabel,
       desc: challengeDesc,
@@ -15254,6 +15336,8 @@ try {
     // 1. Clear state
     state.friendChallenge = null;
     save();
+    // v3.23.503: Explicitly clear challenge from Firestore so opponent stops seeing stale data
+    try { _publishChallengeToFirestore(); } catch(_){}
     // 2. Show inline confirmation
     try {
       var activeCard = document.getElementById('challengeActiveCard');
@@ -15344,14 +15428,16 @@ try {
         var remaining = Math.max(0, ch.endsAt - Date.now());
         var hrs = Math.floor(remaining / 3600000);
         var mins = Math.floor((remaining % 3600000) / 60000);
-        var timeStr = hrs + 'h ' + mins + 'm';
+        var secs = Math.floor((remaining % 60000) / 1000);
+        var timeStr = hrs + 'h ' + mins + 'm ' + secs + 's';
         // v3.23.491: Show countdown to start if challenge hasn't begun yet
         var _chNotStarted = ch.status === 'active' && ch.startedAt && Date.now() < ch.startedAt;
         if (_chNotStarted) {
           var _startRemain = Math.max(0, ch.startedAt - Date.now());
           var _startHrs = Math.floor(_startRemain / 3600000);
           var _startMins = Math.floor((_startRemain % 3600000) / 60000);
-          timeStr = 'starts in ' + _startHrs + 'h ' + _startMins + 'm';
+          var _startSecs = Math.floor((_startRemain % 60000) / 1000);
+          timeStr = 'starts in ' + _startHrs + 'h ' + _startMins + 'm ' + _startSecs + 's';
         }
         var statusLabel = ch.status === 'pending' ? '<span style="color:#ffa500;font-size:7px;">WAITING FOR RESPONSE...</span>'
           : _chNotStarted ? '<span style="color:#4ecdc4;font-size:7px;">STARTS AT MIDNIGHT &mdash; tracking begins then!</span>' : '';
@@ -15361,10 +15447,10 @@ try {
             '<span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4ecdc4;">' + escHtml(ch.label || ch.type) + '</span>' +
             '<span style="font-size:9px;color:#ffa500;">' + timeStr + ' left</span>' +
           '</div>' +
-          (ch.startedAt ? '<div style="font-size:7px;color:#888;margin-bottom:4px;">Started ' + new Date(ch.startedAt).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
+          (ch.startedAt ? '<div style="font-size:7px;color:#888;margin-bottom:4px;">Started ' + new Date(ch.startedAt).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) + ' at ' + new Date(ch.startedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit',hour12:true}) + '</div>' : '') +
           statusLabel +
           '<div style="font-size:9px;color:var(--text-dim);margin-bottom:8px;">' + escHtml(ch.desc || '') + '</div>' +
-          ((ch.type === 'focus_minutes' || ch.type === 'focus_marathon') ? '<div style="font-size:8px;color:#ffd700;margin-bottom:6px;cursor:help;" title="Use the ☰ hamburger menu in the pop-out timer to Double Down — extend your session past the 90-min cap. Finish the extension for a 1.5x bonus on extension earnings, but fail and you lose 50% of session earnings.">&#9776; TIP: Double Down in the pop-out timer to break the 90m cap!</div>' : '') +
+          ((ch.type === 'focus_marathon') ? '<div style="font-size:8px;color:#ffd700;margin-bottom:6px;cursor:help;" title="Use the ☰ hamburger menu in the pop-out timer to Double Down — extend your session past the 90-min cap. Finish the extension for a 1.5x bonus on extension earnings, but fail and you lose 50% of session earnings.">&#9776; TIP: Double Down in the pop-out timer to break the 90m cap!</div>' : '') +
           (function() {
             // v3.23.333: Stacked bars with shared labeled axis — adapts to challenge type
             var maxVal = Math.max(myProg, theirProg, 1);
@@ -17923,7 +18009,7 @@ try {
       var ttsMuteBtn = document.getElementById('phaseTtsMute');
       if (ttsMuteBtn) {
         if (state.phaseTtsMuted) {
-          ttsMuteBtn.innerHTML = '&#128263; UNMUTE';
+          ttsMuteBtn.innerHTML = '&#128263; UNMUTE ALL';
           ttsMuteBtn.style.borderColor = 'rgba(255,107,157,0.4)';
           ttsMuteBtn.style.color = 'var(--accent2)';
           ttsMuteBtn.style.background = 'rgba(255,107,157,0.1)';
@@ -17931,12 +18017,12 @@ try {
         ttsMuteBtn.addEventListener('click', function() {
           state.phaseTtsMuted = !state.phaseTtsMuted;
           if (state.phaseTtsMuted) {
-            ttsMuteBtn.innerHTML = '&#128263; UNMUTE';
+            ttsMuteBtn.innerHTML = '&#128263; UNMUTE ALL';
             ttsMuteBtn.style.borderColor = 'rgba(255,107,157,0.4)';
             ttsMuteBtn.style.color = 'var(--accent2)';
             ttsMuteBtn.style.background = 'rgba(255,107,157,0.1)';
           } else {
-            ttsMuteBtn.innerHTML = '&#128264; MUTE';
+            ttsMuteBtn.innerHTML = '&#128264; MUTE ALL';
             ttsMuteBtn.style.borderColor = 'rgba(255,255,255,0.15)';
             ttsMuteBtn.style.color = 'var(--text-dim)';
             ttsMuteBtn.style.background = 'rgba(255,255,255,0.05)';
