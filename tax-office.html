@@ -197,40 +197,45 @@ body {
   margin-top: 12px;
 }
 
+/* v3.23.526: All buttons — Duolingo 3D spec */
 .btn {
   font-family: 'Press Start 2P', monospace;
   font-size: 9px;
   padding: 10px 20px;
   border: 2px solid;
+  border-bottom: 4px solid;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
-.btn:hover { transform: translateY(-2px); }
-.btn:active { transform: translateY(1px); }
+.btn:hover { transform: scale(1.06) translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-bottom-width: 5px; filter: brightness(1.2); }
+.btn:active { transform: scale(0.95) translateY(2px); border-bottom-width: 2px; box-shadow: none; filter: brightness(0.95); }
 
 .btn-pay {
   background: linear-gradient(135deg, #1a3a2a, #0a2a1a);
   border-color: var(--green);
+  border-bottom-color: #2a8a7a;
   color: var(--green);
 }
 .btn-pay:hover { box-shadow: 0 4px 12px rgba(78,205,196,0.3); background: linear-gradient(135deg, #1a4a3a, #0a3a2a); }
-.btn-pay:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+.btn-pay:disabled { opacity: 0.3; cursor: not-allowed; transform: none; border-bottom-width: 4px; filter: none; }
 
 .btn-appeal {
   background: linear-gradient(135deg, #2a2515, #1a1a10);
   border-color: var(--accent);
+  border-bottom-color: var(--accent-dim);
   color: var(--accent);
 }
 .btn-appeal:hover { box-shadow: 0 4px 12px var(--accent-glow); }
-.btn-appeal:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+.btn-appeal:disabled { opacity: 0.3; cursor: not-allowed; transform: none; border-bottom-width: 4px; filter: none; }
 
 .btn-payall {
   background: linear-gradient(135deg, #1a3a2a, #0a2a1a);
   border-color: var(--green);
+  border-bottom-color: #2a8a7a;
   color: var(--green);
   width: 100%;
   padding: 12px;
@@ -240,6 +245,7 @@ body {
 .btn-donate {
   background: linear-gradient(135deg, #1a1530, #0a0a20);
   border-color: #9d8eff;
+  border-bottom-color: #6a5abb;
   color: #9d8eff;
 }
 .btn-donate:hover { box-shadow: 0 4px 12px rgba(157,142,255,0.3); }
@@ -348,15 +354,17 @@ body {
   padding: 10px 20px;
   background: var(--surface);
   border: 2px solid var(--accent-dim);
+  border-bottom: 4px solid rgba(138,110,47,0.6);
   border-radius: 8px;
   color: var(--accent);
   font-family: 'Press Start 2P', monospace;
   font-size: 9px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.back-btn:hover { border-color: var(--accent); background: var(--surface2); transform: translateY(-2px); box-shadow: 0 4px 12px var(--accent-glow); }
+.back-btn:hover { border-color: var(--accent); background: var(--surface2); transform: scale(1.06) translateY(-2px); box-shadow: 0 4px 12px var(--accent-glow); border-bottom-width: 5px; filter: brightness(1.2); }
+.back-btn:active { transform: scale(0.95) translateY(2px); border-bottom-width: 2px; box-shadow: none; }
 
 /* Dispatch toast */
 .dispatch-toast {
@@ -412,7 +420,7 @@ body {
 
 .no-bills-icon { font-size: 32px; margin-bottom: 8px; }
 
-/* Eugene Mercer */
+/* Jedediah Strutt */
 .eugene-hire { text-align:center; padding:16px; }
 .eugene-hire-desc { font-size:12px; color:var(--text-dim); margin:8px 0 12px; line-height:1.6; }
 .eugene-lesson { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:12px 14px; margin-bottom:8px; }
@@ -426,9 +434,9 @@ body {
 .eugene-lesson-locked { opacity:0.35; pointer-events:none; }
 .eugene-retire { background:var(--surface2); border:1px solid var(--accent-dim); border-radius:6px; padding:14px; margin-top:12px; }
 .eugene-retire p { font-size:12px; color:var(--text-dim); line-height:1.6; margin-bottom:8px; }
-.btn-hire { background:linear-gradient(135deg,#1a2a15,#0a1a0a); border-color:var(--green); color:var(--green); }
+.btn-hire { background:linear-gradient(135deg,#1a2a15,#0a1a0a); border-color:var(--green); border-bottom-color:#2a8a7a; color:var(--green); }
 .btn-hire:hover { box-shadow:0 4px 12px rgba(78,205,196,0.3); }
-.btn-hire:disabled { opacity:0.3; cursor:not-allowed; transform:none; }
+.btn-hire:disabled { opacity:0.3; cursor:not-allowed; transform:none; border-bottom-width:4px; filter:none; }
 
 </style>
 </head>
@@ -546,33 +554,12 @@ body {
     </div>
   </div>
 
-  <!-- 6. Eugene Mercer — Tax Advisor -->
+  <!-- 6. Jedediah Strutt — Tax Advisor -->
   <div class="panel" id="eugenePanel" style="display:none;">
-    <div class="panel-title" title="Eugene Mercer is your tax advisor. Purchase lessons to learn how the tax system works and unlock real benefits that reduce your tax burden.">&#x1F4BC; EUGENE MERCER &mdash; TAX ADVISOR</div>
+    <div class="panel-title" title="Jedediah Strutt is your tax advisor. Purchase lessons to learn how the tax system works and unlock real benefits that reduce your tax burden.">&#x1F4BC; JEDEDIAH STRUTT &mdash; TAX ADVISOR</div>
     <div id="eugeneContent"></div>
   </div>
 
   <!-- 7. Treasury Report (Flavor) -->
   <div class="panel">
-    <div class="panel-title" title="A breakdown of where your tax contributions are allegedly allocated. The Department makes no guarantees about accuracy.">&#x1F3E6; TREASURY REPORT</div>
-    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">Where your tax contributions are allegedly allocated:</div>
-    <div id="treasuryContent"></div>
-  </div>
-
-  <!-- Dispatch area -->
-  <div style="padding:0 0 16px;">
-    <button class="back-btn" id="backBtn" title="Return to the main extension.">&larr; BACK</button>
-  </div>
-</div>
-
-<div class="dispatch-toast" id="dispatchToast"></div>
-
-<script src="lockout-guard.js"></script>
-<script src="tooltip.js"></script>
-<script src="tax-office-window.js"></script>
-<script src="btn-sounds.js"></script>
-<script src="tutorial-data.js"></script>
-<script src="tutorial-ui.js"></script>
-<script src="nav-bar.js"></script>
-</body>
-</html>
+    <div class="panel-title" title="A breakdown of where your tax contributi

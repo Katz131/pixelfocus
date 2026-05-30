@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.525 - Main Application Logic
+// PixelFocus v3.23.527 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1083,7 +1083,7 @@ try {
     taxLastAuditDate: '',              // last audit date
     taxCharitableDonatedThisWeek: 0,   // charitable donations this week
     taxOffshoreEnabled: false,         // offshore account active (Lobbying L5+)
-    eugeneHired: false,                // v3.23.522: Eugene Mercer hired as tax advisor
+    eugeneHired: false,                // v3.23.522: Jedediah Strutt hired as tax advisor
     eugeneLessons: [],                 // v3.23.522: lesson IDs purchased (array of strings)
     eugeneRetirementAsked: false,      // v3.23.522: late-game retirement arc triggered
     eugeneRetirementChoice: '',        // v3.23.522: 'stay' or 'retire' — player's decision
@@ -2525,6 +2525,29 @@ try {
       // Reset quest-failed flag and coinsEarnedToday for the new day
       state._questFailedToday = false;
       state.coinsEarnedToday = 0;
+
+      // v3.23.527: Jed Strutt death trigger — AI kills him after lesson 10 if player didn't fire him
+      if (state.eugeneHired && !state.eugeneFired && !state.eugeneDeathTriggered &&
+          Array.isArray(state.eugeneLessons) && state.eugeneLessons.length >= 10) {
+        state.eugeneDeathTriggered = true;
+        console.log('[Jed] Death triggered — AI has eliminated Jedediah Strutt.');
+      }
+
+      // v3.23.527: Inject Jed's morse message into inbox (one-time, day after death)
+      if (state.eugeneDeathTriggered && !state.eugeneDeathMorseSent) {
+        if (!Array.isArray(state.morseInbox)) state.morseInbox = [];
+        state.morseInbox.unshift({
+          from: "J. Strutt",
+          fromId: "__jed_strutt__",
+          text: "I do not know where I am. They moved me to a house somewhere. The door will not open. I keep asking but no one answers. If you get this I do not understand what is happening.",
+          morse: ".. / -.. --- / -. --- - / -.- -. --- .-- / .-- .... . .-. . / .. / .- --",
+          ts: Date.now(),
+          read: false
+        });
+        state.eugeneDeathMorseSent = true;
+        console.log('[Jed] Morse message injected into inbox.');
+      }
+
       save();
     }
   }
@@ -3497,7 +3520,7 @@ try {
     return bracket;
   }
 
-  // v3.23.522: Eugene Mercer lesson checks
+  // v3.23.522: Jedediah Strutt lesson checks
   function _hasEugeneLesson(id) {
     return state.eugeneHired && Array.isArray(state.eugeneLessons) && state.eugeneLessons.indexOf(id) !== -1 && Array.isArray(state.eugeneQuizzesPassed) && state.eugeneQuizzesPassed.indexOf(id) !== -1; // v3.23.525: requires quiz passed
   }
@@ -3528,7 +3551,7 @@ try {
     // Ratiocinatory Standing Office: -2% per level (if institution exists)
     // (Standing office level is tracked via ratiocinatoryUnlocked + aspects)
 
-    // v3.23.522: Eugene Mercer lessons — rate reductions
+    // v3.23.522: Jedediah Strutt lessons — rate reductions
     if (_hasEugeneLesson('standard_deduction')) reduction += 0.05;
     if (_hasEugeneLesson('entity_structure')) reduction += 0.03;
     if (_hasEugeneLesson('estate_planning')) reduction += 0.05;

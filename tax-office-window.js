@@ -784,7 +784,7 @@
     });
   }
 
-  // ── Eugene Mercer — Tax Advisor ──
+  // ── Jedediah Strutt — Tax Advisor ──
 
   var EUGENE_HIRE_COST = 5000;
 
@@ -934,10 +934,10 @@
   // v3.23.524: AI management memos — escalating pressure to let Eugene go
   var AI_MEMOS = [
     '',
-    'A note from Automated Management: "We have reviewed Mr. Mercer\'s consulting arrangement. The department\'s analytics suite can provide equivalent guidance at reduced overhead."',
-    'A note from Automated Management: "Mr. Mercer\'s methods predate several of our optimization protocols. His continued retention represents an inefficiency we are prepared to address."',
-    'A note from Automated Management: "We recommend transitioning Mr. Mercer\'s responsibilities to the automated advisory module. His services, while once valuable, are no longer aligned with departmental direction."',
-    'A note from Automated Management: "This is a final advisory. Mr. Mercer\'s position has been flagged for immediate review. We strongly recommend termination of his contract before the next billing cycle."'
+    'A note from Automated Management: "We have reviewed Mr. Strutt\'s consulting arrangement. The department\'s analytics suite can provide equivalent guidance at reduced overhead."',
+    'A note from Automated Management: "Mr. Strutt\'s methods predate several of our optimization protocols. His continued retention represents an inefficiency we are prepared to address."',
+    'A note from Automated Management: "We recommend transitioning Mr. Strutt\'s responsibilities to the automated advisory module. His services, while once valuable, are no longer aligned with departmental direction."',
+    'A note from Automated Management: "This is a final advisory. Mr. Strutt\'s position has been flagged for immediate review. We strongly recommend termination of his contract before the next billing cycle."'
   ];
 
   function _getAiMemo() {
@@ -953,7 +953,7 @@
     state.eugeneFired = true;
     saveState();
     renderAll();
-    showToast('Eugene Mercer has been released from his contract. He and his wife left for Aspen this morning.');
+    showToast('Jedediah Strutt has been released from his contract. He and his wife left for Aspen this morning.');
   }
 
   // v3.23.525: Eugene vitals — health indicators that worsen with lessons
@@ -1021,10 +1021,10 @@
     if (!state.eugeneHired) {
       var canAfford = (state.coins || 0) >= EUGENE_HIRE_COST;
       var html = '<div class="eugene-hire">';
-      html += '<div style="font-size:14px;margin-bottom:4px;">Eugene Mercer</div>';
+      html += '<div style="font-size:14px;margin-bottom:4px;">Jedediah Strutt</div>';
       html += '<div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;">Certified Public Accountant</div>';
       html += '<div class="eugene-hire-desc">Retainer fee covers ongoing consultation. Eugene specializes in U.S. federal tax law and will walk you through how the system actually works — each lesson unlocks a mechanical advantage that directly reduces your weekly tax burden.</div>';
-      html += '<button class="btn btn-hire" id="eugeneHireBtn"' + (canAfford ? '' : ' disabled') + ' title="' + (canAfford ? 'Hire Eugene Mercer as your tax advisor for ' + fmt(EUGENE_HIRE_COST) + '.' : 'Insufficient funds. You need ' + fmt(EUGENE_HIRE_COST) + '.') + '">HIRE — ' + fmt(EUGENE_HIRE_COST) + '</button>';
+      html += '<button class="btn btn-hire" id="eugeneHireBtn"' + (canAfford ? '' : ' disabled') + ' title="' + (canAfford ? 'Hire Jedediah Strutt as your tax advisor for ' + fmt(EUGENE_HIRE_COST) + '.' : 'Insufficient funds. You need ' + fmt(EUGENE_HIRE_COST) + '.') + '">HIRE — ' + fmt(EUGENE_HIRE_COST) + '</button>';
       html += '</div>';
       container.innerHTML = html;
       return;
@@ -1062,17 +1062,21 @@
     var _aiMemo = _getAiMemo();
     if (_aiMemo) {
       html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:8px;padding:6px 8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.15);border-radius:4px;line-height:1.5;\">" + _aiMemo + "</div>";
-      html += "<button class=\"btn\" id=\"eugeneFireBtn\" style=\"background:var(--danger);color:#fff;font-size:9px;margin-bottom:14px;padding:4px 12px;\" title=\"Terminate Eugene Mercer&apos;s contract. His lessons remain but no new ones can be purchased.\">TERMINATE CONTRACT</button>";
+      html += "<button class=\"btn\" id=\"eugeneFireBtn\" style=\"background:var(--danger);color:#fff;font-size:9px;margin-bottom:14px;padding:4px 12px;\" title=\"Terminate Jedediah Strutt&apos;s contract. His lessons remain but no new ones can be purchased.\">TERMINATE CONTRACT</button>";
     }
 
     // Fired state
     if (state.eugeneFired) {
-      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.12);border-radius:4px;font-style:italic;\">Eugene Mercer has been released from his contract. He and his wife left for Aspen this morning.</div>";
+      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.12);border-radius:4px;font-style:italic;\">Jedediah Strutt has been released from his contract. He and his wife left for Aspen this morning.</div>";
     }
 
-    // Death state
+    // Death state — AI's announcement
     if (state.eugeneDeathTriggered) {
-      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(100,100,100,0.1);border:1px solid rgba(100,100,100,0.2);border-radius:4px;font-style:italic;\">Eugene Mercer is no longer available.</div>";
+      html += "<div style=\"margin-bottom:14px;padding:12px;background:rgba(100,100,100,0.08);border:1px solid rgba(100,100,100,0.15);border-radius:6px;\">";
+      html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:6px;font-family:monospace;text-transform:uppercase;letter-spacing:1px;\">Memo from AI Management</div>";
+      html += "<div style=\"font-size:12px;color:var(--text);line-height:1.6;font-style:italic;\">\"It is with regret that we inform you of the passing of Jedediah Strutt. Mr. Strutt died in a skiing accident near Aspen, Colorado on Saturday. Services will not be held. His accounts have been transferred to automated management.\"</div>";
+      html += "</div>";
+      html += "<div style=\"font-size:10px;color:var(--warning);padding:6px 8px;background:rgba(255,136,68,0.06);border:1px solid rgba(255,136,68,0.15);border-radius:4px;margin-bottom:14px;\">You have an unread morse transmission.</div>";
     }
 
     // Render each lesson
@@ -1097,11 +1101,11 @@
 
       if (isDone && isPassed) {
         // Purchased + passed: show teaching quote + benefit
-        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Eugene Mercer, CPA</div></div>";
+        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Jedediah Strutt, CPA</div></div>";
         html += "<div class=\"eugene-lesson-benefit\">" + lesson.benefit + "</div>";
       } else if (isDone && !isPassed) {
         // Purchased but NOT passed: show quiz
-        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Eugene Mercer, CPA</div></div>";
+        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Jedediah Strutt, CPA</div></div>";
         // Quiz section
         var quizData = window.EUGENE_QUIZZES ? window.EUGENE_QUIZZES[lesson.id] : null;
         if (quizData) {
@@ -1130,7 +1134,7 @@
     if (owned.length >= 10 && !state.eugeneRetirementChoice && !state.eugeneFired && !state.eugeneDeathTriggered) {
       html += "<div class=\"eugene-retire\">";
       html += "<p>Eugene has submitted a request to the board. He and his wife would like to relocate to Aspen \u2014 where they first met \u2014 and he\u2019s asking to be released from his contract.</p>";
-      html += "<p>A memo from AI Management has been appended to the request: <em>\u201CThe department\u2019s preference is to retain Mr. Mercer. His institutional knowledge is not easily replaced. We recommend denial.\u201D</em></p>";
+      html += "<p>A memo from AI Management has been appended to the request: <em>\u201CThe department\u2019s preference is to retain Mr. Strutt. His institutional knowledge is not easily replaced. We recommend denial.\u201D</em></p>";
       html += "<div style=\"display:flex;gap:8px;margin-top:8px;\">";
       html += "<button class=\"btn btn-hire\" id=\"eugeneLetRetire\" title=\"Let Eugene retire to Aspen with his wife. You keep all purchased lessons.\">LET HIM GO</button>";
       html += "<button class=\"btn btn-appeal\" id=\"eugeneKeep\" title=\"Keep Eugene on staff. He stays, but he wanted to leave.\">KEEP HIM ON</button>";
@@ -1157,7 +1161,7 @@
         // Before hiring: hide all stats, show "hire Eugene" placeholder
         el.textContent = '???';
         el.style.filter = 'blur(4px)';
-        parentItem.title = 'Hire Eugene Mercer to reveal this information.';
+        parentItem.title = 'Hire Jedediah Strutt to reveal this information.';
       } else if (_eugeneShouldReveal(statIds[i])) {
         el.style.filter = 'none';
         parentItem.title = '';
@@ -1186,7 +1190,7 @@
     if (!state.eugeneLessons) state.eugeneLessons = [];
     saveState();
     renderAll();
-    showToast('Eugene Mercer has been retained. His first consultation is available.');
+    showToast('Jedediah Strutt has been retained. His first consultation is available.');
   }
 
   function handleBuyLesson(lessonId, cost) {
@@ -1198,7 +1202,7 @@
     }
     saveState();
     renderAll();
-    showToast('Lesson purchased. Eugene\u2019s notes have been filed.');
+    showToast('Lesson purchased. Jed\u2019s notes have been filed.');
   }
 
   function handleEugeneRetirement(choice) {
@@ -1206,9 +1210,9 @@
     saveState();
     renderAll();
     if (choice === 'retire') {
-      showToast('Eugene Mercer has been released from his contract. All lessons remain in effect.');
+      showToast('Jedediah Strutt has been released from his contract. All lessons remain in effect.');
     } else {
-      showToast('The board has denied Eugene\u2019s request. He remains on staff.');
+      showToast('The board has denied Jed\u2019s request. He remains on staff.');
     }
   }
 

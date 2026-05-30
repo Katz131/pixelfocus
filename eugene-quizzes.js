@@ -1,4 +1,4 @@
-// eugene-quizzes.js — v3.23.525: Quiz data for Eugene Mercer lessons
+// eugene-quizzes.js — v3.23.525: Quiz data for Jedediah Strutt lessons
 // Loaded by tax-office.html. Separate file to avoid escaping nightmares.
 window.EUGENE_QUIZZES = {
   filing_basics: {
