@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  TAX OFFICE — Department of Revenue for Todo of the Loom
+  =============================================================================
+  Full browser tab, NOT a Chrome extension popup. Opened via chrome.tabs.create.
+  Reads/writes chrome.storage.local (pixelFocusState) like factory.js.
+
+  The Tax Office is where the player:
+    - Views current and outstanding tax bills
+    - Pays bills (PAY / PAY ALL)
+    - Files appeals on current bills
+    - Makes charitable donations for deductions
+    - Views tax status, brackets, and effective rate
+    - Checks audit history and risk level
+    - Reads treasury report flavor text
+
+  Unlocked automatically at lifetimeCoins >= 50,000.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo of the Loom &middot; Tax Office</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Pixel-art themed scrollbars */
+*::-webkit-scrollbar { width:10px; height:10px; }
+*::-webkit-scrollbar-track { background:#0f0f1a; border-left:1px solid #2a2218; }
+*::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#c9a84c,#8a6e2f); border:2px solid #0f0f1a; border-radius:0; box-shadow:inset 1px 1px 0 rgba(201,168,76,0.3),inset -1px -1px 0 rgba(0,0,0,0.3); }
+*::-webkit-scrollbar-thumb:hover { background:linear-gradient(180deg,#dab85c,#c9a84c); border-color:#1a1510; box-shadow:inset 1px 1px 0 rgba(201,168,76,0.5),inset -1px -1px 0 rgba(0,0,0,0.2),0 0 8px rgba(201,168,76,0.3); }
+*::-webkit-scrollbar-thumb:active { background:linear-gradient(180deg,#8a6e2f,#6a5020); box-shadow:inset -1px -1px 0 rgba(201,168,76,0.2),inset 1px 1px 0 rgba(0,0,0,0.4); }
+*::-webkit-scrollbar-corner { background:#0f0f1a; }
+
+:root {
+  --bg: #0a0a0e;
+  --surface: #151510;
+  --surface2: #1f1d15;
+  --accent: #c9a84c;
+  --accent-dim: #8a6e2f;
+  --accent-glow: rgba(201,168,76,0.2);
+  --green: #4ecdc4;
+  --gold: #ffd700;
+  --gold-dim: #b8860b;
+  --danger: #ff4444;
+  --warning: #ff8844;
+  --text: #d8d0b8;
+  --text-dim: #6a6050;
+  --border: #2a2518;
+  --paid: #4ecdc4;
+  --unpaid: #ffd700;
+  --overdue: #ff8844;
+  --evaded: #ff4444;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+.header {
+  text-align: center;
+  padding: 20px 16px 16px;
+  border-bottom: 2px solid var(--accent-dim);
+  background: linear-gradient(180deg, #1a1510 0%, var(--bg) 100%);
+  position: relative;
+}
+
+.header-seal {
+  font-size: 32px;
+  margin-bottom: 4px;
+}
+
+.header h1 {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  color: var(--accent);
+  letter-spacing: 3px;
+  text-shadow: 0 0 20px var(--accent-glow);
+}
+
+.header-subtitle {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.clock {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  color: var(--accent);
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.balance-strip {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.balance-strip span { color: var(--text-dim); }
+.balance-strip .val { color: var(--accent); font-weight: bold; }
+.balance-strip .val-bad { color: var(--danger); font-weight: bold; }
+
+.container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Current Bill Card */
+.bill-card {
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.bill-card.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.bill-amount {
+  font-family: 'Courier New', monospace;
+  font-size: 28px;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.bill-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.bill-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.bill-status.unpaid { background: rgba(255,215,0,0.15); color: var(--unpaid); border: 1px solid var(--unpaid); }
+.bill-status.overdue { background: rgba(255,136,68,0.15); color: var(--overdue); border: 1px solid var(--overdue); }
+.bill-status.evaded { background: rgba(255,68,68,0.15); color: var(--evaded); border: 1px solid var(--evaded); animation: pulse 1.5s infinite; }
+.bill-status.paid { background: rgba(78,205,196,0.15); color: var(--paid); border: 1px solid var(--paid); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.bill-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 10px 20px;
+  border: 2px solid;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(1px); }
+
+.btn-pay {
+  background: linear-gradient(135deg, #1a3a2a, #0a2a1a);
+  border-color: var(--green);
+  color: var(--green);
+}
+.btn-pay:hover { box-shadow: 0 4px 12px rgba(78,205,196,0.3); background: linear-gradient(135deg, #1a4a3a, #0a3a2a); }
+.btn-pay:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+.btn-appeal {
+  background: linear-gradient(135deg, #2a2515, #1a1a10);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-appeal:hover { box-shadow: 0 4px 12px var(--accent-glow); }
+.btn-appeal:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+.btn-payall {
+  background: linear-gradient(135deg, #1a3a2a, #0a2a1a);
+  border-color: var(--green);
+  color: var(--green);
+  width: 100%;
+  padding: 12px;
+  font-size: 10px;
+}
+
+.btn-donate {
+  background: linear-gradient(135deg, #1a1530, #0a0a20);
+  border-color: #9d8eff;
+  color: #9d8eff;
+}
+.btn-donate:hover { box-shadow: 0 4px 12px rgba(157,142,255,0.3); }
+
+/* Status Panel */
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.status-item {
+  background: var(--surface2);
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.status-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.status-value {
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.status-value.good { color: var(--green); }
+.status-value.warn { color: var(--warning); }
+.status-value.bad { color: var(--danger); }
+
+/* Evasion meter */
+.evasion-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.evasion-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s, background 0.3s;
+}
+
+/* Audit history */
+.audit-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+/* Treasury flavor */
+.treasury-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 1px dotted rgba(106,96,80,0.3);
+}
+
+.treasury-item:last-child { border-bottom: none; }
+.treasury-pct { color: var(--accent-dim); font-family: 'Courier New', monospace; }
+
+/* Donation input */
+.donate-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.donate-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  outline: none;
+}
+
+.donate-input:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+
+/* Back button */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border: 2px solid var(--accent-dim);
+  border-radius: 8px;
+  color: var(--accent);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.back-btn:hover { border-color: var(--accent); background: var(--surface2); transform: translateY(-2px); box-shadow: 0 4px 12px var(--accent-glow); }
+
+/* Dispatch toast */
+.dispatch-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: rgba(26,21,16,0.95);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  padding: 12px 20px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: italic;
+  max-width: 500px;
+  text-align: center;
+  z-index: 1000;
+  opacity: 0;
+  transition: transform 0.5s, opacity 0.5s;
+}
+
+.dispatch-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* Loophole list */
+.loophole-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(78,205,196,0.1);
+  border: 1px solid rgba(78,205,196,0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--green);
+  margin: 2px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* No bills */
+.no-bills {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-dim);
+}
+
+.no-bills-icon { font-size: 32px; margin-bottom: 8px; }
+
+/* Eugene Mercer */
+.eugene-hire { text-align:center; padding:16px; }
+.eugene-hire-desc { font-size:12px; color:var(--text-dim); margin:8px 0 12px; line-height:1.6; }
+.eugene-lesson { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:12px 14px; margin-bottom:8px; }
+.eugene-lesson.purchased { border-color:var(--green); opacity:0.85; }
+.eugene-lesson-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.eugene-lesson-title { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--accent); }
+.eugene-lesson-cost { font-family:'Courier New',monospace; font-size:12px; color:var(--gold); }
+.eugene-lesson-cost.owned { color:var(--green); }
+.eugene-lesson-body { font-size:12px; color:var(--text); line-height:1.6; margin-bottom:8px; }
+.eugene-lesson-benefit { font-size:11px; color:var(--green); font-style:italic; }
+.eugene-lesson-locked { opacity:0.35; pointer-events:none; }
+.eugene-retire { background:var(--surface2); border:1px solid var(--accent-dim); border-radius:6px; padding:14px; margin-top:12px; }
+.eugene-retire p { font-size:12px; color:var(--text-dim); line-height:1.6; margin-bottom:8px; }
+.btn-hire { background:linear-gradient(135deg,#1a2a15,#0a1a0a); border-color:var(--green); color:var(--green); }
+.btn-hire:hover { box-shadow:0 4px 12px rgba(78,205,196,0.3); }
+.btn-hire:disabled { opacity:0.3; cursor:not-allowed; transform:none; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-seal" title="The Department of Revenue seal. We see everything.">&#x1F3DB;</div>
+  <h1 title="The Tax Office processes weekly bills based on your lifetime earnings bracket. Bills are generated at day rollover once per week. Pay on time or face interest, evasion penalties, and audits.">DEPARTMENT OF REVENUE</h1>
+  <div class="header-subtitle">Est. whenever your income warranted our attention</div>
+  <div class="clock" id="clock" title="Current local time. The Department is always watching."></div>
+</div>
+
+<div class="balance-strip">
+  <div><span title="Your current cash on hand. Bills are deducted from this when paid.">Balance:</span> <span class="val" id="balanceDisplay" title="Current wallet balance">$0</span></div>
+  <div><span title="Your tax bracket is determined by lifetime earnings. Higher brackets mean higher tax rates on weekly income.">Bracket:</span> <span class="val" id="bracketDisplay" title="Current tax bracket based on lifetime earnings">0</span></div>
+  <div><span title="Your effective tax rate after all reductions from Legal Dept, Lobbying, and other loopholes.">Rate:</span> <span class="val" id="rateDisplay" title="Effective tax rate applied to weekly income">0%</span></div>
+  <div><span title="Total amount paid in taxes across your entire career. This number only goes up.">Lifetime Paid:</span> <span class="val" id="lifetimePaidDisplay" title="Total taxes paid across all time">$0</span></div>
+</div>
+
+<div class="container">
+
+  <!-- 1. Current Bill -->
+  <div class="panel" id="currentBillPanel">
+    <div class="panel-title" title="Your most recent unpaid tax bill. Bills are issued weekly based on your taxable income and bracket rate. Pay before the due date to avoid interest and evasion penalties.">&#x1F4CB; CURRENT BILL</div>
+    <div id="currentBillContent">
+      <div class="no-bills">
+        <div class="no-bills-icon">&#x2714;</div>
+        <div>No outstanding bills. The Department acknowledges your compliance.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Outstanding Bills -->
+  <div class="panel" id="outstandingPanel" style="display:none;">
+    <div class="panel-title" title="All unpaid tax bills. Overdue bills accrue interest. Evaded bills increase your evasion level and audit risk. Pay them off to stay clean.">&#x1F4DA; OUTSTANDING BILLS</div>
+    <div id="outstandingContent"></div>
+    <div style="margin-top:10px;">
+      <button class="btn btn-payall" id="payAllBtn" title="Pay all outstanding bills at once, including any accrued interest.">PAY ALL</button>
+    </div>
+  </div>
+
+  <!-- 3. Tax Status -->
+  <div class="panel">
+    <div class="panel-title" title="Overview of your current tax situation — bracket, rates, evasion level, audit risk, and active loopholes that reduce your tax burden.">&#x1F4CA; TAX STATUS</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-label" title="Tax brackets are based on lifetime earnings. Each bracket has a base tax rate applied to your weekly income. Brackets: 0 ($0), 1 ($50K), 2 ($200K), 3 ($1M), 4 ($10M), 5 ($100M), 6 ($1B).">Bracket</div>
+        <div class="status-value" id="statusBracket" title="Your current bracket number and name">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label" title="The raw tax rate for your bracket before any reductions from Legal Dept, Lobbying, or other loopholes.">Base Rate</div>
+        <div class="status-value" id="statusBaseRate" title="Unmodified bracket tax rate">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label" title="Your actual tax rate after all reductions. Legal Dept levels reduce it by 1-9%. Lobbying L7+ gives an extra 5% off. Lobbying L9+ caps it at 10% max.">Effective Rate</div>
+        <div class="status-value good" id="statusEffRate" title="Tax rate after loopholes and reductions">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label" title="Total income earned this week that will be taxed on the next bill. Reduced by charitable donations (2x deduction) and offshore accounts (20% shelter).">Weekly Taxable</div>
+        <div class="status-value" id="statusWeeklyIncome" title="Taxable income accumulated this week">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label" title="Evasion level increases with evaded bills. Level 0 = clean. Higher levels trigger compliance surcharges, morale penalties, and flagged accounts. Pay off evaded bills to reduce it.">Evasion Level</div>
+        <div class="status-value" id="statusEvasion" title="Current evasion severity (0-5)">0 — Clean</div>
+        <div class="evasion-bar" title="Visual meter showing evasion severity. Green = clean, orange = warning, red = critical. Pay off evaded bills to bring this down."><div class="evasion-fill" id="evasionFill"></div></div>
+      </div>
+      <div class="status-item">
+        <div class="status-label" title="Probability of being audited at day rollover. Base 5%. Each overdue bill adds 3%, each evaded bill adds 5%. Clean record gives a 2% bonus reduction. Audits can result in fines or refunds.">Audit Risk</div>
+        <div class="status-value" id="statusAuditRisk" title="Current audit probability at next day rollover">—</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;">
+      <div class="status-label" style="margin-bottom:6px;" title="Tax reductions currently active. Legal Dept and Lobbying upgrades in the Factory reduce your effective rate. Charitable donations and offshore accounts reduce taxable income.">Active Loopholes</div>
+      <div id="loopholesList"><span class="empty-state">No active loopholes.</span></div>
+    </div>
+  </div>
+
+  <!-- 4. Filing Cabinet (Appeals + Donations) -->
+  <div class="panel">
+    <div class="panel-title" title="Tools for managing your tax burden: charitable donations for deductions, offshore accounts to shelter income, and bill forgiveness petitions.">&#x1F5C4; FILING CABINET</div>
+
+    <div style="margin-bottom:12px;">
+      <div class="status-label" style="margin-bottom:8px;" title="Donate money to reduce your taxable income. Every $1 donated gives a $2 deduction from this week's taxable income. The money is gone, but you pay less tax.">Charitable Donations</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Donate to reduce this week's taxable income. Every $1 donated reduces taxable income by $2.</div>
+      <div class="donate-row">
+        <span style="color:var(--text-dim);font-size:12px;">$</span>
+        <input type="number" class="donate-input" id="donateAmount" min="1" placeholder="Amount" title="Enter the dollar amount you wish to donate to The Weavers' Benevolent Fund.">
+        <button class="btn btn-donate" id="donateBtn" title="Donate to The Weavers' Benevolent Fund. Each $1 donated reduces your taxable income by $2.">DONATE</button>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:4px;"><span title="Total charitable donations made this billing week. Resets at the start of each new tax week.">Donated this week:</span> <span id="donatedThisWeek" title="Amount donated since last bill">$0</span></div>
+    </div>
+
+    <div style="margin-bottom:12px;" id="offshoreSection" style="display:none;">
+      <div class="status-label" style="margin-bottom:6px;" title="When enabled, 20% of your weekly income is automatically sheltered from taxation. Requires Lobbying upgrade level 5 or higher.">Offshore Textile Accounts</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Shelter 20% of weekly income from taxation. Requires Lobbying L5+.</div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;">
+        <input type="checkbox" id="offshoreToggle" title="Toggle offshore accounts to shelter 20% of your weekly income from taxation.">
+        <span id="offshoreLabel">Offshore accounts disabled</span>
+      </label>
+    </div>
+
+    <div id="forgivenessSection" style="display:none;">
+      <div class="status-label" style="margin-bottom:6px;" title="Petition the Department to forgive one overdue or evaded bill entirely. Available once every 30 days. Requires Lobbying upgrade level 7 or higher.">Bill Forgiveness Petition</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Once per month, petition to have one overdue or evaded bill forgiven entirely. Requires Lobbying L7+.</div>
+      <button class="btn btn-appeal" id="forgivenessBtn" title="Petition to have one overdue or evaded bill forgiven. Available once per month.">PETITION FOR FORGIVENESS</button>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:4px;" id="forgivenessStatus"></div>
+    </div>
+  </div>
+
+  <!-- 5. Audit History -->
+  <div class="panel">
+    <div class="panel-title" title="Record of past tax audits. Audits can result in fines (if bills are overdue/evaded) or refunds (if you're clean). Higher evasion = higher audit risk.">&#x1F50D; AUDIT HISTORY</div>
+    <div id="auditContent">
+      <div class="empty-state">No audits on record. The Department is watching.</div>
+    </div>
+  </div>
+
+  <!-- 6. Eugene Mercer — Tax Advisor -->
+  <div class="panel" id="eugenePanel" style="display:none;">
+    <div class="panel-title" title="Eugene Mercer is your tax advisor. Purchase lessons to learn how the tax system works and unlock real benefits that reduce your tax burden.">&#x1F4BC; EUGENE MERCER &mdash; TAX ADVISOR</div>
+    <div id="eugeneContent"></div>
+  </div>
+
+  <!-- 7. Treasury Report (Flavor) -->
+  <div class="panel">
+    <div class="panel-title" title="A breakdown of where your tax contributions are allegedly allocated. The Department makes no guarantees about accuracy.">&#x1F3E6; TREASURY REPORT</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">Where your tax contributions are allegedly allocated:</div>
+    <div id="treasuryContent"></div>
+  </div>
+
+  <!-- Dispatch area -->
+  <div style="padding:0 0 16px;">
+    <button class="back-btn" id="backBtn" title="Return to the main extension.">&larr; BACK</button>
+  </div>
+</div>
+
+<div class="dispatch-toast" id="dispatchToast"></div>
+
+<script src="lockout-guard.js"></script>
+<script src="tooltip.js"></script>
+<script src="tax-office-window.js"></script>
+<script src="btn-sounds.js"></script>
+<script src="tutorial-data.js"></script>
+<script src="tutorial-ui.js"></script>
+<script src="nav-bar.js"></script>
+</body>
+</html>

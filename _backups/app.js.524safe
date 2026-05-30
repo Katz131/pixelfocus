@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.525 - Main Application Logic
+// PixelFocus v3.23.524 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1090,7 +1090,6 @@ try {
     eugeneFired: false,                // v3.23.524: player fired Eugene (saves his life)
     eugeneDeathTriggered: false,       // v3.23.524: AI killed Eugene (player didn't fire him in time)
     eugeneDeathMorseSent: false,       // v3.23.524: morse from captivity sent to inbox
-    eugeneQuizzesPassed: [],            // v3.23.525: quiz IDs passed (benefits only activate after quiz)
     // --- Financial tracking (v3.23.77) ---
     lastPayrollDate: '',               // date string of last payroll deduction
     lastBrokerageSnapshot: 0,          // portfolio value at last day rollover
@@ -1680,8 +1679,7 @@ try {
             'pendingChallengeInvites','friendChallengeHistory',
             'recentTasks','bundles',
             'phaseOrderLog',
-            'eugeneLessons',
-            'eugeneQuizzesPassed'
+            'eugeneLessons'
           ];
           _arrFields.forEach(function(f) {
             var curLen = Array.isArray(_loaded[f]) ? _loaded[f].length : 0;
@@ -3499,7 +3497,7 @@ try {
 
   // v3.23.522: Eugene Mercer lesson checks
   function _hasEugeneLesson(id) {
-    return state.eugeneHired && Array.isArray(state.eugeneLessons) && state.eugeneLessons.indexOf(id) !== -1 && Array.isArray(state.eugeneQuizzesPassed) && state.eugeneQuizzesPassed.indexOf(id) !== -1; // v3.23.525: requires quiz passed
+    return state.eugeneHired && Array.isArray(state.eugeneLessons) && state.eugeneLessons.indexOf(id) !== -1;
   }
 
   function _getEffectiveTaxRate() {

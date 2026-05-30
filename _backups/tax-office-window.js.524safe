@@ -708,10 +708,6 @@
       }
       if (e.target && e.target.id === 'eugeneLetRetire') { handleEugeneRetirement('retire'); return; }
       if (e.target && e.target.id === 'eugeneKeep') { handleEugeneRetirement('stay'); return; }
-      if (e.target && e.target.dataset && e.target.dataset.quizLesson) {
-        handleQuizAnswer(e.target.dataset.quizLesson, parseInt(e.target.dataset.quizAnswer, 10));
-        return;
-      }
     });
 
     // PAY ALL
@@ -778,7 +774,6 @@
         state.eugeneDeathTriggered = newState.eugeneDeathTriggered != null ? newState.eugeneDeathTriggered : state.eugeneDeathTriggered;
         state.eugeneFired = newState.eugeneFired != null ? newState.eugeneFired : state.eugeneFired;
         state.eugeneDeathMorseSent = newState.eugeneDeathMorseSent != null ? newState.eugeneDeathMorseSent : state.eugeneDeathMorseSent;
-        state.eugeneQuizzesPassed = newState.eugeneQuizzesPassed || state.eugeneQuizzesPassed;
         renderAll();
       }
     });
@@ -903,16 +898,15 @@
   }
 
   function _eugeneDiscount() {
-    // Each lesson reduces effective tax rate cumulatively — only if quiz passed
+    // Each lesson reduces effective tax rate cumulatively
     var owned = state.eugeneLessons || [];
-    var passed = state.eugeneQuizzesPassed || [];
     var reduction = 0;
     for (var i = 0; i < EUGENE_LESSONS.length; i++) {
-      if (owned.indexOf(EUGENE_LESSONS[i].id) !== -1 && passed.indexOf(EUGENE_LESSONS[i].id) !== -1) {
+      if (owned.indexOf(EUGENE_LESSONS[i].id) !== -1) {
         var m = EUGENE_LESSONS[i].mechanic;
-        if (m === "billReduction5") reduction += 0.05;
-        if (m === "entityReduction") reduction += 0.03;
-        if (m === "estateReduction") reduction += 0.05;
+        if (m === 'billReduction5') reduction += 0.05;
+        if (m === 'entityReduction') reduction += 0.03;
+        if (m === 'estateReduction') reduction += 0.05;
       }
     }
     return reduction;
@@ -921,9 +915,8 @@
   function _eugeneShouldReveal(statId) {
     if (!state.eugeneHired) return false;
     var owned = state.eugeneLessons || [];
-    var passed = state.eugeneQuizzesPassed || [];
     for (var i = 0; i < EUGENE_LESSONS.length; i++) {
-      if (owned.indexOf(EUGENE_LESSONS[i].id) !== -1 && passed.indexOf(EUGENE_LESSONS[i].id) !== -1 && EUGENE_LESSONS[i].reveals) {
+      if (owned.indexOf(EUGENE_LESSONS[i].id) !== -1 && EUGENE_LESSONS[i].reveals) {
         if (EUGENE_LESSONS[i].reveals.indexOf(statId) !== -1) return true;
       }
     }
@@ -956,57 +949,6 @@
     showToast('Eugene Mercer has been released from his contract. He and his wife left for Aspen this morning.');
   }
 
-  // v3.23.525: Eugene vitals — health indicators that worsen with lessons
-  function _eugeneVitals() {
-    if (state.eugeneDeathTriggered) {
-      return { hr: "--", bp: "--/--", hrClass: "", bpClass: "" };
-    }
-    var lessons = (state.eugeneLessons || []).length;
-    // Date-based variance so vitals fluctuate day to day
-    var dayHash = 0;
-    var ds = todayStr();
-    for (var i = 0; i < ds.length; i++) { dayHash = ((dayHash << 5) - dayHash) + ds.charCodeAt(i); dayHash |= 0; }
-    var variance = ((dayHash & 0x7fffffff) % 11) - 5; // -5 to +5
-
-    var hrBase = 68;
-    var hrAdd = Math.round((lessons / 12) * 30); // 0 lessons = 0, 12 lessons = 30
-    var hr = hrBase + hrAdd + variance;
-
-    var sysBase = 122;
-    var diaBase = 78;
-    var sysAdd = Math.round((lessons / 12) * 38);
-    var diaAdd = Math.round((lessons / 12) * 18);
-    var sys = sysBase + sysAdd + Math.round(variance * 0.8);
-    var dia = diaBase + diaAdd + Math.round(variance * 0.4);
-
-    var hrClass = hr >= 90 ? "bad" : hr >= 80 ? "warn" : "ok";
-    var bpClass = sys >= 150 ? "bad" : sys >= 140 ? "warn" : "ok";
-
-    return {
-      hr: hr + " bpm",
-      bp: sys + "/" + dia,
-      hrClass: hrClass,
-      bpClass: bpClass
-    };
-  }
-
-  function handleQuizAnswer(lessonId, answerIdx) {
-    var quizData = window.EUGENE_QUIZZES ? window.EUGENE_QUIZZES[lessonId] : null;
-    if (!quizData) return;
-    if (answerIdx === quizData.c) {
-      // Correct!
-      if (!state.eugeneQuizzesPassed) state.eugeneQuizzesPassed = [];
-      if (state.eugeneQuizzesPassed.indexOf(lessonId) === -1) {
-        state.eugeneQuizzesPassed.push(lessonId);
-      }
-      saveState();
-      renderAll();
-      showToast("Correct! Eugene nods approvingly. Lesson benefit is now active.");
-    } else {
-      showToast("Incorrect. Eugene suggests reviewing the material and trying again.");
-    }
-  }
-
   function renderEugene() {
     var panel = $('eugenePanel');
     if (!panel) return;
@@ -1031,115 +973,78 @@
     }
     // Hired — show lesson progression
     var owned = state.eugeneLessons || [];
-    var passed = state.eugeneQuizzesPassed || [];
     var nextIdx = _eugeneNextLesson();
-    var html = "";
+    var html = '';
 
     // v3.23.523: Vitals — always visible once hired
     var _v = _eugeneVitals();
-    html += "<div style=\"display:flex;gap:10px;margin-bottom:12px;\">";
-    html += "<div style=\"background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;\" title=\"Eugene&apos;s resting heart rate. Monitored by company health services.\"><div style=\"font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;\">Heart rate</div><div style=\"font-family:&apos;Courier New&apos;,monospace;font-size:14px;" + (_v.hrClass === "bad" ? "color:var(--danger);" : (_v.hrClass === "warn" ? "color:var(--warning);" : "color:var(--accent);")) + "\">" + _v.hr + "</div></div>";
-    html += "<div style=\"background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;\" title=\"Eugene&apos;s blood pressure reading. Monitored by company health services.\"><div style=\"font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;\">Blood pressure</div><div style=\"font-family:&apos;Courier New&apos;,monospace;font-size:14px;" + (_v.bpClass === "bad" ? "color:var(--danger);" : (_v.bpClass === "warn" ? "color:var(--warning);" : "color:var(--accent);")) + "\">" + _v.bp + "</div></div>";
-    html += "</div>";
+    html += '<div style="display:flex;gap:10px;margin-bottom:12px;">';
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;" title="Eugene\'s resting heart rate. Monitored by company health services."><div style="font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Heart rate</div><div style="font-family:\'Courier New\',monospace;font-size:14px;' + (_v.hrClass === 'bad' ? 'color:var(--danger);' : (_v.hrClass === 'warn' ? 'color:var(--warning);' : 'color:var(--accent);')) + '">' + _v.hr + '</div></div>';
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;" title="Eugene\'s blood pressure reading. Monitored by company health services."><div style="font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Blood pressure</div><div style="font-family:\'Courier New\',monospace;font-size:14px;' + (_v.bpClass === 'bad' ? 'color:var(--danger);' : (_v.bpClass === 'warn' ? 'color:var(--warning);' : 'color:var(--accent);')) + '">' + _v.bp + '</div></div>';
+    html += '</div>';
 
     // US Tax Code disclaimer
-    html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:10px;padding:4px 8px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.15);border-radius:4px;\">U.S. Tax Code \u2014 Eugene&apos;s advice is based on current federal tax law.</div>";
+    html += '<div style="font-size:9px;color:var(--text-dim);margin-bottom:10px;padding:4px 8px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.15);border-radius:4px;">U.S. Tax Code \u2014 Eugene\'s advice is based on current federal tax law.</div>';
 
     // Progress bar (morse-style)
-    html += "<div style=\"display:flex;gap:3px;margin-bottom:12px;\">";
+    // Progress bar (morse-style)
+    html += '<div style="display:flex;gap:3px;margin-bottom:12px;">';
     for (var i = 0; i < EUGENE_LESSONS.length; i++) {
       var isDone = owned.indexOf(EUGENE_LESSONS[i].id) !== -1;
-      var isPassed = passed.indexOf(EUGENE_LESSONS[i].id) !== -1;
       var isNext = (i === nextIdx);
-      var bg = (isDone && isPassed) ? "#4ecdc4" : isDone ? "#c9a84c" : (isNext ? "#ffd700" : "#222");
-      var border = isNext ? "2px solid #fff" : ((isDone && isPassed) ? "1px solid #3a8a80" : isDone ? "1px solid #8a7530" : "1px solid #333");
-      html += "<div style=\"flex:1;height:10px;background:" + bg + ";border-radius:4px;border:" + border + ";transition:all 0.15s;\" title=\"" + EUGENE_LESSONS[i].title + (isDone && isPassed ? " (learned)" : isDone ? " (quiz pending)" : (isNext ? " (next)" : " (locked)")) + "\"></div>";
+      var bg = isDone ? '#4ecdc4' : (isNext ? '#ffd700' : '#222');
+      var border = isNext ? '2px solid #fff' : (isDone ? '1px solid #3a8a80' : '1px solid #333');
+      html += '<div style="flex:1;height:10px;background:' + bg + ';border-radius:4px;border:' + border + ';transition:all 0.15s;" title="' + EUGENE_LESSONS[i].title + (isDone ? ' (completed)' : (isNext ? ' (next)' : ' (locked)')) + '"></div>';
     }
-    html += "</div>";
-    html += "<div style=\"font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:14px;\">" + owned.length + " / " + EUGENE_LESSONS.length + " LESSONS</div>";
-
-    // AI Management memo + TERMINATE button
-    var _aiMemo = _getAiMemo();
-    if (_aiMemo) {
-      html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:8px;padding:6px 8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.15);border-radius:4px;line-height:1.5;\">" + _aiMemo + "</div>";
-      html += "<button class=\"btn\" id=\"eugeneFireBtn\" style=\"background:var(--danger);color:#fff;font-size:9px;margin-bottom:14px;padding:4px 12px;\" title=\"Terminate Eugene Mercer&apos;s contract. His lessons remain but no new ones can be purchased.\">TERMINATE CONTRACT</button>";
-    }
-
-    // Fired state
-    if (state.eugeneFired) {
-      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.12);border-radius:4px;font-style:italic;\">Eugene Mercer has been released from his contract. He and his wife left for Aspen this morning.</div>";
-    }
-
-    // Death state
-    if (state.eugeneDeathTriggered) {
-      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(100,100,100,0.1);border:1px solid rgba(100,100,100,0.2);border-radius:4px;font-style:italic;\">Eugene Mercer is no longer available.</div>";
-    }
+    html += '</div>';
+    html += '<div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:14px;">' + owned.length + ' / ' + EUGENE_LESSONS.length + ' LESSONS</div>';
 
     // Render each lesson
     for (var i = 0; i < EUGENE_LESSONS.length; i++) {
       var lesson = EUGENE_LESSONS[i];
       var isDone = owned.indexOf(lesson.id) !== -1;
-      var isPassed = passed.indexOf(lesson.id) !== -1;
       var isNext = (i === nextIdx);
       var isLocked = !isDone && !isNext;
 
-      html += "<div class=\"eugene-lesson" + (isDone ? " purchased" : "") + (isLocked ? " eugene-lesson-locked" : "") + "\">";
-      html += "<div class=\"eugene-lesson-header\">";
-      html += "<div class=\"eugene-lesson-title\">" + (i + 1) + ". " + lesson.title + "</div>";
-      if (isDone && isPassed) {
-        html += "<div class=\"eugene-lesson-cost owned\">LEARNED</div>";
-      } else if (isDone) {
-        html += "<div class=\"eugene-lesson-cost\" style=\"color:var(--warning);\">QUIZ PENDING</div>";
+      html += '<div class="eugene-lesson' + (isDone ? ' purchased' : '') + (isLocked ? ' eugene-lesson-locked' : '') + '">';
+      html += '<div class="eugene-lesson-header">';
+      html += '<div class="eugene-lesson-title">' + (i + 1) + '. ' + lesson.title + '</div>';
+      if (isDone) {
+        html += '<div class="eugene-lesson-cost owned">COMPLETED</div>';
       } else {
-        html += "<div class=\"eugene-lesson-cost\">" + fmt(lesson.cost) + "</div>";
+        html += '<div class="eugene-lesson-cost">' + fmt(lesson.cost) + '</div>';
       }
-      html += "</div>";
+      html += '</div>';
 
-      if (isDone && isPassed) {
-        // Purchased + passed: show teaching quote + benefit
-        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Eugene Mercer, CPA</div></div>";
-        html += "<div class=\"eugene-lesson-benefit\">" + lesson.benefit + "</div>";
-      } else if (isDone && !isPassed) {
-        // Purchased but NOT passed: show quiz
-        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Eugene Mercer, CPA</div></div>";
-        // Quiz section
-        var quizData = window.EUGENE_QUIZZES ? window.EUGENE_QUIZZES[lesson.id] : null;
-        if (quizData) {
-          html += "<div style=\"margin-top:8px;padding:8px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:6px;\">";
-          html += "<div style=\"font-size:10px;color:var(--accent);margin-bottom:6px;font-family:&apos;Press Start 2P&apos;,monospace;\">QUIZ</div>";
-          html += "<div style=\"font-size:11px;margin-bottom:8px;\">" + quizData.q + "</div>";
-          for (var qi = 0; qi < quizData.a.length; qi++) {
-            html += "<button class=\"btn eugene-quiz-btn\" data-quiz-lesson=\"" + lesson.id + "\" data-quiz-answer=\"" + qi + "\" style=\"display:block;width:100%;text-align:left;margin-bottom:4px;padding:6px 10px;font-size:10px;\" title=\"Select this answer\">" + String.fromCharCode(65 + qi) + ". " + quizData.a[qi] + "</button>";
-          }
-          html += "<div style=\"font-size:9px;color:var(--text-dim);margin-top:4px;\">Pass the quiz to unlock this lesson&apos;s benefit.</div>";
-          html += "</div>";
-        }
+      if (isDone) {
+        // Show the teaching content
+        html += '<div class="eugene-lesson-body" style="border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;">"' + lesson.teaches + '"<div style="font-size:10px;color:var(--text-dim);margin-top:4px;">— Eugene Mercer, CPA</div></div>';
+        html += '<div class="eugene-lesson-benefit">' + lesson.benefit + '</div>';
       } else if (isNext && !state.eugeneFired && !state.eugeneDeathTriggered) {
-        // Next unpurchased: show benefit preview + purchase button
-        html += "<div class=\"eugene-lesson-body\" style=\"color:var(--text-dim);\">" + lesson.benefit + "</div>";
+        // Show description + buy button
+        html += '<div class="eugene-lesson-body" style="color:var(--text-dim);">' + lesson.benefit + '</div>';
         var canAfford = (state.coins || 0) >= lesson.cost;
-        html += "<button class=\"btn btn-hire\" data-lesson-id=\"" + lesson.id + "\" data-lesson-cost=\"" + lesson.cost + "\"" + (canAfford ? "" : " disabled") + " title=\"" + (canAfford ? "Purchase this lesson from Eugene for " + fmt(lesson.cost) + "." : "Insufficient funds. You need " + fmt(lesson.cost) + ".") + "\">PURCHASE \u2014 " + fmt(lesson.cost) + "</button>";
+        html += '<button class="btn btn-hire" data-lesson-id="' + lesson.id + '" data-lesson-cost="' + lesson.cost + '"' + (canAfford ? '' : ' disabled') + ' title="' + (canAfford ? 'Purchase this lesson from Eugene for ' + fmt(lesson.cost) + '.' : 'Insufficient funds. You need ' + fmt(lesson.cost) + '.') + '">PURCHASE — ' + fmt(lesson.cost) + '</button>';
       } else {
-        // Locked
-        html += "<div class=\"eugene-lesson-body\" style=\"color:var(--text-dim);font-style:italic;\">Complete the previous lesson to unlock.</div>";
+        html += '<div class="eugene-lesson-body" style="color:var(--text-dim);font-style:italic;">Complete the previous lesson to unlock.</div>';
       }
-      html += "</div>";
+      html += '</div>';
     }
 
     // Late-game retirement arc
-    if (owned.length >= 10 && !state.eugeneRetirementChoice && !state.eugeneFired && !state.eugeneDeathTriggered) {
-      html += "<div class=\"eugene-retire\">";
-      html += "<p>Eugene has submitted a request to the board. He and his wife would like to relocate to Aspen \u2014 where they first met \u2014 and he\u2019s asking to be released from his contract.</p>";
-      html += "<p>A memo from AI Management has been appended to the request: <em>\u201CThe department\u2019s preference is to retain Mr. Mercer. His institutional knowledge is not easily replaced. We recommend denial.\u201D</em></p>";
-      html += "<div style=\"display:flex;gap:8px;margin-top:8px;\">";
-      html += "<button class=\"btn btn-hire\" id=\"eugeneLetRetire\" title=\"Let Eugene retire to Aspen with his wife. You keep all purchased lessons.\">LET HIM GO</button>";
-      html += "<button class=\"btn btn-appeal\" id=\"eugeneKeep\" title=\"Keep Eugene on staff. He stays, but he wanted to leave.\">KEEP HIM ON</button>";
-      html += "</div>";
-      html += "</div>";
-    } else if (state.eugeneRetirementChoice === "retire") {
-      html += "<div class=\"eugene-retire\"><p style=\"font-style:italic;color:var(--green);\">Eugene and his wife moved to Aspen last month. He left a note: \u201CIt was good work. I hope the numbers make more sense now.\u201D</p></div>";
-    } else if (state.eugeneRetirementChoice === "stay") {
-      html += "<div class=\"eugene-retire\"><p style=\"font-style:italic;color:var(--text-dim);\">Eugene acknowledged the board\u2019s decision. He hasn\u2019t mentioned Aspen since.</p></div>";
+    if (owned.length >= 10 && !state.eugeneRetirementChoice) {
+      html += '<div class="eugene-retire">';
+      html += '<p>Eugene has submitted a request to the board. He and his wife would like to relocate to Aspen — where they first met — and he\u2019s asking to be released from his contract.</p>';
+      html += '<p>A memo from AI Management has been appended to the request: <em>"The department\u2019s preference is to retain Mr. Mercer. His institutional knowledge is not easily replaced. We recommend denial."</em></p>';
+      html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+      html += '<button class="btn btn-hire" id="eugeneLetRetire" title="Let Eugene retire to Aspen with his wife. You keep all purchased lessons.">LET HIM GO</button>';
+      html += '<button class="btn btn-appeal" id="eugeneKeep" title="Keep Eugene on staff. He stays, but he wanted to leave.">KEEP HIM ON</button>';
+      html += '</div>';
+      html += '</div>';
+    } else if (state.eugeneRetirementChoice === 'retire') {
+      html += '<div class="eugene-retire"><p style="font-style:italic;color:var(--green);">Eugene and his wife moved to Aspen last month. He left a note: "It was good work. I hope the numbers make more sense now."</p></div>';
+    } else if (state.eugeneRetirementChoice === 'stay') {
+      html += '<div class="eugene-retire"><p style="font-style:italic;color:var(--text-dim);">Eugene acknowledged the board\u2019s decision. He hasn\u2019t mentioned Aspen since.</p></div>';
     }
 
     container.innerHTML = html;
