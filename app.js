@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.518 - Main Application Logic
+// PixelFocus v3.23.524 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1083,6 +1083,13 @@ try {
     taxLastAuditDate: '',              // last audit date
     taxCharitableDonatedThisWeek: 0,   // charitable donations this week
     taxOffshoreEnabled: false,         // offshore account active (Lobbying L5+)
+    eugeneHired: false,                // v3.23.522: Eugene Mercer hired as tax advisor
+    eugeneLessons: [],                 // v3.23.522: lesson IDs purchased (array of strings)
+    eugeneRetirementAsked: false,      // v3.23.522: late-game retirement arc triggered
+    eugeneRetirementChoice: '',        // v3.23.522: 'stay' or 'retire' — player's decision
+    eugeneFired: false,                // v3.23.524: player fired Eugene (saves his life)
+    eugeneDeathTriggered: false,       // v3.23.524: AI killed Eugene (player didn't fire him in time)
+    eugeneDeathMorseSent: false,       // v3.23.524: morse from captivity sent to inbox
     // --- Financial tracking (v3.23.77) ---
     lastPayrollDate: '',               // date string of last payroll deduction
     lastBrokerageSnapshot: 0,          // portfolio value at last day rollover
@@ -1666,12 +1673,13 @@ try {
           });
           // Array fields: take the LONGEST array
           var _arrFields = [
-            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent','morseAudioWins','morseAudioCorrect','morseAudioTiersCompleted','morseAudioTierProgress','morseAudioStars',
+            'badges','savedArtworks','morseInbox','morseSentBox','morseFamousSent','morseAudioWins','morseAudioCorrect','morseAudioTiersCompleted',
             'projects','blockedTimes','dailyReminders','depletionMilestones',
             'houseEvents','houseEventHistory','houseFeedLog',
             'pendingChallengeInvites','friendChallengeHistory',
             'recentTasks','bundles',
-            'phaseOrderLog'
+            'phaseOrderLog',
+            'eugeneLessons'
           ];
           _arrFields.forEach(function(f) {
             var curLen = Array.isArray(_loaded[f]) ? _loaded[f].length : 0;
@@ -1689,7 +1697,8 @@ try {
             'friends','housePetTypes','housePetNames','incrementalizeLog','dustPixels',
             'tutorialUnlocked','seenUpgrades','freshUpgrades','purchasedCanvasSizes',
             'unlockedColors','brokerage','dailySessionLog','blockedTimeAlerts','blockedTimePopAlerts',
-            'eventsFiredOnce','eventFlags','eventHistory','marketCosts'
+            'eventsFiredOnce','eventFlags','eventHistory','marketCosts',
+            'morseAudioStars','morseAudioTierProgress'  // v3.23.518: these are objects, not arrays
           ];
           _objFields.forEach(function(f) {
             var curKeys = (_loaded[f] && typeof _loaded[f] === 'object' && !Array.isArray(_loaded[f])) ? Object.keys(_loaded[f]).length : 0;
@@ -3486,6 +3495,11 @@ try {
     return bracket;
   }
 
+  // v3.23.522: Eugene Mercer lesson checks
+  function _hasEugeneLesson(id) {
+    return state.eugeneHired && Array.isArray(state.eugeneLessons) && state.eugeneLessons.indexOf(id) !== -1;
+  }
+
   function _getEffectiveTaxRate() {
     var bracket = _getTaxBracket();
     var baseRate = TAX_BRACKETS[bracket].rate;
@@ -3512,6 +3526,11 @@ try {
     // Ratiocinatory Standing Office: -2% per level (if institution exists)
     // (Standing office level is tracked via ratiocinatoryUnlocked + aspects)
 
+    // v3.23.522: Eugene Mercer lessons — rate reductions
+    if (_hasEugeneLesson('standard_deduction')) reduction += 0.05;
+    if (_hasEugeneLesson('entity_structure')) reduction += 0.03;
+    if (_hasEugeneLesson('estate_planning')) reduction += 0.05;
+
     var effective = Math.max(0, baseRate - reduction);
     return Math.round(effective * 100) / 100; // clean float
   }
@@ -3537,14 +3556,48 @@ try {
     // (simplified: deduct weekly payroll equivalent)
     // TODO: wire when Personnel Ministry institution is trackable
 
+    // v3.23.522: Eugene lesson — payroll deduction
+    if (_hasEugeneLesson('business_expenses')) {
+      var _weeklyPayroll = _getDailyPayroll() * 7;
+      taxable = Math.max(0, taxable - _weeklyPayroll);
+    }
+
+    // v3.23.522: Eugene lesson — retirement shelter (10%)
+    if (_hasEugeneLesson('retirement_accounts')) {
+      taxable = taxable * 0.90;
+    }
+
     // Charitable deductions: reduce taxable income
     var charitable = state.taxCharitableDonatedThisWeek || 0;
     if (charitable > 0) {
-      taxable = Math.max(0, taxable - (charitable * 2)); // 2x deduction
+      var _charitableMult = _hasEugeneLesson('charitable_giving') ? 3 : 2; // v3.23.522: Eugene boosts to 3x
+      taxable = Math.max(0, taxable - (charitable * _charitableMult));
+    }
+
+    // v3.23.522: Eugene lesson — tax-loss harvesting (brokerage losses reduce bill)
+    if (_hasEugeneLesson('tax_loss_harvesting') && state.brokerage) {
+      var _brokerageLosses = 0;
+      var _holdings = (state.brokerage && state.brokerage.holdings) || {};
+      // Sum unrealized losses (simplified: check if any holdings have negative value)
+      for (var _sym in _holdings) {
+        if (_holdings[_sym] && _holdings[_sym].unrealizedPL < 0) {
+          _brokerageLosses += Math.abs(_holdings[_sym].unrealizedPL);
+        }
+      }
+      if (_brokerageLosses > 0) {
+        taxable = Math.max(0, taxable - Math.min(_brokerageLosses, taxable * 0.15)); // cap at 15% of taxable
+      }
     }
 
     var rate = _getEffectiveTaxRate();
     var billAmount = Math.floor(taxable * rate);
+
+    // v3.23.522: Eugene lesson — factory depreciation (20% of last upgrade cost off bill)
+    if (_hasEugeneLesson('depreciation') && state._lastUpgradeCost > 0) {
+      var _depDeduction = Math.floor(state._lastUpgradeCost * 0.20);
+      billAmount = Math.max(0, billAmount - _depDeduction);
+      state._lastUpgradeCost = 0; // consumed
+    }
 
     // Reset weekly tracker
     state.taxableIncomeThisWeek = 0;
@@ -3590,7 +3643,9 @@ try {
 
       var age = now - b.issuedAt;
 
-      if (b.status === 'unpaid' && age > overdueThreshold) {
+      // v3.23.522: Eugene 'estimated_payments' lesson adds 5 days grace before overdue
+      var _eugeneGrace = _hasEugeneLesson('estimated_payments') ? (5 * 24 * 60 * 60 * 1000) : 0;
+      if (b.status === 'unpaid' && age > (overdueThreshold + _eugeneGrace)) {
         b.status = 'overdue';
         // Accrue interest
         b.interest = Math.floor(b.amount * TAX_INTEREST_PER_WEEK);
@@ -3679,6 +3734,8 @@ try {
     // Reductions from upgrades (placeholder for institution levels)
     // Clean record bonus
     if (evaded === 0 && overdue === 0) chance -= 0.02;
+    // v3.23.522: Eugene 'audit_defense' lesson reduces audit risk
+    if (_hasEugeneLesson('audit_defense')) chance -= 0.03;
     chance = Math.max(0, Math.min(1, chance));
 
     if (Math.random() > chance) return; // no audit this week
@@ -3696,6 +3753,8 @@ try {
         }
       }
       var fine = totalEvaded * 2;
+      // v3.23.522: Eugene 'audit_defense' lesson halves fines
+      if (_hasEugeneLesson('audit_defense')) fine = Math.floor(fine * 0.5);
       state.coins = (state.coins || 0) - fine;
       if (state.coins < 0) _recordDebt(-state.coins, 'tax audit fine');
       state.taxPaidLifetime = (state.taxPaidLifetime || 0) + fine;

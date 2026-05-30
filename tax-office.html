@@ -412,6 +412,24 @@ body {
 
 .no-bills-icon { font-size: 32px; margin-bottom: 8px; }
 
+/* Eugene Mercer */
+.eugene-hire { text-align:center; padding:16px; }
+.eugene-hire-desc { font-size:12px; color:var(--text-dim); margin:8px 0 12px; line-height:1.6; }
+.eugene-lesson { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:12px 14px; margin-bottom:8px; }
+.eugene-lesson.purchased { border-color:var(--green); opacity:0.85; }
+.eugene-lesson-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.eugene-lesson-title { font-family:'Press Start 2P',monospace; font-size:8px; color:var(--accent); }
+.eugene-lesson-cost { font-family:'Courier New',monospace; font-size:12px; color:var(--gold); }
+.eugene-lesson-cost.owned { color:var(--green); }
+.eugene-lesson-body { font-size:12px; color:var(--text); line-height:1.6; margin-bottom:8px; }
+.eugene-lesson-benefit { font-size:11px; color:var(--green); font-style:italic; }
+.eugene-lesson-locked { opacity:0.35; pointer-events:none; }
+.eugene-retire { background:var(--surface2); border:1px solid var(--accent-dim); border-radius:6px; padding:14px; margin-top:12px; }
+.eugene-retire p { font-size:12px; color:var(--text-dim); line-height:1.6; margin-bottom:8px; }
+.btn-hire { background:linear-gradient(135deg,#1a2a15,#0a1a0a); border-color:var(--green); color:var(--green); }
+.btn-hire:hover { box-shadow:0 4px 12px rgba(78,205,196,0.3); }
+.btn-hire:disabled { opacity:0.3; cursor:not-allowed; transform:none; }
+
 </style>
 </head>
 <body>
@@ -528,7 +546,13 @@ body {
     </div>
   </div>
 
-  <!-- 6. Treasury Report (Flavor) -->
+  <!-- 6. Eugene Mercer — Tax Advisor -->
+  <div class="panel" id="eugenePanel" style="display:none;">
+    <div class="panel-title" title="Eugene Mercer is your tax advisor. Purchase lessons to learn how the tax system works and unlock real benefits that reduce your tax burden.">&#x1F4BC; EUGENE MERCER &mdash; TAX ADVISOR</div>
+    <div id="eugeneContent"></div>
+  </div>
+
+  <!-- 7. Treasury Report (Flavor) -->
   <div class="panel">
     <div class="panel-title" title="A breakdown of where your tax contributions are allegedly allocated. The Department makes no guarantees about accuracy.">&#x1F3E6; TREASURY REPORT</div>
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">Where your tax contributions are allegedly allocated:</div>

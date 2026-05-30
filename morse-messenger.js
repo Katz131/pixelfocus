@@ -1619,6 +1619,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             for (var _cbi = 0; _cbi < _cbTierList.length; _cbi++) {
               if (_cbDoneArr.indexOf(_cbTierList[_cbi][0]) === -1) { _cbNextBlink = _cbi; break; }
             }
+            _acCurrentWord = ''; // v3.23.520: clear so completed tile shows star color, not 'current' yellow
             _renderProgressBar(currentDiff);
             // Delayed blink + status update with fresh data
             setTimeout(function() {
