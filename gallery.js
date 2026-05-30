@@ -494,8 +494,18 @@
     return { x: x, y: y };
   }
 
+  // v3.23.513: Track whether right-button is held for erase-on-drag
+  var _rightBtnDown = false;
+  canvasEl.addEventListener('contextmenu', function(e) { e.preventDefault(); }); // v3.23.513: block right-click menu
   canvasEl.addEventListener('mousedown', function(e) {
     e.preventDefault();
+    if (e.button === 2) {
+      // v3.23.513: Right-click = erase
+      _rightBtnDown = true;
+      var cell = getCellFromEvent(e);
+      if (cell) handleErase(cell.x, cell.y);
+      return;
+    }
     isDrawing = true;
     var cell = getCellFromEvent(e);
     if (cell) handlePixel(cell.x, cell.y);
@@ -503,11 +513,12 @@
   canvasEl.addEventListener('mousemove', function(e) {
     var cell = getCellFromEvent(e);
     hoverCell = cell;
+    if (_rightBtnDown && cell) { handleErase(cell.x, cell.y); return; }
     if (isDrawing && cell) handlePixel(cell.x, cell.y);
     else renderCanvas();
   });
   canvasEl.addEventListener('mouseleave', function() { hoverCell = null; renderCanvas(); });
-  document.addEventListener('mouseup', function() { isDrawing = false; });
+  document.addEventListener('mouseup', function() { isDrawing = false; _rightBtnDown = false; });
 
   function handlePixel(x, y) {
     var key = x + ',' + y;
@@ -531,6 +542,19 @@
     save();
     renderCanvas();
     renderStats();
+  }
+
+  // v3.23.513: Dedicated erase handler for right-click (always erases regardless of active tool)
+  function handleErase(x, y) {
+    var key = x + ',' + y;
+    if (state.pixelCanvas[key]) {
+      delete state.pixelCanvas[key];
+      state.blocks++;
+      SFX.erase();
+      save();
+      renderCanvas();
+      renderStats();
+    }
   }
 
 

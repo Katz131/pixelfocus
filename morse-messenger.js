@@ -784,12 +784,15 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             var gain = ctx.createGain();
             osc.type = 'sine';
             osc.frequency.value = 660;
-            gain.gain.setValueAtTime(0.3, t);
+            // v3.23.517: Authentic CW envelope — 5ms rise/fall, no mid-element fade
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.exponentialRampToValueAtTime(0.3, t + 0.005);
+            gain.gain.setValueAtTime(0.3, t + dur - 0.005);
             gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(t);
-            osc.stop(t + dur + 0.01);
+            osc.stop(t + dur + 0.02);
             t += dur + symbolGap;
           }
         }
@@ -1105,12 +1108,17 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
         var gain = _acAudioCtx.createGain();
         osc.type = 'sine';
         osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.3, t);
+        // v3.23.517: Authentic CW envelope — 5ms rise, hold, 5ms fall (no mid-element fade)
+        var riseMs = 0.005; // 5ms rise to avoid click
+        var fallMs = 0.005; // 5ms fall to avoid click
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.exponentialRampToValueAtTime(0.3, t + riseMs);
+        gain.gain.setValueAtTime(0.3, t + dur - fallMs);
         gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
         osc.connect(gain);
         gain.connect(_acAudioCtx.destination);
         osc.start(t);
-        osc.stop(t + dur + 0.01);
+        osc.stop(t + dur + 0.02);
         _acScheduledOscs.push(osc);
         t += dur + symbolGap;
       }
@@ -1375,7 +1383,8 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
             var _tBlink = (typeof blinkIdx === 'number' && _tIdx === blinkIdx);
             if (_tDone || _tBlink || _tIsNext || _tw === _acCurrentWord) {
               _acCurrentWord = _tw;
-              _acSpeedsUsed[_tw] = []; // v3.23.507: Reset speed tracking for new/replayed word
+              // v3.23.516: Only reset speed tracking for new words, not replays
+              if (!_tDone) _acSpeedsUsed[_tw] = [];
               document.getElementById('acHint').textContent = _acCurrentWord.length + ((diff === 'pi' || diff === 'fibonacci') ? ' DIGITS' : (diff === 'alphabet' ? ' CHARACTERS' : ' LETTERS'));
               if (!_tDone) { currentSpeed = null; }
               document.getElementById('acStatus').textContent = _tDone ? 'REPLAYING: ' + _tw : 'CHOOSE A SPEED, THEN PRESS PLAY';
@@ -1550,7 +1559,7 @@ html += '<div style="width:100%;max-width:680px;background:#0a0f0a;border:1px so
         var _hist = _acGetHistory(currentDiff, _acCurrentWord);
         // v3.23.485: Big celebration flash + sound
         _acPlaySuccessSound();
-        var _acWordStars = _acGetStars(_acCurrentWord);
+        var _acWordStars = Math.max(_acGetStars(_acCurrentWord), _acStarsCache[_acCurrentWord] || 0); // v3.23.516: show best of current vs persisted
         result.innerHTML = '<span style="color:#00ff88;font-size:12px;">✓ CORRECT!</span> <span style="color:#aaffaa;font-size:10px;">' + _acCurrentWord + '</span><br><span style="font-size:14px;letter-spacing:2px;">' + _acStarStr(_acWordStars) + '</span><br><span style="font-size:8px;color:' + (_acWordStars >= 3 ? '#ffd700' : (_acWordStars >= 2 ? '#88ffaa' : '#888')) + ';font-family:monospace;">' + _acStarExplain(_acWordStars) + '</span>';
         // Flash the play area green briefly
         var _playArea = document.getElementById('acPlayArea');

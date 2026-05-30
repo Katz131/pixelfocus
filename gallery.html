@@ -379,8 +379,8 @@
 <div class="main-content">
   <div class="canvas-view" id="canvasView">
     <div class="canvas-container">
-      <div class="canvas-wrapper" title="Pixel canvas. Click a square to paint with the selected color. Drag to paint multiple. Each new pixel costs 1 textile.">
-        <canvas id="pixelCanvas" width="528" height="528" style="cursor:crosshair;image-rendering:pixelated;" title="Click or drag to paint. Switch tools and colors in the panel on the right."></canvas>
+      <div class="canvas-wrapper" title="Pixel canvas. Left-click to paint with the selected color (costs 1 textile per new pixel). Right-click to erase (refunds the textile). Drag either button to paint or erase multiple pixels.">
+        <canvas id="pixelCanvas" width="528" height="528" style="cursor:crosshair;image-rendering:pixelated;" title="Left-click to paint, right-click to erase. Drag to paint or erase multiple pixels."></canvas>
       </div>
     </div>
     <div class="tools-panel">
@@ -551,5 +551,6 @@
 <script src="sounds.js"></script>
 <script src="tutorial-data.js"></script>
 <script src="tutorial-ui.js"></script>
+<script src="nav-bar.js"></script>
 </body>
 </html>

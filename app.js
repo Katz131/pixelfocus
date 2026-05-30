@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.510 - Main Application Logic
+// PixelFocus v3.23.518 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -796,6 +796,7 @@ try {
     phaseHistory: [],                  // past phase names for autocomplete memory
     taskTags: {},                        // v3.23.427: { 'tagName': ['task1', 'task2', ...] }
     tagBundles: [],                      // v3.23.427: [{ id, name, tasks: [{name, durationSec}] }]
+    phaseOrderLog: [],                   // v3.23.511: [{ tasks: ['name',...], ts, bundleName }] — tracks order phases started in
     phaseTtsMuted: false,              // v3.23.427: mute TTS voice (banners still show)
 
     taskDurations: {}, // { 'normalized task text': minutes } — remembered for recurring
@@ -1669,7 +1670,8 @@ try {
             'projects','blockedTimes','dailyReminders','depletionMilestones',
             'houseEvents','houseEventHistory','houseFeedLog',
             'pendingChallengeInvites','friendChallengeHistory',
-            'recentTasks','bundles'
+            'recentTasks','bundles',
+            'phaseOrderLog'
           ];
           _arrFields.forEach(function(f) {
             var curLen = Array.isArray(_loaded[f]) ? _loaded[f].length : 0;
@@ -7982,7 +7984,7 @@ try {
             if (remaining % 30 === 0) console.log('[PHASE-DBG-TICK] Timer tick: remaining=' + remaining + ' timerState=' + state.timerState + ' phaseMode=' + state.phaseModeEnabled + ' phaseIdx=' + state.currentPhaseIndex);
             state.timerRemaining = remaining;
             if (lastRenderedSec > 0 && Math.floor(lastRenderedSec / 60) > Math.floor(remaining / 60)) {
-              try { SFX.tick(); } catch (_) {}
+              try { if (!state.phaseTtsMuted) SFX.tick(); } catch (_) {}
             }
             lastRenderedSec = remaining;
             save();
@@ -8916,6 +8918,16 @@ try {
           state.phaseHistory.push(p.name);
         }
       });
+      // v3.23.511: Record phase order for preference learning
+      if (!state.phaseOrderLog) state.phaseOrderLog = [];
+      state.phaseOrderLog.push({
+        tasks: state.phases.map(function(p) { return p.name; }),
+        ts: Date.now(),
+        bundleName: state._lastLoadedBundleName || null
+      });
+      // Cap at 100 entries (rolling window)
+      if (state.phaseOrderLog.length > 100) state.phaseOrderLog = state.phaseOrderLog.slice(-100);
+      state._lastLoadedBundleName = null;
       state.phaseTransitioning = false;
       state.phaseTransitionEndsAt = 0;
       state.phaseTtsAnnounced = {};
@@ -9247,7 +9259,7 @@ try {
         }
       });
     } catch(_) {}
-    try { SFX.tick(); } catch (_) {}
+    try { if (!state.phaseTtsMuted) SFX.tick(); } catch (_) {}
     save();
     render();
     countdownInterval = setInterval(() => {
@@ -9255,7 +9267,7 @@ try {
         countdownRemaining--;
         if (countdownRemaining > 0) {
           // Soft tick every second so the user can hear the runway.
-          try { SFX.tick(); } catch (_) {}
+          try { if (!state.phaseTtsMuted) SFX.tick(); } catch (_) {}
           renderTimer();
         } else {
           clearInterval(countdownInterval);
@@ -17307,6 +17319,7 @@ try {
 
       function loadTagBundle(bundle) {
         if (!bundle || !bundle.tasks || !bundle.tasks.length) return;
+        state._lastLoadedBundleName = bundle.name || null; // v3.23.511: track which bundle was loaded
         state.phases = [];
         state.phaseModeEnabled = true;
         var totalSec = state.sessionDurationSec || 600;
@@ -17529,6 +17542,7 @@ try {
             var taskList = b.tasks.map(function(t) { return (t.sandbox ? '\u{1F3D6} ' : '') + t.name; }).join(', ');
             html += '<div style="display:flex;align-items:center;gap:4px;margin:2px 0;">';
             html += '<button type="button" class="bundle-load" data-bundle-id="' + b.id + '" style="flex:1;text-align:left;font-size:7px;font-family:\'Press Start 2P\',monospace;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:3px 6px;color:var(--text-main);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="Load bundle: ' + taskList.replace(/"/g, '&quot;') + '">' + (b.name || 'Unnamed').replace(/</g, '&lt;') + ' <span style="color:var(--text-dim);">(' + b.tasks.length + ')</span></button>';
+            html += '<button type="button" class="bundle-edit" data-bundle-id="' + b.id + '" style="font-size:7px;font-family:\'Press Start 2P\',monospace;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:2px 5px;color:var(--accent3);cursor:pointer;" title="Edit task order in this bundle">✏</button>';
             html += '<button type="button" class="bundle-delete" data-bundle-id="' + b.id + '" style="font-size:8px;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 4px;" title="Delete this bundle">×</button>';
             html += '</div>';
           });
@@ -17558,6 +17572,113 @@ try {
             deleteTagBundle(btn.getAttribute('data-bundle-id'));
           });
         });
+        // v3.23.510: Wire edit (reorder tasks within bundle)
+        container.querySelectorAll('.bundle-edit').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            editTagBundle(btn.getAttribute('data-bundle-id'));
+          });
+        });
+      }
+
+      // v3.23.510: Inline bundle editor — reorder tasks within a saved bundle
+      function editTagBundle(bundleId) {
+        var bundle = (state.tagBundles || []).filter(function(b) { return b.id === bundleId; })[0];
+        if (!bundle || !bundle.tasks || !bundle.tasks.length) return;
+        // Build a modal overlay
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        var box = document.createElement('div');
+        box.style.cssText = 'background:var(--bg-card,#1a1a2e);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:16px;min-width:280px;max-width:360px;max-height:80vh;overflow-y:auto;';
+        // Working copy of tasks
+        var tasks = bundle.tasks.map(function(t) { return { name: t.name, durationSec: t.durationSec, sandbox: t.sandbox || false }; });
+        function renderEditor() {
+          var html = '<div style="font-size:9px;font-family:\'Press Start 2P\',monospace;color:var(--accent3);margin-bottom:10px;text-transform:uppercase;">' + (bundle.name || 'Bundle').replace(/</g, '&lt;') + ' \u2014 EDIT ORDER</div>';
+          tasks.forEach(function(t, i) {
+            var sIcon = t.sandbox ? '\u{1F3D6} ' : '';
+            html += '<div style="display:flex;align-items:center;gap:6px;margin:4px 0;padding:6px 8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;">';
+            html += '<div style="display:flex;flex-direction:column;gap:2px;">';
+            var upDis = (i === 0);
+            var dnDis = (i === tasks.length - 1);
+            html += '<button type="button" class="be-move" data-idx="' + i + '" data-dir="up" style="width:22px;height:18px;border:none;border-radius:4px;background:' + (upDis ? 'rgba(255,255,255,0.03)' : 'rgba(120,180,255,0.15)') + ';color:' + (upDis ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.7)') + ';cursor:' + (upDis ? 'default' : 'pointer') + ';font-size:10px;display:flex;align-items:center;justify-content:center;box-shadow:' + (upDis ? 'none' : '0 2px 0 rgba(0,0,0,0.25)') + ';">\u25B2</button>';
+            html += '<button type="button" class="be-move" data-idx="' + i + '" data-dir="down" style="width:22px;height:18px;border:none;border-radius:4px;background:' + (dnDis ? 'rgba(255,255,255,0.03)' : 'rgba(120,180,255,0.15)') + ';color:' + (dnDis ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.7)') + ';cursor:' + (dnDis ? 'default' : 'pointer') + ';font-size:10px;display:flex;align-items:center;justify-content:center;box-shadow:' + (dnDis ? 'none' : '0 2px 0 rgba(0,0,0,0.25)') + ';">\u25BC</button>';
+            html += '</div>';
+            html += '<span style="font-size:9px;font-family:\'Press Start 2P\',monospace;color:var(--text-dim);min-width:16px;text-align:center;">' + (i + 1) + '</span>';
+            html += '<span style="font-size:8px;font-family:\'Press Start 2P\',monospace;color:var(--text-main);flex:1;">' + sIcon + (t.name || '').replace(/</g, '&lt;') + '</span>';
+            var min = Math.round((t.durationSec || 60) / 60);
+            html += '<span style="font-size:7px;color:var(--text-dim);">' + min + 'm</span>';
+            html += '</div>';
+          });
+          // v3.23.511: Show usage stats if we have history
+          var _logEntries = (state.phaseOrderLog || []);
+          var _hasHistory = _logEntries.length >= 2;
+          if (_hasHistory) {
+            html += '<div style="font-size:7px;color:var(--text-dim);margin-top:8px;padding:4px 6px;background:rgba(255,255,255,0.02);border-radius:4px;"><span style="color:var(--accent3);">' + _logEntries.length + '</span> phase sessions recorded</div>';
+          }
+          html += '<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;">';
+          if (_hasHistory) {
+            html += '<button type="button" id="beSuggest" style="font-size:7px;font-family:\'Press Start 2P\',monospace;background:rgba(255,200,50,0.12);border:1px solid rgba(255,200,50,0.25);border-radius:4px;padding:5px 10px;color:#ffc832;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,0.25);" title="Sort tasks based on how you usually order them">\u2728 SUGGEST ORDER</button>';
+          }
+          html += '<button type="button" id="beCancel" style="font-size:8px;font-family:\'Press Start 2P\',monospace;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:5px 12px;color:var(--text-dim);cursor:pointer;">CANCEL</button>';
+          html += '<button type="button" id="beSave" style="font-size:8px;font-family:\'Press Start 2P\',monospace;background:rgba(78,205,196,0.15);border:1px solid rgba(78,205,196,0.3);border-radius:4px;padding:5px 12px;color:var(--accent3);cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,0.25);">SAVE ORDER</button>';
+          html += '</div>';
+          box.innerHTML = html;
+          // Wire move buttons
+          box.querySelectorAll('.be-move').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var idx = parseInt(btn.getAttribute('data-idx'), 10);
+              var dir = btn.getAttribute('data-dir');
+              var toIdx = dir === 'up' ? idx - 1 : idx + 1;
+              if (toIdx < 0 || toIdx >= tasks.length) return;
+              var temp = tasks[idx];
+              tasks[idx] = tasks[toIdx];
+              tasks[toIdx] = temp;
+              renderEditor();
+            });
+          });
+          // Wire cancel
+          var cancelBtn = box.querySelector('#beCancel');
+          if (cancelBtn) cancelBtn.addEventListener('click', function() { ov.remove(); });
+          // Wire save
+          var saveBtn = box.querySelector('#beSave');
+          if (saveBtn) saveBtn.addEventListener('click', function() {
+            bundle.tasks = tasks;
+            bundle.updatedAt = Date.now();
+            save();
+            renderBundleControls();
+            ov.remove();
+          });
+          // v3.23.511: Wire SUGGEST ORDER — pairwise preference sort
+          var suggestBtn = box.querySelector('#beSuggest');
+          if (suggestBtn) suggestBtn.addEventListener('click', function() {
+            var log = state.phaseOrderLog || [];
+            if (log.length < 2) return;
+            // Build pairwise preference matrix: for each pair (A,B) count how often A appears before B
+            var pairWins = {}; // 'A|B' -> count
+            log.forEach(function(entry) {
+              var t = entry.tasks || [];
+              for (var a = 0; a < t.length; a++) {
+                for (var b = a + 1; b < t.length; b++) {
+                  var key = t[a] + '|' + t[b];
+                  pairWins[key] = (pairWins[key] || 0) + 1;
+                }
+              }
+            });
+            // Sort tasks by pairwise comparison
+            tasks.sort(function(x, y) {
+              var xyKey = x.name + '|' + y.name;
+              var yxKey = y.name + '|' + x.name;
+              var xyWins = pairWins[xyKey] || 0;
+              var yxWins = pairWins[yxKey] || 0;
+              if (xyWins !== yxWins) return yxWins - xyWins; // more wins = earlier
+              return 0; // tie — keep current order
+            });
+            renderEditor();
+          });
+        }
+        renderEditor();
+        ov.appendChild(box);
+        document.body.appendChild(ov);
+        ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
       }
 
       // v3.23.427: Sandbox phase — add a "do whatever" free-form phase

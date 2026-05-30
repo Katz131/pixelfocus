@@ -165,12 +165,12 @@ body.focus-mode .xp-text, body.focus-mode .next-xp-preview, body.focus-mode .str
 
 .phase-remove { width:16px; height:16px; border-radius:50%; border:none; background:rgba(255,107,157,0.15); color:var(--accent2); cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
 .phase-remove:hover { background:rgba(255,107,157,0.3); transform:scale(1.15); }
-/* Phase move (reorder) buttons */
-.phase-move { display:flex; flex-direction:column; gap:1px; flex-shrink:0; margin-right:4px; }
-.phase-move-btn { width:16px; height:13px; border:1px solid rgba(255,255,255,0.15); border-radius:3px; background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.4); cursor:pointer; font-size:8px; display:flex; align-items:center; justify-content:center; transition:all 0.15s; padding:0; line-height:1; }
-.phase-move-btn:hover { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.8); border-color:rgba(255,255,255,0.3); transform:scale(1.15); }
-.phase-move-btn:active { transform:scale(0.9); background:rgba(255,255,255,0.2); }
-.phase-move-btn.disabled { opacity:0.2; cursor:default; pointer-events:none; }
+/* Phase move (reorder) buttons — v3.23.510: larger, brighter, 3D Duolingo style */
+.phase-move { display:flex; flex-direction:column; gap:2px; flex-shrink:0; margin-right:6px; }
+.phase-move-btn { width:22px; height:18px; border:none; border-radius:4px; background:rgba(255,255,255,0.10); color:rgba(255,255,255,0.6); cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center; transition:all 0.12s; padding:0; line-height:1; box-shadow:0 2px 0 rgba(0,0,0,0.25); position:relative; top:0; }
+.phase-move-btn:hover { background:rgba(120,180,255,0.25); color:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.35); transform:translateY(-1px); }
+.phase-move-btn:active { transform:translateY(2px); box-shadow:none; background:rgba(120,180,255,0.35); }
+.phase-move-btn.disabled { opacity:0.15; cursor:default; pointer-events:none; box-shadow:none; }
 .phase-slider-row { padding:0 0 0 24px; }
 .phase-slider-row input[type=range] { width:100%; accent-color:var(--accent3); }
 .phase-add-input { display:flex; align-items:center; gap:6px; width:100%; height:26px; background:rgba(255,255,255,0.04); border:1px dashed rgba(78,205,196,0.3); border-radius:4px; padding:0 8px; font-size:8px; color:var(--text-dim); cursor:text; transition:border-color 0.2s; }
@@ -2013,8 +2013,4 @@ button:not(#houseBtn):not(#galleryBtn):not(#factoryBtn):not(#brokerageBtn):not(#
 <script src="morse-messenger.js"></script>
 <script src="btn-sounds.js"></script>
 <script src="app.js"></script>
-<script src="tutorial-ui.js"></script>
-<!-- AI texts moved to house page only (house-dispatch.js) -->
-
-</body>
-</html>
+<script src="app-main.js"></script>

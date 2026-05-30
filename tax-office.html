@@ -417,24 +417,24 @@ body {
 <body>
 
 <div class="header">
-  <div class="header-seal">&#x1F3DB;</div>
-  <h1>DEPARTMENT OF REVENUE</h1>
+  <div class="header-seal" title="The Department of Revenue seal. We see everything.">&#x1F3DB;</div>
+  <h1 title="The Tax Office processes weekly bills based on your lifetime earnings bracket. Bills are generated at day rollover once per week. Pay on time or face interest, evasion penalties, and audits.">DEPARTMENT OF REVENUE</h1>
   <div class="header-subtitle">Est. whenever your income warranted our attention</div>
-  <div class="clock" id="clock"></div>
+  <div class="clock" id="clock" title="Current local time. The Department is always watching."></div>
 </div>
 
 <div class="balance-strip">
-  <div>Balance: <span class="val" id="balanceDisplay">$0</span></div>
-  <div>Bracket: <span class="val" id="bracketDisplay">0</span></div>
-  <div>Rate: <span class="val" id="rateDisplay">0%</span></div>
-  <div>Lifetime Paid: <span class="val" id="lifetimePaidDisplay">$0</span></div>
+  <div><span title="Your current cash on hand. Bills are deducted from this when paid.">Balance:</span> <span class="val" id="balanceDisplay" title="Current wallet balance">$0</span></div>
+  <div><span title="Your tax bracket is determined by lifetime earnings. Higher brackets mean higher tax rates on weekly income.">Bracket:</span> <span class="val" id="bracketDisplay" title="Current tax bracket based on lifetime earnings">0</span></div>
+  <div><span title="Your effective tax rate after all reductions from Legal Dept, Lobbying, and other loopholes.">Rate:</span> <span class="val" id="rateDisplay" title="Effective tax rate applied to weekly income">0%</span></div>
+  <div><span title="Total amount paid in taxes across your entire career. This number only goes up.">Lifetime Paid:</span> <span class="val" id="lifetimePaidDisplay" title="Total taxes paid across all time">$0</span></div>
 </div>
 
 <div class="container">
 
   <!-- 1. Current Bill -->
   <div class="panel" id="currentBillPanel">
-    <div class="panel-title">&#x1F4CB; CURRENT BILL</div>
+    <div class="panel-title" title="Your most recent unpaid tax bill. Bills are issued weekly based on your taxable income and bracket rate. Pay before the due date to avoid interest and evasion penalties.">&#x1F4CB; CURRENT BILL</div>
     <div id="currentBillContent">
       <div class="no-bills">
         <div class="no-bills-icon">&#x2714;</div>
@@ -445,7 +445,7 @@ body {
 
   <!-- 2. Outstanding Bills -->
   <div class="panel" id="outstandingPanel" style="display:none;">
-    <div class="panel-title">&#x1F4DA; OUTSTANDING BILLS</div>
+    <div class="panel-title" title="All unpaid tax bills. Overdue bills accrue interest. Evaded bills increase your evasion level and audit risk. Pay them off to stay clean.">&#x1F4DA; OUTSTANDING BILLS</div>
     <div id="outstandingContent"></div>
     <div style="margin-top:10px;">
       <button class="btn btn-payall" id="payAllBtn" title="Pay all outstanding bills at once, including any accrued interest.">PAY ALL</button>
@@ -454,57 +454,57 @@ body {
 
   <!-- 3. Tax Status -->
   <div class="panel">
-    <div class="panel-title">&#x1F4CA; TAX STATUS</div>
+    <div class="panel-title" title="Overview of your current tax situation — bracket, rates, evasion level, audit risk, and active loopholes that reduce your tax burden.">&#x1F4CA; TAX STATUS</div>
     <div class="status-grid">
       <div class="status-item">
-        <div class="status-label">Bracket</div>
-        <div class="status-value" id="statusBracket">—</div>
+        <div class="status-label" title="Tax brackets are based on lifetime earnings. Each bracket has a base tax rate applied to your weekly income. Brackets: 0 ($0), 1 ($50K), 2 ($200K), 3 ($1M), 4 ($10M), 5 ($100M), 6 ($1B).">Bracket</div>
+        <div class="status-value" id="statusBracket" title="Your current bracket number and name">—</div>
       </div>
       <div class="status-item">
-        <div class="status-label">Base Rate</div>
-        <div class="status-value" id="statusBaseRate">—</div>
+        <div class="status-label" title="The raw tax rate for your bracket before any reductions from Legal Dept, Lobbying, or other loopholes.">Base Rate</div>
+        <div class="status-value" id="statusBaseRate" title="Unmodified bracket tax rate">—</div>
       </div>
       <div class="status-item">
-        <div class="status-label">Effective Rate</div>
-        <div class="status-value good" id="statusEffRate">—</div>
+        <div class="status-label" title="Your actual tax rate after all reductions. Legal Dept levels reduce it by 1-9%. Lobbying L7+ gives an extra 5% off. Lobbying L9+ caps it at 10% max.">Effective Rate</div>
+        <div class="status-value good" id="statusEffRate" title="Tax rate after loopholes and reductions">—</div>
       </div>
       <div class="status-item">
-        <div class="status-label">Weekly Taxable</div>
-        <div class="status-value" id="statusWeeklyIncome">—</div>
+        <div class="status-label" title="Total income earned this week that will be taxed on the next bill. Reduced by charitable donations (2x deduction) and offshore accounts (20% shelter).">Weekly Taxable</div>
+        <div class="status-value" id="statusWeeklyIncome" title="Taxable income accumulated this week">—</div>
       </div>
       <div class="status-item">
-        <div class="status-label">Evasion Level</div>
-        <div class="status-value" id="statusEvasion">0 — Clean</div>
-        <div class="evasion-bar"><div class="evasion-fill" id="evasionFill"></div></div>
+        <div class="status-label" title="Evasion level increases with evaded bills. Level 0 = clean. Higher levels trigger compliance surcharges, morale penalties, and flagged accounts. Pay off evaded bills to reduce it.">Evasion Level</div>
+        <div class="status-value" id="statusEvasion" title="Current evasion severity (0-5)">0 — Clean</div>
+        <div class="evasion-bar" title="Visual meter showing evasion severity. Green = clean, orange = warning, red = critical. Pay off evaded bills to bring this down."><div class="evasion-fill" id="evasionFill"></div></div>
       </div>
       <div class="status-item">
-        <div class="status-label">Audit Risk</div>
-        <div class="status-value" id="statusAuditRisk">—</div>
+        <div class="status-label" title="Probability of being audited at day rollover. Base 5%. Each overdue bill adds 3%, each evaded bill adds 5%. Clean record gives a 2% bonus reduction. Audits can result in fines or refunds.">Audit Risk</div>
+        <div class="status-value" id="statusAuditRisk" title="Current audit probability at next day rollover">—</div>
       </div>
     </div>
     <div style="margin-top:10px;">
-      <div class="status-label" style="margin-bottom:6px;">Active Loopholes</div>
+      <div class="status-label" style="margin-bottom:6px;" title="Tax reductions currently active. Legal Dept and Lobbying upgrades in the Factory reduce your effective rate. Charitable donations and offshore accounts reduce taxable income.">Active Loopholes</div>
       <div id="loopholesList"><span class="empty-state">No active loopholes.</span></div>
     </div>
   </div>
 
   <!-- 4. Filing Cabinet (Appeals + Donations) -->
   <div class="panel">
-    <div class="panel-title">&#x1F5C4; FILING CABINET</div>
+    <div class="panel-title" title="Tools for managing your tax burden: charitable donations for deductions, offshore accounts to shelter income, and bill forgiveness petitions.">&#x1F5C4; FILING CABINET</div>
 
     <div style="margin-bottom:12px;">
-      <div class="status-label" style="margin-bottom:8px;">Charitable Donations</div>
+      <div class="status-label" style="margin-bottom:8px;" title="Donate money to reduce your taxable income. Every $1 donated gives a $2 deduction from this week's taxable income. The money is gone, but you pay less tax.">Charitable Donations</div>
       <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Donate to reduce this week's taxable income. Every $1 donated reduces taxable income by $2.</div>
       <div class="donate-row">
         <span style="color:var(--text-dim);font-size:12px;">$</span>
         <input type="number" class="donate-input" id="donateAmount" min="1" placeholder="Amount" title="Enter the dollar amount you wish to donate to The Weavers' Benevolent Fund.">
         <button class="btn btn-donate" id="donateBtn" title="Donate to The Weavers' Benevolent Fund. Each $1 donated reduces your taxable income by $2.">DONATE</button>
       </div>
-      <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Donated this week: <span id="donatedThisWeek">$0</span></div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:4px;"><span title="Total charitable donations made this billing week. Resets at the start of each new tax week.">Donated this week:</span> <span id="donatedThisWeek" title="Amount donated since last bill">$0</span></div>
     </div>
 
     <div style="margin-bottom:12px;" id="offshoreSection" style="display:none;">
-      <div class="status-label" style="margin-bottom:6px;">Offshore Textile Accounts</div>
+      <div class="status-label" style="margin-bottom:6px;" title="When enabled, 20% of your weekly income is automatically sheltered from taxation. Requires Lobbying upgrade level 5 or higher.">Offshore Textile Accounts</div>
       <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Shelter 20% of weekly income from taxation. Requires Lobbying L5+.</div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;">
         <input type="checkbox" id="offshoreToggle" title="Toggle offshore accounts to shelter 20% of your weekly income from taxation.">
@@ -513,7 +513,7 @@ body {
     </div>
 
     <div id="forgivenessSection" style="display:none;">
-      <div class="status-label" style="margin-bottom:6px;">Bill Forgiveness Petition</div>
+      <div class="status-label" style="margin-bottom:6px;" title="Petition the Department to forgive one overdue or evaded bill entirely. Available once every 30 days. Requires Lobbying upgrade level 7 or higher.">Bill Forgiveness Petition</div>
       <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Once per month, petition to have one overdue or evaded bill forgiven entirely. Requires Lobbying L7+.</div>
       <button class="btn btn-appeal" id="forgivenessBtn" title="Petition to have one overdue or evaded bill forgiven. Available once per month.">PETITION FOR FORGIVENESS</button>
       <div style="font-size:10px;color:var(--text-dim);margin-top:4px;" id="forgivenessStatus"></div>
@@ -522,7 +522,7 @@ body {
 
   <!-- 5. Audit History -->
   <div class="panel">
-    <div class="panel-title">&#x1F50D; AUDIT HISTORY</div>
+    <div class="panel-title" title="Record of past tax audits. Audits can result in fines (if bills are overdue/evaded) or refunds (if you're clean). Higher evasion = higher audit risk.">&#x1F50D; AUDIT HISTORY</div>
     <div id="auditContent">
       <div class="empty-state">No audits on record. The Department is watching.</div>
     </div>
@@ -530,8 +530,8 @@ body {
 
   <!-- 6. Treasury Report (Flavor) -->
   <div class="panel">
-    <div class="panel-title">&#x1F3E6; TREASURY REPORT</div>
-    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">Where your tax contributions are allocated:</div>
+    <div class="panel-title" title="A breakdown of where your tax contributions are allegedly allocated. The Department makes no guarantees about accuracy.">&#x1F3E6; TREASURY REPORT</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">Where your tax contributions are allegedly allocated:</div>
     <div id="treasuryContent"></div>
   </div>
 
@@ -549,5 +549,6 @@ body {
 <script src="btn-sounds.js"></script>
 <script src="tutorial-data.js"></script>
 <script src="tutorial-ui.js"></script>
+<script src="nav-bar.js"></script>
 </body>
 </html>
