@@ -1,7 +1,7 @@
 # Todo of the Loom — Claude Handoff Document
 
-**Current version:** 3.23.416
-**Last updated:** 2026-05-23
+**Current version:** 3.23.527
+**Last updated:** 2026-05-30
 
 ---
 
@@ -104,7 +104,7 @@ echo "=== ALL 4 FILES MUST SHOW SAME VERSION ==="
 |------|---------|
 | `manifest.json` | Extension manifest (MV3) — permissions, icons, service worker |
 | `popup.html` | Main UI (full tab, NOT a popup) — timer, tasks, quests, friends, market |
-| `app.js` | ~18,000 lines. ALL main logic: state, timer, economy, quests, challenges, etc. Single IIFE |
+| `app.js` | ~23,000 lines. ALL main logic: state, timer, economy, quests, challenges, etc. Single IIFE |
 | `app-main.js` | Thin entry point that loads after app.js |
 | `popup-dispatch.js` | Cosmetic — fires one apologetic memo from "The Computer" per visit |
 | `background.js` | Service worker — toolbar icon handler, alarm scheduling, nag/penalty window management |
@@ -121,6 +121,7 @@ echo "=== ALL 4 FILES MUST SHOW SAME VERSION ==="
 | `ratiocinatory.html` | `ratiocinatory.js`, `ratiocinatory-dispatch.js` | Bureaucratic annex (aspects, patsies, institutions) |
 | `timeline.html` | `timeline-window.js` | Event history + focus session timeline |
 | `badges.html` | `badges-window.js` | 120+ badges across 7 categories |
+| `tax-office.html` | `tax-office-window.js` | Tax Office — weekly bills, Jedediah Strutt advisor, quizzes |
 | `challenge.html` | `challenge-window.js` | Idle-challenge pop-out (1.5x reward gamble) |
 | `pet-sprites.html` | `pet-sprites-window.js` | Dev tool — pixel art sprite painter |
 
@@ -156,6 +157,8 @@ echo "=== ALL 4 FILES MUST SHOW SAME VERSION ==="
 | `personnel.js` | `window.Personnel` — employee roster management |
 | `patsy-names.js` | `window.PatsyNames` — name pools for Ratiocinatory patsies |
 | `stage-entries.js` | `window.STAGE_ENTRIES` — unlockable lore briefs/memos |
+| `nav-bar.js` | Universal navigation bar — injected on all game sub-pages |
+| `eugene-quizzes.js` | `window.EUGENE_QUIZZES` — quiz data for Jedediah Strutt tax lessons |
 | `fonts.css` | `@font-face` for 'Press Start 2P' (local only, CSP workaround) |
 
 ### Deployment / Config Files
@@ -373,6 +376,12 @@ Spotlight click-through engine in `tutorial-ui.js`. Data in `tutorial-data.js`. 
 19. **CSP blocks inline `onclick` attributes.** All click handlers must use `addEventListener` or delegated event listeners via `data-` attributes.
 
 20. **`release.yml` has a hardcoded staging list.** New files must be manually added to this list or they'll be excluded from release zips.
+
+21. **Never create directories starting with `_` in the extension folder.** Chrome rejects extensions containing files or directories with names starting with `_` (reserved by the system). The `_backups` folder caused a "Failed to load extension" error.
+
+22. **Jedediah Strutt state fields use `eugene*` prefix.** The tax advisor was renamed from Eugene Mercer to Jedediah Strutt but state fields (`eugeneHired`, `eugeneLessons`, `eugeneQuizzesPassed`, `eugeneFired`, `eugeneDeathTriggered`, `eugeneDeathMorseSent`) keep the old prefix for save compatibility. Display text says "Jedediah Strutt" / "Jed" everywhere.
+
+23. **Jed's death trigger is tied to `autoLeadershipLevel >= 3`**, NOT lesson count. The AI CFO algorithm decides Jed is redundant. If player fires Jed before this, he's safe in Aspen.
 
 ---
 

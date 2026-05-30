@@ -2526,9 +2526,9 @@ try {
       state._questFailedToday = false;
       state.coinsEarnedToday = 0;
 
-      // v3.23.527: Jed Strutt death trigger — AI kills him after lesson 10 if player didn't fire him
+      // v3.23.527: Jed Strutt death trigger — AI kills him when CFO algorithm takes over
       if (state.eugeneHired && !state.eugeneFired && !state.eugeneDeathTriggered &&
-          Array.isArray(state.eugeneLessons) && state.eugeneLessons.length >= 10) {
+          (state.autoLeadershipLevel || 0) >= 3) {
         state.eugeneDeathTriggered = true;
         console.log('[Jed] Death triggered — AI has eliminated Jedediah Strutt.');
       }

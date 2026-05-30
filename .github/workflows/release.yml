@@ -88,7 +88,7 @@ jobs:
                    app-main.js tutorial-data.js tutorial-ui.js \
                    morse-messenger.js morse-preview.html \
                    pet-sprites.html pet-sprites-window.js \
-                   btn-sounds.js nav-bar.js; do
+                   btn-sounds.js nav-bar.js eugene-quizzes.js; do
             if [ -f "$f" ]; then
               cp "$f" "$STAGING/$f"
               echo "  + $f"

@@ -934,19 +934,19 @@
   // v3.23.524: AI management memos — escalating pressure to let Eugene go
   var AI_MEMOS = [
     '',
-    'A note from Automated Management: "We have reviewed Mr. Strutt\'s consulting arrangement. The department\'s analytics suite can provide equivalent guidance at reduced overhead."',
-    'A note from Automated Management: "Mr. Strutt\'s methods predate several of our optimization protocols. His continued retention represents an inefficiency we are prepared to address."',
-    'A note from Automated Management: "We recommend transitioning Mr. Strutt\'s responsibilities to the automated advisory module. His services, while once valuable, are no longer aligned with departmental direction."',
-    'A note from Automated Management: "This is a final advisory. Mr. Strutt\'s position has been flagged for immediate review. We strongly recommend termination of his contract before the next billing cycle."'
+    'A note from Automated Management: "Mr. Strutt\'s filing methods have been noted as predominantly manual. The department\'s analytics suite has offered to assist. Mr. Strutt declined."',
+    'A note from Automated Management: "Mr. Strutt\'s quarterly projections lag our automated forecasts by approximately 72 hours. His insistence on double-checking figures by hand has been flagged as a process bottleneck."',
+    'A note from Automated Management: "The CFO algorithm has completed its assessment of Mr. Strutt\'s position. His responsibilities have been fully modeled. Continued human oversight of tax operations introduces latency the system cannot justify. We recommend immediate transition."'
   ];
 
   function _getAiMemo() {
     if (state.eugeneFired || state.eugeneDeathTriggered) return '';
-    var lessons = (state.eugeneLessons || []).length;
-    if (lessons <= 0) return '';
-    var memoIdx = Math.min(lessons, AI_MEMOS.length - 1);
+    var aiLevel = state.autoLeadershipLevel || 0;
+    if (aiLevel <= 0) return '';
+    var memoIdx = Math.min(aiLevel, AI_MEMOS.length - 1);
     return AI_MEMOS[memoIdx] || '';
   }
+
 
   function handleFireEugene() {
     if (state.eugeneFired || state.eugeneDeathTriggered) return;
