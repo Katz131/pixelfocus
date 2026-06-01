@@ -420,7 +420,7 @@ body {
 
 .no-bills-icon { font-size: 32px; margin-bottom: 8px; }
 
-/* Jedediah Strutt */
+/* Eugene Strutt */
 .eugene-hire { text-align:center; padding:16px; }
 .eugene-hire-desc { font-size:12px; color:var(--text-dim); margin:8px 0 12px; line-height:1.6; }
 .eugene-lesson { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:12px 14px; margin-bottom:8px; }
@@ -554,12 +554,34 @@ body {
     </div>
   </div>
 
-  <!-- 6. Jedediah Strutt — Tax Advisor -->
+  <!-- 6. Eugene Strutt — Tax Advisor -->
   <div class="panel" id="eugenePanel" style="display:none;">
-    <div class="panel-title" title="Jedediah Strutt is your tax advisor. Purchase lessons to learn how the tax system works and unlock real benefits that reduce your tax burden.">&#x1F4BC; JEDEDIAH STRUTT &mdash; TAX ADVISOR</div>
+    <div class="panel-title" title="Eugene Strutt is your tax advisor. Purchase lessons to learn how the tax system works and unlock real benefits that reduce your tax burden.">&#x1F4BC; EUGENE STRUTT &mdash; TAX ADVISOR</div>
     <div id="eugeneContent"></div>
   </div>
 
   <!-- 7. Treasury Report (Flavor) -->
   <div class="panel">
-    <div class="panel-title" title="A breakdown of where your tax contributi
+    <div class="panel-title" title="A breakdown of where your tax contributions are allegedly allocated. The Department makes no guarantees about accuracy.">&#x1F3E6; TREASURY REPORT</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">Where your tax contributions are allegedly allocated:</div>
+    <div id="treasuryContent"></div>
+  </div>
+
+  <!-- Dispatch area -->
+  <div style="padding:0 0 16px;">
+    <button class="back-btn" id="backBtn" title="Return to the main extension.">&larr; BACK</button>
+  </div>
+</div>
+
+<div class="dispatch-toast" id="dispatchToast"></div>
+
+<script src="lockout-guard.js"></script>
+<script src="tooltip.js"></script>
+<script src="eugene-quizzes.js"></script>
+<script src="tax-office-window.js"></script>
+<script src="btn-sounds.js"></script>
+<script src="tutorial-data.js"></script>
+<script src="tutorial-ui.js"></script>
+<script src="nav-bar.js"></script>
+</body>
+</html>

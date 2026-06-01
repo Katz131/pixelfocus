@@ -59,6 +59,7 @@ ALWAYS give click-by-click instructions with exact file/folder locations. Assume
 - The user often relays instructions to Giulia (who cannot code) — keep ELI5 instructions simple and copy-paste ready
 - User prefers military/24-hour time
 - When giving numbered steps, format as a proper numbered list so the user can copy-paste it
+- **NEVER ask the user if they reloaded the extension or if they're up to date.** They reload thousands of times. They know. Asking wastes their time and is condescending. If the version number doesn't change, they don't test — that's the system. Just bump and move on.
 
 
 ### 6. Bridge Protocol with CK Buddy

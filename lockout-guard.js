@@ -13,6 +13,23 @@
     chrome.storage.local.get('pixelFocusState', function(result) {
       var state = result.pixelFocusState || {};
       var now = Date.now();
+
+      // v3.23.537: Check page-specific unlock gates
+      var _page = location.pathname.split('/').pop().replace('.html', '');
+      var _gates = {
+        'brokerage': 'brokerageUnlocked',
+        'research': 'researchLabUnlocked',
+        'incinerator': 'incineratorUnlocked',
+        'ratiocinatory': 'ratiocinatoryUnlocked',
+        'tax-office': 'taxOfficeUnlocked'
+      };
+      if (_gates[_page] && !state[_gates[_page]]) {
+        // Feature not unlocked — redirect to popup
+        try { chrome.runtime.sendMessage({ type: 'pf-open', path: 'popup.html' }); } catch(_) {}
+        setTimeout(function() { try { window.close(); } catch(_) {} }, 200);
+        return;
+      }
+
       if (state.gameLockGraceUntil && now < state.gameLockGraceUntil) {
         _injectGraceBadge(state.gameLockGraceUntil);
         return;

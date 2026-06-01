@@ -686,11 +686,20 @@
             '<div style="width:60px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;">' +
               '<div style="height:100%;background:var(--gold);width:' + pct + '%;border-radius:2px;"></div>' +
             '</div>' +
-            '<span style="font-size:8px;color:var(--text-dim);white-space:nowrap;min-width:50px;text-align:right;">' + ip.progress + '/' + ip.bond.sessionsNeeded + '</span>';
+            '<span style="font-size:8px;color:var(--text-dim);white-space:nowrap;min-width:50px;text-align:right;">' + ip.progress + '/' + ip.bond.sessionsNeeded + '</span>' +
+            '<button class="trade-btn sell sell-bond-early-btn" data-idx="' + ip.idx + '" style="padding:3px 6px;font-size:7px;margin-left:4px;" title="Sell this bond on the secondary market for $' + fmt(getBondSellPrice(ip.bond)) + (getBondSellPrice(ip.bond) >= ip.bond.amount ? ' (gain)' : ' (loss)') + '">SELL $' + fmt(getBondSellPrice(ip.bond)) + '</button>';
           ipBody.appendChild(row);
         });
 
         el.appendChild(ipBody);
+
+        // v3.23.537: Wire sell-early buttons
+        ipBody.querySelectorAll('.sell-bond-early-btn').forEach(function(btn) {
+          btn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            sellBondEarly(parseInt(btn.dataset.idx, 10));
+          });
+        });
 
         // Toggle expand/collapse
         var expanded = false;
@@ -987,6 +996,40 @@
 
     SFX.cha_ching();
     showNews('Bond matured! Collected $' + fmt(payout) + ' (principal + ' + (bond.rate * 100) + '% yield).');
+    save(function() { renderAll(); });
+  }
+
+  // v3.23.537: Sell bond early on secondary market
+  // Price = principal * (1 + accrued_fraction - market_penalty)
+  // Market penalty varies with marketYieldMultiplier: high yield = bonds worth less (rates up)
+  function getBondSellPrice(bond) {
+    var progress = Math.min(bond.sessionsElapsed || 0, bond.sessionsNeeded);
+    var accruedFraction = (progress / bond.sessionsNeeded) * bond.rate; // earned so far
+    var yieldMult = state.marketYieldMultiplier || 1.0;
+    // If market yield is high (>1), bond prices drop (rates up = existing bonds lose value)
+    // If market yield is low (<1), bond prices rise (rates down = existing bonds gain value)
+    var marketAdjust = 1 + (1 - yieldMult) * 0.3; // 0.3 sensitivity
+    marketAdjust = Math.max(0.7, Math.min(1.3, marketAdjust)); // cap between 0.7x and 1.3x
+    var spread = 0.95; // 5% bid-ask spread — prevents instant-flip exploit
+    var price = bond.amount * (1 + accruedFraction) * marketAdjust * spread;
+    return Math.round(price * 100) / 100;
+  }
+
+  function sellBondEarly(idx) {
+    var b = getB();
+    if (!b.activeBonds || idx >= b.activeBonds.length) return;
+    var bond = b.activeBonds[idx];
+    var sellPrice = getBondSellPrice(bond);
+    var gainLoss = sellPrice - bond.amount;
+    b.cash += sellPrice;
+    b.activeBonds.splice(idx, 1);
+    if (gainLoss >= 0) {
+      SFX.cha_ching();
+      showNews("Bond sold early for $" + fmt(sellPrice) + " (+$" + fmt(gainLoss) + " gain).");
+    } else {
+      SFX.error();
+      showNews("Bond sold early for $" + fmt(sellPrice) + " (-$" + fmt(Math.abs(gainLoss)) + " loss).");
+    }
     save(function() { renderAll(); });
   }
 

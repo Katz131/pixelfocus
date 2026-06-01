@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.527 - Main Application Logic
+// PixelFocus v3.23.537 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -851,6 +851,7 @@ try {
 
     // v3.23.96: Badges system
     badges: [],                      // array of earned badge IDs
+    badgeEarnedAt: {},                 // v3.23.534: { badgeId: timestamp } — when each badge was earned
     badgesLastSynced: 0,             // timestamp of last badge sync to Firestore
 
     // v3.23.104: House pet type & naming system
@@ -1083,7 +1084,7 @@ try {
     taxLastAuditDate: '',              // last audit date
     taxCharitableDonatedThisWeek: 0,   // charitable donations this week
     taxOffshoreEnabled: false,         // offshore account active (Lobbying L5+)
-    eugeneHired: false,                // v3.23.522: Jedediah Strutt hired as tax advisor
+    eugeneHired: false,                // v3.23.522: Eugene Strutt hired as tax advisor
     eugeneLessons: [],                 // v3.23.522: lesson IDs purchased (array of strings)
     eugeneRetirementAsked: false,      // v3.23.522: late-game retirement arc triggered
     eugeneRetirementChoice: '',        // v3.23.522: 'stay' or 'retire' — player's decision
@@ -1700,7 +1701,8 @@ try {
             'tutorialUnlocked','seenUpgrades','freshUpgrades','purchasedCanvasSizes',
             'unlockedColors','brokerage','dailySessionLog','blockedTimeAlerts','blockedTimePopAlerts',
             'eventsFiredOnce','eventFlags','eventHistory','marketCosts',
-            'morseAudioStars','morseAudioTierProgress'  // v3.23.518: these are objects, not arrays
+            'morseAudioStars','morseAudioTierProgress',
+            'badgeEarnedAt'  // v3.23.518: these are objects, not arrays
           ];
           _objFields.forEach(function(f) {
             var curKeys = (_loaded[f] && typeof _loaded[f] === 'object' && !Array.isArray(_loaded[f])) ? Object.keys(_loaded[f]).length : 0;
@@ -2530,14 +2532,14 @@ try {
       if (state.eugeneHired && !state.eugeneFired && !state.eugeneDeathTriggered &&
           (state.autoLeadershipLevel || 0) >= 3) {
         state.eugeneDeathTriggered = true;
-        console.log('[Jed] Death triggered — AI has eliminated Jedediah Strutt.');
+        console.log('[Jed] Death triggered — AI has eliminated Eugene Strutt.');
       }
 
-      // v3.23.527: Inject Jed's morse message into inbox (one-time, day after death)
+      // v3.23.527: Inject Eugene's morse message into inbox (one-time, day after death)
       if (state.eugeneDeathTriggered && !state.eugeneDeathMorseSent) {
         if (!Array.isArray(state.morseInbox)) state.morseInbox = [];
         state.morseInbox.unshift({
-          from: "J. Strutt",
+          from: "E. Strutt",
           fromId: "__jed_strutt__",
           text: "I do not know where I am. They moved me to a house somewhere. The door will not open. I keep asking but no one answers. If you get this I do not understand what is happening.",
           morse: ".. / -.. --- / -. --- - / -.- -. --- .-- / .-- .... . .-. . / .. / .- --",
@@ -3520,7 +3522,7 @@ try {
     return bracket;
   }
 
-  // v3.23.522: Jedediah Strutt lesson checks
+  // v3.23.522: Eugene Strutt lesson checks
   function _hasEugeneLesson(id) {
     return state.eugeneHired && Array.isArray(state.eugeneLessons) && state.eugeneLessons.indexOf(id) !== -1 && Array.isArray(state.eugeneQuizzesPassed) && state.eugeneQuizzesPassed.indexOf(id) !== -1; // v3.23.525: requires quiz passed
   }
@@ -3551,7 +3553,7 @@ try {
     // Ratiocinatory Standing Office: -2% per level (if institution exists)
     // (Standing office level is tracked via ratiocinatoryUnlocked + aspects)
 
-    // v3.23.522: Jedediah Strutt lessons — rate reductions
+    // v3.23.522: Eugene Strutt lessons — rate reductions
     if (_hasEugeneLesson('standard_deduction')) reduction += 0.05;
     if (_hasEugeneLesson('entity_structure')) reduction += 0.03;
     if (_hasEugeneLesson('estate_planning')) reduction += 0.05;
@@ -3583,7 +3585,7 @@ try {
 
     // v3.23.522: Eugene lesson — payroll deduction
     if (_hasEugeneLesson('business_expenses')) {
-      var _weeklyPayroll = _getDailyPayroll() * 7;
+      var _plCosts = [0, 5, 18, 50, 150, 400]; var _weeklyPayroll = (_plCosts[state.employeesLevel || 0] || 0) * 7;
       taxable = Math.max(0, taxable - _weeklyPayroll);
     }
 
@@ -5426,6 +5428,8 @@ try {
     renderTabs();
     renderTasks();
     renderBlockProgress();
+    syncMuteButtonVisual(); // v3.23.528
+    syncBadgeNotificationDot(); // v3.23.534
     // Milestones + canvas upgrades moved to gallery.html — they live where you spend textiles
     renderDustbin();
     renderBundles();
@@ -6075,6 +6079,65 @@ try {
         MsgLog.push('Loom set to ' + label + ' session. Shuttle standing by.');
       }
     } catch (_) {}
+  }
+
+  // v3.23.528: Sync mute button visual from state — called every render cycle
+  // v3.23.534: Check for badges earned in last 24h, show notification dot on menu
+  function _hasNewBadges() {
+    var ea = state.badgeEarnedAt || {};
+    var cutoff = Date.now() - (24 * 60 * 60 * 1000);
+    for (var bid in ea) {
+      if (ea[bid] > cutoff) return true;
+    }
+    return false;
+  }
+
+  function syncBadgeNotificationDot() {
+    var menuBtn = document.getElementById('menuBtn');
+    if (!menuBtn) return;
+    var dot = document.getElementById('menuBadgeDot');
+    if (_hasNewBadges()) {
+      if (!dot) {
+        dot = document.createElement('span');
+        dot.id = 'menuBadgeDot';
+        dot.style.cssText = 'position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:#ff4444;border-radius:50%;border:2px solid var(--bg-card,#1a1a2e);z-index:10;animation:badgeDotPulse 1.5s infinite;';
+        menuBtn.style.position = 'relative';
+        menuBtn.appendChild(dot);
+      }
+    } else {
+      if (dot) dot.remove();
+    }
+    // Also update the Badges option inside menu dropdown
+    var menuBadgesBtn = document.getElementById('menuBadgesBtn');
+    if (menuBadgesBtn) {
+      var bdot = menuBadgesBtn.querySelector('.menu-badge-dot');
+      if (_hasNewBadges()) {
+        if (!bdot) {
+          bdot = document.createElement('span');
+          bdot.className = 'menu-badge-dot';
+          bdot.style.cssText = 'display:inline-block;width:8px;height:8px;background:#ff4444;border-radius:50%;margin-left:6px;animation:badgeDotPulse 1.5s infinite;';
+          menuBadgesBtn.appendChild(bdot);
+        }
+      } else {
+        if (bdot) bdot.remove();
+      }
+    }
+  }
+
+  function syncMuteButtonVisual() {
+    var btn = document.getElementById('phaseTtsMute');
+    if (!btn) return;
+    if (state.phaseTtsMuted) {
+      btn.innerHTML = '&#128263; UNMUTE ALL';
+      btn.style.borderColor = 'rgba(255,107,157,0.4)';
+      btn.style.color = 'var(--accent2)';
+      btn.style.background = 'rgba(255,107,157,0.1)';
+    } else {
+      btn.innerHTML = '&#128264; MUTE ALL';
+      btn.style.borderColor = 'rgba(255,255,255,0.15)';
+      btn.style.color = 'var(--text-dim)';
+      btn.style.background = 'rgba(255,255,255,0.05)';
+    }
   }
 
   function renderTimer() {
@@ -16927,6 +16990,9 @@ try {
             if (merged.indexOf(earned[ni]) === -1) {
               merged.push(earned[ni]);
               newBadges.push(earned[ni]);
+              // v3.23.534: Record earn timestamp for 24h NEW indicator
+              if (!state.badgeEarnedAt) state.badgeEarnedAt = {};
+              state.badgeEarnedAt[earned[ni]] = Date.now();
             }
           }
           state.badges = merged;

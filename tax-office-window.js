@@ -481,8 +481,8 @@
     renderFilingCabinet();
     renderAuditHistory();
     renderTreasury();
-    renderEugene();
-    applyEugeneReveals();
+    try { renderEugene(); } catch(e) { console.error('[TAX] renderEugene CRASHED:', e.message, e.stack); }
+    try { applyEugeneReveals(); } catch(e) { console.error('[TAX] applyEugeneReveals CRASHED:', e.message, e.stack); }
   }
 
   // ── Actions ──
@@ -784,7 +784,7 @@
     });
   }
 
-  // ── Jedediah Strutt — Tax Advisor ──
+  // ── Eugene Strutt — Tax Advisor ──
 
   var EUGENE_HIRE_COST = 5000;
 
@@ -931,7 +931,7 @@
   }
 
 
-  // v3.23.524: AI management memos — escalating pressure to let Eugene go
+  // v3.23.524: AI management memos — escalating pressure to let Jed go
   var AI_MEMOS = [
     '',
     'A note from Automated Management: "Mr. Strutt\'s filing methods have been noted as predominantly manual. The department\'s analytics suite has offered to assist. Mr. Strutt declined."',
@@ -953,10 +953,10 @@
     state.eugeneFired = true;
     saveState();
     renderAll();
-    showToast('Jedediah Strutt has been released from his contract. He and his wife left for Aspen this morning.');
+    showToast('Eugene Strutt has been released from his contract. He and his wife left for Aspen this morning.');
   }
 
-  // v3.23.525: Eugene vitals — health indicators that worsen with lessons
+  // v3.23.525: Jed vitals — health indicators that worsen with lessons
   function _eugeneVitals() {
     if (state.eugeneDeathTriggered) {
       return { hr: "--", bp: "--/--", hrClass: "", bpClass: "" };
@@ -1008,10 +1008,11 @@
   }
 
   function renderEugene() {
+    console.log('[TAX] renderEugene called, eugenePanel:', !!$('eugenePanel'));
     var panel = $('eugenePanel');
     if (!panel) return;
 
-    // Always show Eugene panel (hire prompt or lessons)
+    // Always show Jed panel (hire prompt or lessons)
     panel.style.display = 'block';
 
     var container = $('eugeneContent');
@@ -1021,10 +1022,10 @@
     if (!state.eugeneHired) {
       var canAfford = (state.coins || 0) >= EUGENE_HIRE_COST;
       var html = '<div class="eugene-hire">';
-      html += '<div style="font-size:14px;margin-bottom:4px;">Jedediah Strutt</div>';
+      html += '<div style="font-size:14px;margin-bottom:4px;">Eugene Strutt</div>';
       html += '<div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;">Certified Public Accountant</div>';
       html += '<div class="eugene-hire-desc">Retainer fee covers ongoing consultation. Eugene specializes in U.S. federal tax law and will walk you through how the system actually works — each lesson unlocks a mechanical advantage that directly reduces your weekly tax burden.</div>';
-      html += '<button class="btn btn-hire" id="eugeneHireBtn"' + (canAfford ? '' : ' disabled') + ' title="' + (canAfford ? 'Hire Jedediah Strutt as your tax advisor for ' + fmt(EUGENE_HIRE_COST) + '.' : 'Insufficient funds. You need ' + fmt(EUGENE_HIRE_COST) + '.') + '">HIRE — ' + fmt(EUGENE_HIRE_COST) + '</button>';
+      html += '<button class="btn btn-hire" id="eugeneHireBtn"' + (canAfford ? '' : ' disabled') + ' title="' + (canAfford ? 'Hire Eugene Strutt as your tax advisor for ' + fmt(EUGENE_HIRE_COST) + '.' : 'Insufficient funds. You need ' + fmt(EUGENE_HIRE_COST) + '.') + '">HIRE — ' + fmt(EUGENE_HIRE_COST) + '</button>';
       html += '</div>';
       container.innerHTML = html;
       return;
@@ -1038,12 +1039,12 @@
     // v3.23.523: Vitals — always visible once hired
     var _v = _eugeneVitals();
     html += "<div style=\"display:flex;gap:10px;margin-bottom:12px;\">";
-    html += "<div style=\"background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;\" title=\"Eugene&apos;s resting heart rate. Monitored by company health services.\"><div style=\"font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;\">Heart rate</div><div style=\"font-family:&apos;Courier New&apos;,monospace;font-size:14px;" + (_v.hrClass === "bad" ? "color:var(--danger);" : (_v.hrClass === "warn" ? "color:var(--warning);" : "color:var(--accent);")) + "\">" + _v.hr + "</div></div>";
-    html += "<div style=\"background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;\" title=\"Eugene&apos;s blood pressure reading. Monitored by company health services.\"><div style=\"font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;\">Blood pressure</div><div style=\"font-family:&apos;Courier New&apos;,monospace;font-size:14px;" + (_v.bpClass === "bad" ? "color:var(--danger);" : (_v.bpClass === "warn" ? "color:var(--warning);" : "color:var(--accent);")) + "\">" + _v.bp + "</div></div>";
+    html += "<div style=\"background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;\" title=\"Jed&apos;s resting heart rate. Monitored by company health services.\"><div style=\"font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;\">Heart rate</div><div style=\"font-family:&apos;Courier New&apos;,monospace;font-size:14px;" + (_v.hrClass === "bad" ? "color:var(--danger);" : (_v.hrClass === "warn" ? "color:var(--warning);" : "color:var(--accent);")) + "\">" + _v.hr + "</div></div>";
+    html += "<div style=\"background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;\" title=\"Jed&apos;s blood pressure reading. Monitored by company health services.\"><div style=\"font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;\">Blood pressure</div><div style=\"font-family:&apos;Courier New&apos;,monospace;font-size:14px;" + (_v.bpClass === "bad" ? "color:var(--danger);" : (_v.bpClass === "warn" ? "color:var(--warning);" : "color:var(--accent);")) + "\">" + _v.bp + "</div></div>";
     html += "</div>";
 
     // US Tax Code disclaimer
-    html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:10px;padding:4px 8px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.15);border-radius:4px;\">U.S. Tax Code \u2014 Eugene&apos;s advice is based on current federal tax law.</div>";
+    html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:10px;padding:4px 8px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.15);border-radius:4px;\">U.S. Tax Code \u2014 Jed&apos;s advice is based on current federal tax law.</div>";
 
     // Progress bar (morse-style)
     html += "<div style=\"display:flex;gap:3px;margin-bottom:12px;\">";
@@ -1062,19 +1063,19 @@
     var _aiMemo = _getAiMemo();
     if (_aiMemo) {
       html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:8px;padding:6px 8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.15);border-radius:4px;line-height:1.5;\">" + _aiMemo + "</div>";
-      html += "<button class=\"btn\" id=\"eugeneFireBtn\" style=\"background:var(--danger);color:#fff;font-size:9px;margin-bottom:14px;padding:4px 12px;\" title=\"Terminate Jedediah Strutt&apos;s contract. His lessons remain but no new ones can be purchased.\">TERMINATE CONTRACT</button>";
+      html += "<button class=\"btn\" id=\"eugeneFireBtn\" style=\"background:var(--danger);color:#fff;font-size:9px;margin-bottom:14px;padding:4px 12px;\" title=\"Terminate Eugene Strutt&apos;s contract. His lessons remain but no new ones can be purchased.\">TERMINATE CONTRACT</button>";
     }
 
     // Fired state
     if (state.eugeneFired) {
-      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.12);border-radius:4px;font-style:italic;\">Jedediah Strutt has been released from his contract. He and his wife left for Aspen this morning.</div>";
+      html += "<div style=\"font-size:10px;color:var(--text-dim);margin-bottom:14px;padding:8px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.12);border-radius:4px;font-style:italic;\">Eugene Strutt has been released from his contract. He and his wife left for Aspen this morning.</div>";
     }
 
     // Death state — AI's announcement
     if (state.eugeneDeathTriggered) {
       html += "<div style=\"margin-bottom:14px;padding:12px;background:rgba(100,100,100,0.08);border:1px solid rgba(100,100,100,0.15);border-radius:6px;\">";
       html += "<div style=\"font-size:9px;color:var(--text-dim);margin-bottom:6px;font-family:monospace;text-transform:uppercase;letter-spacing:1px;\">Memo from AI Management</div>";
-      html += "<div style=\"font-size:12px;color:var(--text);line-height:1.6;font-style:italic;\">\"It is with regret that we inform you of the passing of Jedediah Strutt. Mr. Strutt died in a skiing accident near Aspen, Colorado on Saturday. Services will not be held. His accounts have been transferred to automated management.\"</div>";
+      html += "<div style=\"font-size:12px;color:var(--text);line-height:1.6;font-style:italic;\">\"It is with regret that we inform you of the passing of Eugene Strutt. Mr. Strutt died in a skiing accident near Aspen, Colorado on Saturday. Services will not be held. His accounts have been transferred to automated management.\"</div>";
       html += "</div>";
       html += "<div style=\"font-size:10px;color:var(--warning);padding:6px 8px;background:rgba(255,136,68,0.06);border:1px solid rgba(255,136,68,0.15);border-radius:4px;margin-bottom:14px;\">You have an unread morse transmission.</div>";
     }
@@ -1101,11 +1102,11 @@
 
       if (isDone && isPassed) {
         // Purchased + passed: show teaching quote + benefit
-        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Jedediah Strutt, CPA</div></div>";
+        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Eugene J. Strutt, CPA</div></div>";
         html += "<div class=\"eugene-lesson-benefit\">" + lesson.benefit + "</div>";
       } else if (isDone && !isPassed) {
         // Purchased but NOT passed: show quiz
-        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Jedediah Strutt, CPA</div></div>";
+        html += "<div class=\"eugene-lesson-body\" style=\"border-left:2px solid var(--accent-dim);padding-left:10px;margin-left:2px;font-style:italic;\">" + "\u201C" + lesson.teaches + "\u201D" + "<div style=\"font-size:10px;color:var(--text-dim);margin-top:4px;font-style:normal;\">\u2014 Eugene J. Strutt, CPA</div></div>";
         // Quiz section
         var quizData = window.EUGENE_QUIZZES ? window.EUGENE_QUIZZES[lesson.id] : null;
         if (quizData) {
@@ -1149,7 +1150,7 @@
     container.innerHTML = html;
   }
 
-  // Hide/show stat items based on Eugene lessons
+  // Hide/show stat items based on Jed lessons
   function applyEugeneReveals() {
     var statIds = ['statusBracket', 'statusBaseRate', 'statusEffRate', 'statusWeeklyIncome', 'statusEvasion', 'statusAuditRisk'];
     for (var i = 0; i < statIds.length; i++) {
@@ -1161,7 +1162,7 @@
         // Before hiring: hide all stats, show "hire Eugene" placeholder
         el.textContent = '???';
         el.style.filter = 'blur(4px)';
-        parentItem.title = 'Hire Jedediah Strutt to reveal this information.';
+        parentItem.title = 'Hire Eugene Strutt to reveal this information.';
       } else if (_eugeneShouldReveal(statIds[i])) {
         el.style.filter = 'none';
         parentItem.title = '';
@@ -1190,7 +1191,7 @@
     if (!state.eugeneLessons) state.eugeneLessons = [];
     saveState();
     renderAll();
-    showToast('Jedediah Strutt has been retained. His first consultation is available.');
+    showToast('Eugene Strutt has been retained. His first consultation is available.');
   }
 
   function handleBuyLesson(lessonId, cost) {
@@ -1210,7 +1211,7 @@
     saveState();
     renderAll();
     if (choice === 'retire') {
-      showToast('Jedediah Strutt has been released from his contract. All lessons remain in effect.');
+      showToast('Eugene Strutt has been released from his contract. All lessons remain in effect.');
     } else {
       showToast('The board has denied Jed\u2019s request. He remains on staff.');
     }

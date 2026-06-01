@@ -649,12 +649,23 @@
       badges.forEach(function(b) {
         var isEarned = earned.indexOf(b.id) !== -1;
         var card = document.createElement('div');
-        card.className = 'badge-card' + (isEarned ? ' earned' : ' locked');
+        var _isNew = false;
+        if (isEarned && state.badgeEarnedAt && state.badgeEarnedAt[b.id]) {
+          _isNew = (Date.now() - state.badgeEarnedAt[b.id]) < (24 * 60 * 60 * 1000);
+        }
+        card.className = 'badge-card' + (isEarned ? ' earned' : ' locked') + (_isNew ? ' badge-new' : '');
 
         var icon = document.createElement('div');
         icon.className = 'badge-icon';
         icon.textContent = b.icon;
         card.appendChild(icon);
+        if (_isNew) {
+          var newTag = document.createElement('div');
+          newTag.style.cssText = 'position:absolute;top:4px;right:4px;font-size:7px;font-family:monospace;background:#ff4444;color:#fff;padding:1px 4px;border-radius:3px;letter-spacing:1px;animation:badgeDotPulse 1.5s infinite;';
+          newTag.textContent = 'NEW';
+          card.style.position = 'relative';
+          card.appendChild(newTag);
+        }
 
         var name = document.createElement('div');
         name.className = 'badge-name';
@@ -738,6 +749,28 @@
         }
       });
     });
+  });
+
+  // v3.23.534: Highlight category tabs that contain new badges (earned < 24h ago)
+  var _badgeCutoff = Date.now() - (24 * 60 * 60 * 1000);
+  var _newCats = {};
+  ALL_BADGES.forEach(function(b) {
+    if (state.badgeEarnedAt && state.badgeEarnedAt[b.id] && state.badgeEarnedAt[b.id] > _badgeCutoff) {
+      _newCats[b.cat] = true;
+    }
+  });
+  catTabs.forEach(function(tab) {
+    var cat = tab.getAttribute('data-cat');
+    if (cat !== 'all' && _newCats[cat]) {
+      tab.style.boxShadow = '0 0 8px rgba(255,68,68,0.4)';
+      tab.style.borderColor = '#ff4444';
+      var dot = document.createElement('span');
+      dot.style.cssText = 'display:inline-block;width:6px;height:6px;background:#ff4444;border-radius:50%;margin-left:4px;animation:badgeDotPulse 1.5s infinite;vertical-align:middle;';
+      tab.appendChild(dot);
+    } else if (cat === 'all' && Object.keys(_newCats).length > 0) {
+      tab.style.boxShadow = '0 0 8px rgba(255,68,68,0.4)';
+      tab.style.borderColor = '#ff4444';
+    }
   });
 
 
