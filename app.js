@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.551 - Main Application Logic
+// PixelFocus v3.23.552 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -16939,9 +16939,26 @@ try {
               return; // Do NOT render — timer tick handles it
             }
             // Not in a timer session — safe to do a full sync
+            // v3.23.552: Block stale countdown state from restoring after PiP cancel
+            if (newState.timerState === 'countdown' && state.timerState === 'idle') {
+              console.warn('[StorageSync2] BLOCKED stale countdown from incoming state');
+              newState.timerState = 'idle';
+              newState.timerEndsAt = 0;
+            }
+            // v3.23.552: Block full sync during cancel cooldown — prevents
+            // Object.assign from overwriting the idle state we just set
+            if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
+              console.warn('[StorageSync2] BLOCKED full sync — cancel cooldown active (' + (Date.now() - _cancelledAt) + 'ms ago)');
+              return;
+            }
             if (_storageSyncTimer) clearTimeout(_storageSyncTimer);
             _storageSyncTimer = setTimeout(function() {
               _storageSyncTimer = null;
+              // v3.23.552: Re-check cooldown inside the debounce callback too
+              if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
+                console.warn('[StorageSync2] BLOCKED debounced sync — cancel cooldown active');
+                return;
+              }
               state = Object.assign({}, DEFAULT_STATE, newState);
               // v3.23.187: Restore grace period from synced state
               if (state.gameLockGraceUntil && state.gameLockGraceUntil > Date.now()) {
