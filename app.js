@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.556 - Main Application Logic
+// PixelFocus v3.23.557 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -16841,6 +16841,7 @@ try {
             _storageSyncTimer = setTimeout(function() {
               _storageSyncTimer = null;
               if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused') return;
+              if (newState.timerState === 'countdown' && state.timerState === 'idle') return;
               state = Object.assign({}, DEFAULT_STATE, newState);
               // v3.23.187: Restore grace period from synced state
               if (state.gameLockGraceUntil && state.gameLockGraceUntil > Date.now()) {
