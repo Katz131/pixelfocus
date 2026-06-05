@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.560 - Main Application Logic
+// PixelFocus v3.23.561 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1446,6 +1446,8 @@ try {
         var _prevPhaseModeEnabled = state.phaseModeEnabled;
         var _prevPhases = state.phases;
         var _prevPhaseBoundaries = state.phaseBoundaries;
+        var _prevPhaseTransitioning = state.phaseTransitioning;
+        var _prevPhaseTransitionEndsAt = state.phaseTransitionEndsAt;
         // Preserve combo/session data — only popup manages these during active sessions
         var _prevCombo = state.combo;
         var _prevComboSessions = state.comboSessions;
@@ -1498,6 +1500,8 @@ try {
           if (_prevPhaseModeEnabled) {
             state.phaseModeEnabled = _prevPhaseModeEnabled;
             state.currentPhaseIndex = _prevCurrentPhaseIndex;
+            state.phaseTransitioning = _prevPhaseTransitioning;
+            state.phaseTransitionEndsAt = _prevPhaseTransitionEndsAt;
             if (_prevPhases) state.phases = _prevPhases;
             if (_prevPhaseBoundaries) state.phaseBoundaries = _prevPhaseBoundaries;
           }
