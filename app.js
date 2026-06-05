@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.558 - Main Application Logic
+// PixelFocus v3.23.559 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1470,6 +1470,12 @@ try {
         Object.keys(_incoming).forEach(function(k) {
           state[k] = _incoming[k];
         });
+        // v3.23.558: Block stale countdown from BG overwriting a cancel
+        if (state.timerState === 'countdown' && _prevTimerState === 'idle') {
+          console.warn('[StorageSync1] BLOCKED stale countdown from incoming (prev was idle)');
+          state.timerState = 'idle';
+          state.timerEndsAt = 0;
+        }
         // Restore timer state if WE are the page running the timer
         // v3.23.395: Also preserve 'paused' and 'completed' — these are still
         // our session. Without this, any external save (background.js, factory,
