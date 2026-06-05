@@ -1010,8 +1010,12 @@
     // If market yield is low (<1), bond prices rise (rates down = existing bonds gain value)
     var marketAdjust = 1 + (1 - yieldMult) * 0.3; // 0.3 sensitivity
     marketAdjust = Math.max(0.7, Math.min(1.3, marketAdjust)); // cap between 0.7x and 1.3x
+    // v3.23.563: Scale market premium by maturity progress — a 3/20 bond shouldn't
+    // get the full 30% premium. Linearly interpolate from no premium (0%) to full premium (100% matured).
+    var progressFraction = progress / bond.sessionsNeeded;
+    var scaledAdjust = 1 + (marketAdjust - 1) * progressFraction;
     var spread = 0.95; // 5% bid-ask spread — prevents instant-flip exploit
-    var price = bond.amount * (1 + accruedFraction) * marketAdjust * spread;
+    var price = bond.amount * (1 + accruedFraction) * scaledAdjust * spread;
     return Math.round(price * 100) / 100;
   }
 

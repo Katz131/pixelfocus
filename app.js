@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.563 - Main Application Logic
+// PixelFocus v3.23.564 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
