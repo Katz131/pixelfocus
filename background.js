@@ -338,6 +338,15 @@ try {
       try { chrome.alarms.clear('pixelfocus-ct-idle'); } catch(_) {}
       try { chrome.alarms.clear('pixelfocus-focus-idle'); } catch(_) {}
     }
+    // v3.23.545: Clear corrupted double-down state (active=true but ext=0)
+    if (st.doubleDownActive && (!st.doubleDownExtensionSec || st.doubleDownExtensionSec <= 0)) {
+      console.log('[BG-DD] Corrupted DD detected (active=true, ext=0). Clearing.');
+      st.doubleDownActive = false;
+      st.doubleDownExtensionSec = 0;
+      st.doubleDownOriginalSec = 0;
+      st.doubleDownOriginalCoins = 0;
+      _safeSaveState(st);
+    }
   });
 } catch(_) {}
 

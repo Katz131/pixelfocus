@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.544 - Main Application Logic
+// PixelFocus v3.23.546 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1459,8 +1459,22 @@ try {
         // v3.23.435: Preserve phase TTS announced flags — without this, onChanged clobbers
         // the announced object back to {} causing TTS warnings to repeat ~5 times
         var _prevPhaseTtsAnnounced = state.phaseTtsAnnounced;
+        // v3.23.545: Preserve phase mode fields — without this, background.js saves
+        // overwrite currentPhaseIndex back to -1, killing the phase progress bar
+        var _prevCurrentPhaseIndex = state.currentPhaseIndex;
+        var _prevPhaseTransitioning = state.phaseTransitioning;
+        var _prevPhaseTransitionEndsAt = state.phaseTransitionEndsAt;
+        var _prevPhaseModeEnabled = state.phaseModeEnabled;
+        var _prevPhases = state.phases;
+        var _prevPhaseBoundaries = state.phaseBoundaries;
         var _prevQuestChosen = state.questChosen;
         var _prevQuestCompleted = state.questCompleted;
+        // v3.23.545: Preserve tasks/projects during active sessions — stops task flicker
+        var _prevTasks = state.tasks;
+        var _prevActiveProject = state.activeProject;
+        var _prevPriorityTasks = state.priorityTasks;
+        var _prevSelectedTaskId = state.selectedTaskId;
+        var _prevDoNowTask = state.doNowTask;
         // v3.23.374: Preserve challenge tracking — prevent onChanged from reverting mid-chain
         var _prevFriendChallenge = state.friendChallenge ? JSON.parse(JSON.stringify(state.friendChallenge)) : null;
         Object.keys(_incoming).forEach(function(k) {
@@ -1490,14 +1504,29 @@ try {
             console.log('[DD-DBG] onChanged: BLOCKED corrupted DD restore (active=true but ext=0)');
           }
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
-          state.phaseTtsMuted = _prevPhaseTtsMuted; // v3.23.542: always preserve mute state
-          console.log('[DD-DBG] onChanged: restoring DD. active=' + _prevDoubleDown + ' ext=' + _prevDoubleDownExtSec + ' orig=' + _prevDoubleDownOrigSec + ' incoming.active=' + _incoming.doubleDownActive);
+          state.phaseTtsMuted = _prevPhaseTtsMuted;
+          console.log('[DD-DBG] onChanged: DD state after restore. active=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec); // v3.23.542: always preserve mute state
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
           // v3.23.435: Restore phase TTS flags to prevent repeat announcements
           if (_prevPhaseTtsAnnounced && Object.keys(_prevPhaseTtsAnnounced).length > 0) {
             state.phaseTtsAnnounced = _prevPhaseTtsAnnounced;
           }
+          // v3.23.545: Restore all phase mode fields — prevents BG saves from killing phase bar
+          if (_prevPhaseModeEnabled) {
+            state.phaseModeEnabled = _prevPhaseModeEnabled;
+            state.currentPhaseIndex = _prevCurrentPhaseIndex;
+            state.phaseTransitioning = _prevPhaseTransitioning;
+            state.phaseTransitionEndsAt = _prevPhaseTransitionEndsAt;
+            if (_prevPhases) state.phases = _prevPhases;
+            if (_prevPhaseBoundaries) state.phaseBoundaries = _prevPhaseBoundaries;
+          }
+          // v3.23.545: Restore task data — prevents BG saves from flashing stale tasks
+          if (_prevTasks) state.tasks = _prevTasks;
+          state.activeProject = _prevActiveProject;
+          if (_prevPriorityTasks) state.priorityTasks = _prevPriorityTasks;
+          if (_prevSelectedTaskId) state.selectedTaskId = _prevSelectedTaskId;
+          if (_prevDoNowTask) state.doNowTask = _prevDoNowTask;
         }
         // Always preserve higher combo/session values — these only go up during a day
         if ((_prevCombo || 0) > (state.combo || 0)) state.combo = _prevCombo;
@@ -2173,10 +2202,9 @@ try {
       checkComboTimeout();
 
       // v3.23.542: DD debug logging
-      console.log('[DD-DBG] load() check: doubleDownActive=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec + ' timerState=' + state.timerState);
       // v3.23.540: Clean up corrupted double-down state (active but 0 extension = clobbered)
-      if (state.doubleDownActive && (!state.doubleDownExtensionSec || state.doubleDownExtensionSec <= 0)) {
-        console.log('[DD] Corrupted double-down state detected (active=true, extension=0). Resetting.');
+      if (state.doubleDownActive && (state.timerState === 'idle' || state.timerState === 'completed' || !state.doubleDownExtensionSec || state.doubleDownExtensionSec <= 0)) {
+        console.log('[DD] Stale/corrupted DD detected (active=true, timerState=' + state.timerState + ', ext=' + state.doubleDownExtensionSec + '). Resetting.');
         state.doubleDownActive = false;
         state.doubleDownExtensionSec = 0;
         state.doubleDownOriginalSec = 0;
@@ -2188,6 +2216,7 @@ try {
         }
         save();
       }
+      console.log('[DD-DBG] load() check: doubleDownActive=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec + ' timerState=' + state.timerState);
 
       // v3.23.538: One-time dedup of challenge history (duplicate 250-440 entry)
       if (!state._challengeDedupDone) {
@@ -9078,6 +9107,11 @@ try {
 
   function beginActualSession() {
     SFX.startTimer();
+    // v3.23.546: Clear stale double-down from previous session
+    if (state.doubleDownActive) {
+      console.log('[DD-DBG] beginActualSession: clearing stale DD (active=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ')');
+      resetDoubleDown();
+    }
     // v3.23.311: Clear distraction counts for the new session
     state.sessionDistractions = {};
     // v3.23.489: Track combo coins pre/post market yield for celebration screen
@@ -10577,7 +10611,6 @@ try {
       return false;
     }
     // Record original commitment
-    console.log('[DD-DBG] activateDoubleDown: extraMinutes=' + extraMinutes + ' current sessionDurationSec=' + state.sessionDurationSec + ' timerRemaining=' + state.timerRemaining + ' timerEndsAt=' + state.timerEndsAt);
     state.doubleDownActive = true;
     state.doubleDownOriginalSec = state.sessionDurationSec || 600;
     state.doubleDownExtensionSec = extraMinutes * 60;
@@ -10604,7 +10637,6 @@ try {
   }
 
   function resetDoubleDown() {
-    console.log('[DD-DBG] resetDoubleDown called. Stack:', new Error().stack.split('\n').slice(1,3).join(' <- '));
     state.doubleDownActive = false;
     state.doubleDownOriginalSec = 0;
     state.doubleDownExtensionSec = 0;
