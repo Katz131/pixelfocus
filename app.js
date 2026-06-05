@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.554 - Main Application Logic
+// PixelFocus v3.23.555 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1225,8 +1225,6 @@ try {
   // start from idle, NOT on resume from paused. 15 seconds gives the user
   // a beat to shift their eyes, grab their drink, close other tabs, etc.
   let countdownInterval = null;
-  let _cancelledAt = 0;  // v3.23.550: timestamp-based cooldown to prevent restart after cancel
-  let _hardKillCountdown = false;  // v3.23.550: nuclear kill flag — checked every tick
   let countdownRemaining = 0;
   let _countdownCancelled = false;
   const COUNTDOWN_SECONDS = 15;
@@ -1360,7 +1358,6 @@ try {
 
   // ============== STORAGE ==============
   function save() {
-    if (state.doubleDownActive) console.warn('[DD-TRAP-4] save() with DD active! ext=' + state.doubleDownExtensionSec + ' timerState=' + state.timerState + ' caller:', new Error().stack.split('\n').slice(1,3).join(' | '));
     // v3.23.32: Safety — archive stale dailySessionLog before every write.
     // Prevents data loss when multiple extension pages (popup, profile, etc.)
     // race each other. Even if page A archived and saved, page B's blind save
@@ -1432,15 +1429,8 @@ try {
         // Instead: adopt the incoming state wholesale, then overlay any local
         // data that's definitively fresher (e.g. timer state if running).
         var _incoming = changes.pixelFocusState.newValue;
-        if (_incoming.doubleDownActive) console.warn('[DD-TRAP-5] INCOMING from storage has DD! ext=' + _incoming.doubleDownExtensionSec + ' orig=' + _incoming.doubleDownOriginalSec + ' incoming.timerState=' + _incoming.timerState + ' local.timerState=' + state.timerState);
         // Accept the incoming state for ALL fields — this is the source of truth
         // from whichever page just saved (factory, brokerage, gallery, etc.)
-        // v3.23.548: NEVER accept incoming countdown — it's transient/local-only.
-        // Stale BG saves with countdown would undo a PiP cancel.
-        if (_incoming.timerState === 'countdown' && state.timerState === 'idle') {
-          _incoming.timerState = 'idle';
-          _incoming.timerEndsAt = 0;
-        }
         var _prevCoins = state.coins;
         var _prevTimerState = state.timerState;
         var _prevTimerEndsAt = state.timerEndsAt;
@@ -1469,22 +1459,8 @@ try {
         // v3.23.435: Preserve phase TTS announced flags — without this, onChanged clobbers
         // the announced object back to {} causing TTS warnings to repeat ~5 times
         var _prevPhaseTtsAnnounced = state.phaseTtsAnnounced;
-        // v3.23.545: Preserve phase mode fields — without this, background.js saves
-        // overwrite currentPhaseIndex back to -1, killing the phase progress bar
-        var _prevCurrentPhaseIndex = state.currentPhaseIndex;
-        var _prevPhaseTransitioning = state.phaseTransitioning;
-        var _prevPhaseTransitionEndsAt = state.phaseTransitionEndsAt;
-        var _prevPhaseModeEnabled = state.phaseModeEnabled;
-        var _prevPhases = state.phases;
-        var _prevPhaseBoundaries = state.phaseBoundaries;
         var _prevQuestChosen = state.questChosen;
         var _prevQuestCompleted = state.questCompleted;
-        // v3.23.545: Preserve tasks/projects during active sessions — stops task flicker
-        var _prevTasks = state.tasks;
-        var _prevActiveProject = state.activeProject;
-        var _prevPriorityTasks = state.priorityTasks;
-        var _prevSelectedTaskId = state.selectedTaskId;
-        var _prevDoNowTask = state.doNowTask;
         // v3.23.374: Preserve challenge tracking — prevent onChanged from reverting mid-chain
         var _prevFriendChallenge = state.friendChallenge ? JSON.parse(JSON.stringify(state.friendChallenge)) : null;
         Object.keys(_incoming).forEach(function(k) {
@@ -1500,43 +1476,21 @@ try {
           state.timerEndsAt = _prevTimerEndsAt;
           state.timerRemaining = _prevTimerRemaining;
           state.sessionDurationSec = _prevSessionDurationSec;
-          // v3.23.543: Only restore DD if it's not corrupted (ext must be > 0)
-          if (_prevDoubleDown && _prevDoubleDownExtSec > 0) {
+          if (_prevDoubleDown) {
             state.doubleDownActive = _prevDoubleDown;
-            state.doubleDownExtensionSec = _prevDoubleDownExtSec;
-            state.doubleDownOriginalSec = _prevDoubleDownOrigSec;
+            // v3.23.539: Also preserve extension fields — without these the reward calc breaks
+            if (_prevDoubleDownExtSec) state.doubleDownExtensionSec = _prevDoubleDownExtSec;
+            if (_prevDoubleDownOrigSec) state.doubleDownOriginalSec = _prevDoubleDownOrigSec;
             if (_prevDoubleDownOrigCoins !== undefined) state.doubleDownOriginalCoins = _prevDoubleDownOrigCoins;
-          } else if (_prevDoubleDown && (!_prevDoubleDownExtSec || _prevDoubleDownExtSec <= 0)) {
-            // Corrupted DD — don't restore, let it stay cleared
-            state.doubleDownActive = false;
-            state.doubleDownExtensionSec = 0;
-            state.doubleDownOriginalSec = 0;
-            console.log('[DD-DBG] onChanged: BLOCKED corrupted DD restore (active=true but ext=0)');
           }
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
-          state.phaseTtsMuted = _prevPhaseTtsMuted;
-          console.log('[DD-DBG] onChanged: DD state after restore. active=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec); // v3.23.542: always preserve mute state
+          state.phaseTtsMuted = _prevPhaseTtsMuted; // v3.23.542: always preserve mute state
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
           // v3.23.435: Restore phase TTS flags to prevent repeat announcements
           if (_prevPhaseTtsAnnounced && Object.keys(_prevPhaseTtsAnnounced).length > 0) {
             state.phaseTtsAnnounced = _prevPhaseTtsAnnounced;
           }
-          // v3.23.545: Restore all phase mode fields — prevents BG saves from killing phase bar
-          if (_prevPhaseModeEnabled) {
-            state.phaseModeEnabled = _prevPhaseModeEnabled;
-            state.currentPhaseIndex = _prevCurrentPhaseIndex;
-            state.phaseTransitioning = _prevPhaseTransitioning;
-            state.phaseTransitionEndsAt = _prevPhaseTransitionEndsAt;
-            if (_prevPhases) state.phases = _prevPhases;
-            if (_prevPhaseBoundaries) state.phaseBoundaries = _prevPhaseBoundaries;
-          }
-          // v3.23.545: Restore task data — prevents BG saves from flashing stale tasks
-          if (_prevTasks) state.tasks = _prevTasks;
-          state.activeProject = _prevActiveProject;
-          if (_prevPriorityTasks) state.priorityTasks = _prevPriorityTasks;
-          if (_prevSelectedTaskId) state.selectedTaskId = _prevSelectedTaskId;
-          if (_prevDoNowTask) state.doNowTask = _prevDoNowTask;
         }
         // Always preserve higher combo/session values — these only go up during a day
         if ((_prevCombo || 0) > (state.combo || 0)) state.combo = _prevCombo;
@@ -2211,10 +2165,9 @@ try {
       }
       checkComboTimeout();
 
-      // v3.23.542: DD debug logging
       // v3.23.540: Clean up corrupted double-down state (active but 0 extension = clobbered)
-      if (state.doubleDownActive && (state.timerState === 'idle' || state.timerState === 'completed' || !state.doubleDownExtensionSec || state.doubleDownExtensionSec <= 0)) {
-        console.log('[DD] Stale/corrupted DD detected (active=true, timerState=' + state.timerState + ', ext=' + state.doubleDownExtensionSec + '). Resetting.');
+      if (state.doubleDownActive && (!state.doubleDownExtensionSec || state.doubleDownExtensionSec <= 0)) {
+        console.log('[DD] Corrupted double-down state detected (active=true, extension=0). Resetting.');
         state.doubleDownActive = false;
         state.doubleDownExtensionSec = 0;
         state.doubleDownOriginalSec = 0;
@@ -2226,7 +2179,6 @@ try {
         }
         save();
       }
-      console.log('[DD-DBG] load() check: doubleDownActive=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec + ' timerState=' + state.timerState);
 
       // v3.23.538: One-time dedup of challenge history (duplicate 250-440 entry)
       if (!state._challengeDedupDone) {
@@ -7630,9 +7582,6 @@ try {
     }
     countdownRemaining = 0;
     _countdownCancelled = true;
-    _cancelledAt = Date.now();  // v3.23.550: hard cooldown
-    _hardKillCountdown = true;  // v3.23.550: nuclear kill
-    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(_) {}
   }
 
   // Start (or restart) the 1 Hz timer tick that reads state.timerEndsAt and
@@ -9119,18 +9068,7 @@ try {
   }
 
   function beginActualSession() {
-    // v3.23.550: Nuclear guard — refuse to begin if cancelled recently
-    if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
-      console.warn('[TIMER] beginActualSession BLOCKED — cancelled ' + (Date.now() - _cancelledAt) + 'ms ago');
-      state.timerState = 'idle';
-      return;
-    }
     SFX.startTimer();
-    // v3.23.546: Clear stale double-down from previous session
-    if (state.doubleDownActive) {
-      console.log('[DD-DBG] beginActualSession: clearing stale DD (active=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ')');
-      resetDoubleDown();
-    }
     // v3.23.311: Clear distraction counts for the new session
     state.sessionDistractions = {};
     // v3.23.489: Track combo coins pre/post market yield for celebration screen
@@ -9489,22 +9427,10 @@ try {
       return;
     }
     state._preBlockPickerShown = false;
-    // v3.23.550: Final cooldown check before starting
-    if (_cancelledAt && (Date.now() - _cancelledAt) < 1500) {
-      console.warn('[TIMER] startTimer BLOCKED — cancelled ' + (Date.now() - _cancelledAt) + 'ms ago.');
-      return;
-    }
     _actuallyStartTimer();
   }
 
   function _actuallyStartTimer() {
-    // v3.23.550: Hard cooldown — refuse to start within 1.5s of a cancel.
-    // Prevents race where cancel fires but something re-enters _actuallyStartTimer
-    // before the UI fully settles (e.g., onChanged re-triggering startTimer).
-    if (_cancelledAt && (Date.now() - _cancelledAt) < 1500) {
-      console.warn('[TIMER] _actuallyStartTimer BLOCKED — cancelled ' + (Date.now() - _cancelledAt) + 'ms ago. Cooldown active.');
-      return;
-    }
     // v3.23.82: Market first-use modal — fires once before the player's
     // first focus session after the market unlocks (marketingLevel >= 1).
     if ((state.marketingLevel || 0) >= 1 && !state.hasSeenMarketIntro) {
@@ -9517,7 +9443,6 @@ try {
     cancelPreStartCountdown();
     countdownRemaining = COUNTDOWN_SECONDS;
     _countdownCancelled = false;
-    _hardKillCountdown = false;  // v3.23.550: clear nuclear kill for legitimate new start
     state.sessionBlocks = 0;  // v3.23.412: reset progress bar for new session
     state.timerState = 'countdown';
     _tlPreviewDurationSec = 0; // v3.23.6: clear preview — real session takes over
@@ -9545,13 +9470,6 @@ try {
     render();
     countdownInterval = setInterval(() => {
       try {
-        // v3.23.550: Nuclear kill check — if cancel happened, abort immediately
-        if (_hardKillCountdown) {
-          clearInterval(countdownInterval);
-          countdownInterval = null;
-          console.warn('[TIMER] Countdown tick killed by _hardKillCountdown');
-          return;
-        }
         countdownRemaining--;
         if (countdownRemaining > 0) {
           // Soft tick every second so the user can hear the runway.
@@ -9565,15 +9483,6 @@ try {
           // condition where background.js overwrites timerState via stale
           // storage writes (v3.23.412 fix).
           if (_countdownCancelled) return;
-          // v3.23.550: Redundant cancel check — belt and suspenders
-          if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
-            console.warn('[TIMER] Countdown interval: beginActualSession blocked by cooldown');
-            return;
-          }
-          if (state.timerState !== 'countdown') {
-            console.warn('[TIMER] Countdown interval: timerState is ' + state.timerState + ', not countdown — skipping beginActualSession');
-            return;
-          }
           beginActualSession();
         }
       } catch (err) {
@@ -9591,8 +9500,6 @@ try {
         if (state.timerRemaining > 0) {
           state.timerRemaining--;
           if (state.timerRemaining % 60 === 0 && state.timerRemaining > 0 && !state.phaseTtsMuted) SFX.tick();
-          // DD-TRAP-2: Periodic DD watchdog
-          if (state.timerRemaining % 10 === 0 && state.doubleDownActive) { console.warn('[DD-TRAP-2] WATCHDOG: DD active at ' + state.timerRemaining + 's rem. ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec); }
           // v3.23.127: Refresh quest progress every minute during focus
           // Quest progress checked by standalone 30s interval, not here
           save();
@@ -10307,21 +10214,14 @@ try {
             if (btn) {
               btn.addEventListener('click', function(ev) {
                 try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
-                console.warn('[PIP-BTN] Clicked! timerState=' + state.timerState + ' countdownRemaining=' + countdownRemaining);
-                // v3.23.548: PiP button handles countdown cancel + pause/resume.
+                // v3.23.353: PiP button only handles pause/resume.
+                // Starting new sessions or adding time must be done
+                // from the main popup — prevents accidental resets.
+                // v3.23.362: Also handle countdown — cancel the pre-start countdown.
                 if (state.timerState === 'countdown') {
-                  console.warn('[PIP-BTN] Cancelling countdown directly');
-                  // Cancel directly — don't go through startTimer() which can be undone by onChanged
-                  cancelPreStartCountdown();
-                  state.timerState = 'idle';
-                  state.timerEndsAt = 0;
-                  save();
-                  render();
+                  try { startTimer(); } catch (err) { console.error('PiP button startTimer (cancel countdown) failed:', err); }
                 } else if (state.timerState === 'running' || state.timerState === 'paused') {
-                  console.warn('[PIP-BTN] Toggling pause/resume');
                   try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
-                } else {
-                  console.warn('[PIP-BTN] NO-OP — timerState=' + state.timerState + ' not handled');
                 }
                 try { renderPopOutTimer(); } catch (_) {}
               });
@@ -10460,8 +10360,6 @@ try {
             label.title = 'Phase ' + (state.currentPhaseIndex + 1) + ' of ' + state.phases.length + ': ' + _pipPhaseName;
           }
         } else if (state.doubleDownActive) {
-          console.warn('[DD-TRAP-1] PiP rendering DD label! active=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' timerState=' + state.timerState + ' phaseIdx=' + state.currentPhaseIndex + ' phases=' + (state.phases ? state.phases.length : 'null'));
-          console.trace('[DD-TRAP-1] Call stack');
           label.textContent = '🎲 DD ' + (dur / 60) + 'M';
           var _ddOrig = Math.round((state.doubleDownOriginalSec || 0) / 60);
           var _ddExt = Math.round((state.doubleDownExtensionSec || 0) / 60);
@@ -10661,7 +10559,6 @@ try {
   var DOUBLE_DOWN_BONUS_MULT = 1.5; // 1.5x earnings on extension time
 
   function activateDoubleDown(extraMinutes) {
-    console.warn('[DD-TRAP-3] activateDoubleDown CALLED! extraMinutes=' + extraMinutes + ' STACK:', new Error().stack.split('\n').slice(1,5).join(' | '));
     if (state.timerState !== 'running' && state.timerState !== 'paused') {
       notify('Timer must be running to double down!', 'var(--warning)');
       return false;
@@ -16939,31 +16836,9 @@ try {
               return; // Do NOT render — timer tick handles it
             }
             // Not in a timer session — safe to do a full sync
-            // v3.23.552: Block stale countdown state from restoring after PiP cancel
-            if (newState.timerState === 'countdown' && state.timerState === 'idle') {
-              console.warn('[StorageSync2] BLOCKED stale countdown from incoming state');
-              newState.timerState = 'idle';
-              newState.timerEndsAt = 0;
-            }
-            // v3.23.552: Block full sync during cancel cooldown — prevents
-            // Object.assign from overwriting the idle state we just set
-            if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
-              console.warn('[StorageSync2] BLOCKED full sync — cancel cooldown active (' + (Date.now() - _cancelledAt) + 'ms ago)');
-              return;
-            }
             if (_storageSyncTimer) clearTimeout(_storageSyncTimer);
             _storageSyncTimer = setTimeout(function() {
               _storageSyncTimer = null;
-              // v3.23.552: Re-check cooldown inside the debounce callback too
-              if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
-                console.warn('[StorageSync2] BLOCKED debounced sync — cancel cooldown active');
-                return;
-              }
-              // v3.23.553: Block if timer started since debounce was queued
-              if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
-                console.warn('[StorageSync2] BLOCKED debounced sync — timer is ' + state.timerState + ' (started after debounce was queued)');
-                return;
-              }
               state = Object.assign({}, DEFAULT_STATE, newState);
               // v3.23.187: Restore grace period from synced state
               if (state.gameLockGraceUntil && state.gameLockGraceUntil > Date.now()) {
@@ -18225,24 +18100,6 @@ try {
         var phases = state.phases || [];
         var totalSec = state.sessionDurationSec || 600;
         var totalMin = Math.round(totalSec / 60);
-
-        // v3.23.552: Auto-repair if phase total is way under session duration
-        // (caused by stale state from second onChanged handler or locked-at-wrong-values)
-        if (phases.length > 0) {
-          var _phaseTotal = phases.reduce(function(s, p) { return s + p.durationSec; }, 0);
-          if (_phaseTotal < totalSec * 0.5) {
-            console.warn('[PHASE-REPAIR] Phase total ' + _phaseTotal + 's is <50% of session ' + totalSec + 's. Rebalancing.');
-            var _perPhase = Math.floor(totalSec / phases.length);
-            phases.forEach(function(p, i) {
-              p.durationSec = _perPhase;
-              p.locked = false;
-            });
-            // Give remainder to last phase
-            var _allocated = _perPhase * phases.length;
-            if (_allocated < totalSec) phases[phases.length - 1].durationSec += (totalSec - _allocated);
-            save();
-          }
-        }
 
         if (phases.length === 0) {
           list.innerHTML = '';
