@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.562 - Main Application Logic
+// PixelFocus v3.23.563 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -7950,8 +7950,8 @@ try {
         btn.addEventListener('mouseenter', function() { this.style.transform='translateY(-2px)'; this.style.background='rgba(255,255,255,0.1)'; });
         btn.addEventListener('mouseleave', function() { this.style.transform=''; this.style.background='rgba(255,255,255,0.05)'; });
         btn.addEventListener('click', function() {
-          _applyEarlyDoneRedistribution(bonusSec, fromIdx, targetIdx);
           overlay.remove();
+          _applyEarlyDoneRedistribution(bonusSec, fromIdx, targetIdx);
         });
         btnContainer.appendChild(btn);
       })(i);
@@ -7967,8 +7967,8 @@ try {
     sandboxBtn.addEventListener('mouseenter', function() { this.style.transform='translateY(-2px)'; this.style.background='rgba(255,215,0,0.15)'; });
     sandboxBtn.addEventListener('mouseleave', function() { this.style.transform=''; this.style.background='rgba(255,215,0,0.08)'; });
     sandboxBtn.addEventListener('click', function() {
-      _applyEarlyDoneRedistribution(bonusSec, fromIdx, -1); // -1 = sandbox
       overlay.remove();
+      _applyEarlyDoneRedistribution(bonusSec, fromIdx, -1); // -1 = sandbox
     });
     btnContainer.appendChild(sandboxBtn);
 
@@ -8046,6 +8046,11 @@ try {
     }
 
     save();
+    render();
+    // v3.23.562: Focus main popup so user can see phase panel and verify allocation
+    try {
+      chrome.runtime.sendMessage({ type: 'pf-open', path: 'popup.html' });
+    } catch(_) {}
   }
 
   // v3.23.436: Show/hide the DONE EARLY button on main popup
