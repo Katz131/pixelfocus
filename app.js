@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.550 - Main Application Logic
+// PixelFocus v3.23.551 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1226,6 +1226,7 @@ try {
   // a beat to shift their eyes, grab their drink, close other tabs, etc.
   let countdownInterval = null;
   let _cancelledAt = 0;  // v3.23.550: timestamp-based cooldown to prevent restart after cancel
+  let _hardKillCountdown = false;  // v3.23.550: nuclear kill flag — checked every tick
   let countdownRemaining = 0;
   let _countdownCancelled = false;
   const COUNTDOWN_SECONDS = 15;
@@ -7630,6 +7631,7 @@ try {
     countdownRemaining = 0;
     _countdownCancelled = true;
     _cancelledAt = Date.now();  // v3.23.550: hard cooldown
+    _hardKillCountdown = true;  // v3.23.550: nuclear kill
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(_) {}
   }
 
@@ -9117,6 +9119,12 @@ try {
   }
 
   function beginActualSession() {
+    // v3.23.550: Nuclear guard — refuse to begin if cancelled recently
+    if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
+      console.warn('[TIMER] beginActualSession BLOCKED — cancelled ' + (Date.now() - _cancelledAt) + 'ms ago');
+      state.timerState = 'idle';
+      return;
+    }
     SFX.startTimer();
     // v3.23.546: Clear stale double-down from previous session
     if (state.doubleDownActive) {
@@ -9509,6 +9517,7 @@ try {
     cancelPreStartCountdown();
     countdownRemaining = COUNTDOWN_SECONDS;
     _countdownCancelled = false;
+    _hardKillCountdown = false;  // v3.23.550: clear nuclear kill for legitimate new start
     state.sessionBlocks = 0;  // v3.23.412: reset progress bar for new session
     state.timerState = 'countdown';
     _tlPreviewDurationSec = 0; // v3.23.6: clear preview — real session takes over
@@ -9536,6 +9545,13 @@ try {
     render();
     countdownInterval = setInterval(() => {
       try {
+        // v3.23.550: Nuclear kill check — if cancel happened, abort immediately
+        if (_hardKillCountdown) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+          console.warn('[TIMER] Countdown tick killed by _hardKillCountdown');
+          return;
+        }
         countdownRemaining--;
         if (countdownRemaining > 0) {
           // Soft tick every second so the user can hear the runway.
@@ -9549,6 +9565,15 @@ try {
           // condition where background.js overwrites timerState via stale
           // storage writes (v3.23.412 fix).
           if (_countdownCancelled) return;
+          // v3.23.550: Redundant cancel check — belt and suspenders
+          if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
+            console.warn('[TIMER] Countdown interval: beginActualSession blocked by cooldown');
+            return;
+          }
+          if (state.timerState !== 'countdown') {
+            console.warn('[TIMER] Countdown interval: timerState is ' + state.timerState + ', not countdown — skipping beginActualSession');
+            return;
+          }
           beginActualSession();
         }
       } catch (err) {
