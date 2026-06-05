@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.549 - Main Application Logic
+// PixelFocus v3.23.550 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1225,6 +1225,7 @@ try {
   // start from idle, NOT on resume from paused. 15 seconds gives the user
   // a beat to shift their eyes, grab their drink, close other tabs, etc.
   let countdownInterval = null;
+  let _cancelledAt = 0;  // v3.23.550: timestamp-based cooldown to prevent restart after cancel
   let countdownRemaining = 0;
   let _countdownCancelled = false;
   const COUNTDOWN_SECONDS = 15;
@@ -7628,6 +7629,7 @@ try {
     }
     countdownRemaining = 0;
     _countdownCancelled = true;
+    _cancelledAt = Date.now();  // v3.23.550: hard cooldown
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(_) {}
   }
 
@@ -9479,10 +9481,22 @@ try {
       return;
     }
     state._preBlockPickerShown = false;
+    // v3.23.550: Final cooldown check before starting
+    if (_cancelledAt && (Date.now() - _cancelledAt) < 1500) {
+      console.warn('[TIMER] startTimer BLOCKED — cancelled ' + (Date.now() - _cancelledAt) + 'ms ago.');
+      return;
+    }
     _actuallyStartTimer();
   }
 
   function _actuallyStartTimer() {
+    // v3.23.550: Hard cooldown — refuse to start within 1.5s of a cancel.
+    // Prevents race where cancel fires but something re-enters _actuallyStartTimer
+    // before the UI fully settles (e.g., onChanged re-triggering startTimer).
+    if (_cancelledAt && (Date.now() - _cancelledAt) < 1500) {
+      console.warn('[TIMER] _actuallyStartTimer BLOCKED — cancelled ' + (Date.now() - _cancelledAt) + 'ms ago. Cooldown active.');
+      return;
+    }
     // v3.23.82: Market first-use modal — fires once before the player's
     // first focus session after the market unlocks (marketingLevel >= 1).
     if ((state.marketingLevel || 0) >= 1 && !state.hasSeenMarketIntro) {
