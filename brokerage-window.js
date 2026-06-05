@@ -687,7 +687,7 @@
               '<div style="height:100%;background:var(--gold);width:' + pct + '%;border-radius:2px;"></div>' +
             '</div>' +
             '<span style="font-size:8px;color:var(--text-dim);white-space:nowrap;min-width:50px;text-align:right;">' + ip.progress + '/' + ip.bond.sessionsNeeded + '</span>' +
-            '<button class="trade-btn sell sell-bond-early-btn" data-idx="' + ip.idx + '" style="padding:3px 6px;font-size:7px;margin-left:4px;" title="Sell this bond on the secondary market for $' + fmt(getBondSellPrice(ip.bond)) + (getBondSellPrice(ip.bond) >= ip.bond.amount ? ' (gain)' : ' (loss)') + '">SELL $' + fmt(getBondSellPrice(ip.bond)) + '</button>';
+            '<button class="trade-btn sell sell-bond-early-btn" data-idx="' + ip.idx + '" style="padding:3px 6px;font-size:7px;margin-left:4px;" title="SELL NOW: $' + fmt(getBondSellPrice(ip.bond)) + ' (' + (getBondSellPrice(ip.bond) >= ip.bond.amount ? '+' : '') + '$' + fmt(getBondSellPrice(ip.bond) - ip.bond.amount) + ') vs. HOLD TO MATURITY: $' + fmt(ip.bond.amount * (1 + ip.bond.rate)) + ' (+$' + fmt(ip.bond.amount * ip.bond.rate) + '). ' + (getBondSellPrice(ip.bond) < ip.bond.amount * (1 + ip.bond.rate) ? 'Selling now loses $' + fmt(ip.bond.amount * (1 + ip.bond.rate) - getBondSellPrice(ip.bond)) + ' vs maturity.' : 'Market premium.') + ' ' + ip.progress + '/' + ip.bond.sessionsNeeded + ' sessions elapsed.">' + (ip.progress < 3 ? '\u{1F512} HOLD' : 'SELL $' + fmt(getBondSellPrice(ip.bond))) + '</button>';
           ipBody.appendChild(row);
         });
 
@@ -1020,6 +1020,8 @@
     if (!b.activeBonds || idx >= b.activeBonds.length) return;
     var bond = b.activeBonds[idx];
     var sellPrice = getBondSellPrice(bond);
+    var maturityValue = bond.amount * (1 + bond.rate);
+    if (!confirm("SELL EARLY?\n\nSell now: $" + Math.round(sellPrice) + "\nHold to maturity: $" + Math.round(maturityValue) + "\n\n" + (sellPrice < maturityValue ? "You lose $" + Math.round(maturityValue - sellPrice) + " by selling early." : "Market premium — selling above maturity value.") + "\n\nAre you sure?")) return;
     var gainLoss = sellPrice - bond.amount;
     b.cash += sellPrice;
     b.activeBonds.splice(idx, 1);

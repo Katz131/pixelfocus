@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.537 - Main Application Logic
+// PixelFocus v3.23.541 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1437,6 +1437,9 @@ try {
         var _prevTimerRemaining = state.timerRemaining;
         var _prevSessionDurationSec = state.sessionDurationSec;
         var _prevDoubleDown = state.doubleDownActive;
+        var _prevDoubleDownExtSec = state.doubleDownExtensionSec;
+        var _prevDoubleDownOrigSec = state.doubleDownOriginalSec;
+        var _prevDoubleDownOrigCoins = state.doubleDownOriginalCoins;
         var _prevPopOutTimerOpen = state.popOutTimerOpen;
         // Preserve combo/session data — only popup manages these during active sessions
         var _prevCombo = state.combo;
@@ -1472,7 +1475,13 @@ try {
           state.timerEndsAt = _prevTimerEndsAt;
           state.timerRemaining = _prevTimerRemaining;
           state.sessionDurationSec = _prevSessionDurationSec;
-          if (_prevDoubleDown) state.doubleDownActive = _prevDoubleDown;
+          if (_prevDoubleDown) {
+            state.doubleDownActive = _prevDoubleDown;
+            // v3.23.539: Also preserve extension fields — without these the reward calc breaks
+            if (_prevDoubleDownExtSec) state.doubleDownExtensionSec = _prevDoubleDownExtSec;
+            if (_prevDoubleDownOrigSec) state.doubleDownOriginalSec = _prevDoubleDownOrigSec;
+            if (_prevDoubleDownOrigCoins !== undefined) state.doubleDownOriginalCoins = _prevDoubleDownOrigCoins;
+          }
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
@@ -2153,6 +2162,55 @@ try {
         }
       }
       checkComboTimeout();
+
+      // v3.23.540: Clean up corrupted double-down state (active but 0 extension = clobbered)
+      if (state.doubleDownActive && (!state.doubleDownExtensionSec || state.doubleDownExtensionSec <= 0)) {
+        console.log('[DD] Corrupted double-down state detected (active=true, extension=0). Resetting.');
+        state.doubleDownActive = false;
+        state.doubleDownExtensionSec = 0;
+        state.doubleDownOriginalSec = 0;
+        state.doubleDownOriginalCoins = 0;
+        // Restore sessionDurationSec if it looks wrong
+        var _stdDurations = [600, 1200, 1800, 3600, 5400];
+        if (_stdDurations.indexOf(state.sessionDurationSec) === -1 && state.timerState === 'idle') {
+          state.sessionDurationSec = 1800; // default to 30 min
+        }
+        save();
+      }
+
+      // v3.23.538: One-time dedup of challenge history (duplicate 250-440 entry)
+      if (!state._challengeDedupDone) {
+        var _hist = state.friendChallengeHistory || [];
+        if (_hist.length > 1) {
+          var _deduped = [];
+          var _seen = {};
+          var _dupsRemoved = 0;
+          for (var _di = 0; _di < _hist.length; _di++) {
+            var _h = _hist[_di];
+            var _key = (_h.result || '') + '_' + (_h.myScore || 0) + '_' + (_h.theirScore || 0) + '_' + (_h.opponent || '');
+            if (_seen[_key]) { _dupsRemoved++; continue; }
+            _seen[_key] = true;
+            _deduped.push(_h);
+          }
+          if (_dupsRemoved > 0) {
+            state.friendChallengeHistory = _deduped;
+            // Recount wins/losses from clean history
+            var _w = 0, _l = 0, _t = 0;
+            for (var _ci = 0; _ci < _deduped.length; _ci++) {
+              if (_deduped[_ci].result === 'won') _w++;
+              else if (_deduped[_ci].result === 'lost') _l++;
+              else _t++;
+            }
+            state.friendChallengeWins = _w;
+            state.friendChallengeLosses = _l;
+            state.friendChallengeTies = _t;
+            console.log('[Challenge] Deduped history: removed ' + _dupsRemoved + ' duplicate(s). Record: ' + _w + 'W/' + _l + 'L/' + _t + 'T');
+          }
+        }
+        state._challengeDedupDone = true;
+        save();
+      }
+
       checkDayRollover();
       // v3.20.17: backfill date stamps on legacy dust specks that lack one.
       // Stamps them as "today" so the first burn after the update works.
@@ -15146,9 +15204,12 @@ try {
     }
   }
 
+  var _challengeResolving = false; // v3.23.539: guard against double-resolution
   function _resolveChallenge() {
     var ch = state.friendChallenge;
     if (!ch) return;
+    if (_challengeResolving) { console.warn("[Challenge] _resolveChallenge re-entry blocked"); return; }
+    _challengeResolving = true;
     var myProgress = ch.tracking ? (ch.tracking[ch.type] || 0) : 0;
     var theirProgress = ch.opponentProgress || 0;
 
@@ -15254,6 +15315,7 @@ try {
       try { showToast(resultText, result === 'win' ? 'success' : 'error'); } catch(_){}
     }
 
+    _challengeResolving = false;
     state.friendChallenge = null;
     save();
     try { _publishChallengeToFirestore(); } catch(_){}
