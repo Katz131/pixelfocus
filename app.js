@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.546 - Main Application Logic
+// PixelFocus v3.23.547 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1358,6 +1358,7 @@ try {
 
   // ============== STORAGE ==============
   function save() {
+    if (state.doubleDownActive) console.warn('[DD-TRAP-4] save() with DD active! ext=' + state.doubleDownExtensionSec + ' timerState=' + state.timerState + ' caller:', new Error().stack.split('\n').slice(1,3).join(' | '));
     // v3.23.32: Safety — archive stale dailySessionLog before every write.
     // Prevents data loss when multiple extension pages (popup, profile, etc.)
     // race each other. Even if page A archived and saved, page B's blind save
@@ -1429,6 +1430,7 @@ try {
         // Instead: adopt the incoming state wholesale, then overlay any local
         // data that's definitively fresher (e.g. timer state if running).
         var _incoming = changes.pixelFocusState.newValue;
+        if (_incoming.doubleDownActive) console.warn('[DD-TRAP-5] INCOMING from storage has DD! ext=' + _incoming.doubleDownExtensionSec + ' orig=' + _incoming.doubleDownOriginalSec + ' incoming.timerState=' + _incoming.timerState + ' local.timerState=' + state.timerState);
         // Accept the incoming state for ALL fields — this is the source of truth
         // from whichever page just saved (factory, brokerage, gallery, etc.)
         var _prevCoins = state.coins;
@@ -9543,6 +9545,8 @@ try {
         if (state.timerRemaining > 0) {
           state.timerRemaining--;
           if (state.timerRemaining % 60 === 0 && state.timerRemaining > 0 && !state.phaseTtsMuted) SFX.tick();
+          // DD-TRAP-2: Periodic DD watchdog
+          if (state.timerRemaining % 10 === 0 && state.doubleDownActive) { console.warn('[DD-TRAP-2] WATCHDOG: DD active at ' + state.timerRemaining + 's rem. ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec); }
           // v3.23.127: Refresh quest progress every minute during focus
           // Quest progress checked by standalone 30s interval, not here
           save();
@@ -10403,6 +10407,8 @@ try {
             label.title = 'Phase ' + (state.currentPhaseIndex + 1) + ' of ' + state.phases.length + ': ' + _pipPhaseName;
           }
         } else if (state.doubleDownActive) {
+          console.warn('[DD-TRAP-1] PiP rendering DD label! active=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' timerState=' + state.timerState + ' phaseIdx=' + state.currentPhaseIndex + ' phases=' + (state.phases ? state.phases.length : 'null'));
+          console.trace('[DD-TRAP-1] Call stack');
           label.textContent = '🎲 DD ' + (dur / 60) + 'M';
           var _ddOrig = Math.round((state.doubleDownOriginalSec || 0) / 60);
           var _ddExt = Math.round((state.doubleDownExtensionSec || 0) / 60);
@@ -10602,6 +10608,7 @@ try {
   var DOUBLE_DOWN_BONUS_MULT = 1.5; // 1.5x earnings on extension time
 
   function activateDoubleDown(extraMinutes) {
+    console.warn('[DD-TRAP-3] activateDoubleDown CALLED! extraMinutes=' + extraMinutes + ' STACK:', new Error().stack.split('\n').slice(1,5).join(' | '));
     if (state.timerState !== 'running' && state.timerState !== 'paused') {
       notify('Timer must be running to double down!', 'var(--warning)');
       return false;
