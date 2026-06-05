@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.561 - Main Application Logic
+// PixelFocus v3.23.562 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -7626,7 +7626,7 @@ try {
   // v3.23.433: CRITICAL — these must be at IIFE scope, not inside init().
   // getPhaseBoundaries() and tickPhaseMode() run at this scope level.
   // Previously declared inside init() → undefined here → NaN boundaries → nothing worked.
-  var PHASE_TRANSITION_SEC = 60;  // seconds of transition time between phases
+  // v3.23.561: Transition time now reads from state.phaseTransitionSec (user slider)
   var PHASE_MIN_SEC = 60;         // minimum phase duration
   var PHASE_TTS_LINES = {
     warn120: [
@@ -7646,8 +7646,8 @@ try {
     ],
     transition: function(nextName) {
       var lines = [
-        'Report to next station: ' + nextName + '. You have 60 seconds to comply.',
-        'Station change. Proceed to: ' + nextName + '. 60 seconds.',
+        'Report to next station: ' + nextName + '. You have ' + _getTransitionSec() + ' seconds to comply.',
+        'Station change. Proceed to: ' + nextName + '. ' + _getTransitionSec() + ' seconds.',
         'Mandatory rotation. Your next assignment: ' + nextName + '.',
       ];
       return lines[Math.floor(Math.random() * lines.length)];
@@ -7724,7 +7724,7 @@ try {
     var bounds = getPhaseBoundaries();
     var phases = state.phases || [];
     console.log('[PHASE-DBG] === SESSION PHASE LAYOUT ===');
-    console.log('[PHASE-DBG] sessionDurationSec=' + state.sessionDurationSec + ' phases=' + phases.length + ' PHASE_TRANSITION_SEC=' + PHASE_TRANSITION_SEC);
+    console.log('[PHASE-DBG] sessionDurationSec=' + state.sessionDurationSec + ' phases=' + phases.length + ' (state.phaseTransitionSec || 60)=' + (state.phaseTransitionSec || 60));
     for (var pi = 0; pi < bounds.length; pi++) {
       var pb = bounds[pi];
       console.log('[PHASE-DBG] Phase ' + pi + ' "' + phases[pi].name + '": origDur=' + phases[pi].durationSec + ' effectiveDur=' + (pb.effectiveDurationSec || '?') + 's start=' + pb.startSec + ' end=' + pb.endSec + ' transStart=' + pb.transStartSec + ' transEnd=' + pb.transEndSec);
@@ -7749,7 +7749,7 @@ try {
     var sessionSec = state.sessionDurationSec || 600;
     var numTrans = Math.max(0, phases.length - 1);
     // Cap transition time so it never exceeds half the session
-    var effectiveTransSec = PHASE_TRANSITION_SEC;
+    var effectiveTransSec = (state.phaseTransitionSec || 60);
     var totalTransTime = numTrans * effectiveTransSec;
     if (totalTransTime >= sessionSec * 0.5 && numTrans > 0) {
       effectiveTransSec = Math.max(5, Math.floor((sessionSec * 0.4) / numTrans));
@@ -7807,7 +7807,7 @@ try {
       if (!state.phaseTransitioning) {
         // Enter transition
         state.phaseTransitioning = true;
-        state.phaseTransitionEndsAt = Date.now() + (PHASE_TRANSITION_SEC * 1000);
+        state.phaseTransitionEndsAt = Date.now() + ((state.phaseTransitionSec || 60) * 1000);
         // TTS: announce transition
         var nextName = phases[idx + 1] ? phases[idx + 1].name : 'next station';
         console.log('[PHASE-DBG] >>> ENTERING TRANSITION at elapsed=' + elapsed + ' nextPhase=' + nextName);
@@ -8036,7 +8036,7 @@ try {
     // Now trigger transition to next phase
     if (fromIdx < phases.length - 1) {
       state.phaseTransitioning = true;
-      state.phaseTransitionEndsAt = Date.now() + (PHASE_TRANSITION_SEC * 1000);
+      state.phaseTransitionEndsAt = Date.now() + ((state.phaseTransitionSec || 60) * 1000);
       var nextName = phases[fromIdx + 1] ? phases[fromIdx + 1].name : 'next';
       speakPhaseAnnouncement(PHASE_TTS_LINES.transition(nextName));
     } else {
@@ -17313,7 +17313,7 @@ try {
       // ═══════════════════════════════════════════════════════════════
       var PHASE_COLORS = ['#534AB7','#0F6E56','#993C1D','#854F0B','#185FA5','#3B6D11','#993556','#5F5E5A'];
       var PHASE_MIN_SEC = 60;   // 1 min minimum per phase
-      var PHASE_TRANSITION_SEC = 60;
+      // (state.phaseTransitionSec || 60) removed — uses state.phaseTransitionSec
 
       function initPhaseMode() {
         var toggle = document.getElementById('phaseToggle');
