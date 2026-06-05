@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.559 - Main Application Logic
+// PixelFocus v3.23.560 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -10234,20 +10234,9 @@ try {
                 // Starting new sessions or adding time must be done
                 // from the main popup — prevents accidental resets.
                 // v3.23.362: Also handle countdown — cancel the pre-start countdown.
-                console.warn('[PIP-BTN] clicked timerState=' + state.timerState);
-                if (state.timerState === 'countdown') {
-                  cancelPreStartCountdown();
-                  state.timerState = 'idle';
-                  state.timerEndsAt = 0;
-                  save();
-                  render();
-                  console.warn('[PIP-BTN] countdown cancelled');
-                } else if (state.timerState === 'running' || state.timerState === 'paused') {
-                  try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
-                  console.warn('[PIP-BTN] pause/resume toggled, now ' + state.timerState);
-                } else {
-                  console.warn('[PIP-BTN] NO-OP state=' + state.timerState);
-                }
+                // v3.23.559: PiP is just a remote — click the real button on the main page
+                var _mainBtn = document.getElementById('startBtn');
+                if (_mainBtn) _mainBtn.click();
                 try { renderPopOutTimer(); } catch (_) {}
               });
             }
