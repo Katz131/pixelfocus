@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.548 - Main Application Logic
+// PixelFocus v3.23.549 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1433,6 +1433,12 @@ try {
         if (_incoming.doubleDownActive) console.warn('[DD-TRAP-5] INCOMING from storage has DD! ext=' + _incoming.doubleDownExtensionSec + ' orig=' + _incoming.doubleDownOriginalSec + ' incoming.timerState=' + _incoming.timerState + ' local.timerState=' + state.timerState);
         // Accept the incoming state for ALL fields — this is the source of truth
         // from whichever page just saved (factory, brokerage, gallery, etc.)
+        // v3.23.548: NEVER accept incoming countdown — it's transient/local-only.
+        // Stale BG saves with countdown would undo a PiP cancel.
+        if (_incoming.timerState === 'countdown' && state.timerState === 'idle') {
+          _incoming.timerState = 'idle';
+          _incoming.timerEndsAt = 0;
+        }
         var _prevCoins = state.coins;
         var _prevTimerState = state.timerState;
         var _prevTimerEndsAt = state.timerEndsAt;
@@ -7622,6 +7628,7 @@ try {
     }
     countdownRemaining = 0;
     _countdownCancelled = true;
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(_) {}
   }
 
   // Start (or restart) the 1 Hz timer tick that reads state.timerEndsAt and
@@ -10262,13 +10269,15 @@ try {
               btn.addEventListener('click', function(ev) {
                 try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
                 console.warn('[PIP-BTN] Clicked! timerState=' + state.timerState + ' countdownRemaining=' + countdownRemaining);
-                // v3.23.353: PiP button only handles pause/resume.
-                // Starting new sessions or adding time must be done
-                // from the main popup — prevents accidental resets.
-                // v3.23.362: Also handle countdown — cancel the pre-start countdown.
+                // v3.23.548: PiP button handles countdown cancel + pause/resume.
                 if (state.timerState === 'countdown') {
-                  console.warn('[PIP-BTN] Cancelling countdown');
-                  try { startTimer(); } catch (err) { console.error('PiP button startTimer (cancel countdown) failed:', err); }
+                  console.warn('[PIP-BTN] Cancelling countdown directly');
+                  // Cancel directly — don't go through startTimer() which can be undone by onChanged
+                  cancelPreStartCountdown();
+                  state.timerState = 'idle';
+                  state.timerEndsAt = 0;
+                  save();
+                  render();
                 } else if (state.timerState === 'running' || state.timerState === 'paused') {
                   console.warn('[PIP-BTN] Toggling pause/resume');
                   try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
