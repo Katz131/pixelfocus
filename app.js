@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.552 - Main Application Logic
+// PixelFocus v3.23.553 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -18220,6 +18220,24 @@ try {
         var phases = state.phases || [];
         var totalSec = state.sessionDurationSec || 600;
         var totalMin = Math.round(totalSec / 60);
+
+        // v3.23.552: Auto-repair if phase total is way under session duration
+        // (caused by stale state from second onChanged handler or locked-at-wrong-values)
+        if (phases.length > 0) {
+          var _phaseTotal = phases.reduce(function(s, p) { return s + p.durationSec; }, 0);
+          if (_phaseTotal < totalSec * 0.5) {
+            console.warn('[PHASE-REPAIR] Phase total ' + _phaseTotal + 's is <50% of session ' + totalSec + 's. Rebalancing.');
+            var _perPhase = Math.floor(totalSec / phases.length);
+            phases.forEach(function(p, i) {
+              p.durationSec = _perPhase;
+              p.locked = false;
+            });
+            // Give remainder to last phase
+            var _allocated = _perPhase * phases.length;
+            if (_allocated < totalSec) phases[phases.length - 1].durationSec += (totalSec - _allocated);
+            save();
+          }
+        }
 
         if (phases.length === 0) {
           list.innerHTML = '';
