@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.541 - Main Application Logic
+// PixelFocus v3.23.542 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1441,6 +1441,7 @@ try {
         var _prevDoubleDownOrigSec = state.doubleDownOriginalSec;
         var _prevDoubleDownOrigCoins = state.doubleDownOriginalCoins;
         var _prevPopOutTimerOpen = state.popOutTimerOpen;
+        var _prevPhaseTtsMuted = state.phaseTtsMuted;
         // Preserve combo/session data — only popup manages these during active sessions
         var _prevCombo = state.combo;
         var _prevComboSessions = state.comboSessions;
@@ -1483,6 +1484,7 @@ try {
             if (_prevDoubleDownOrigCoins !== undefined) state.doubleDownOriginalCoins = _prevDoubleDownOrigCoins;
           }
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
+          state.phaseTtsMuted = _prevPhaseTtsMuted; // v3.23.542: always preserve mute state
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
           // v3.23.435: Restore phase TTS flags to prevent repeat announcements
@@ -5486,7 +5488,6 @@ try {
     renderTabs();
     renderTasks();
     renderBlockProgress();
-    syncMuteButtonVisual(); // v3.23.528
     syncBadgeNotificationDot(); // v3.23.534
     // Milestones + canvas upgrades moved to gallery.html — they live where you spend textiles
     renderDustbin();
