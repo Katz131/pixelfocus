@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.553 - Main Application Logic
+// PixelFocus v3.23.554 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -16957,6 +16957,11 @@ try {
               // v3.23.552: Re-check cooldown inside the debounce callback too
               if (_cancelledAt && (Date.now() - _cancelledAt) < 2000) {
                 console.warn('[StorageSync2] BLOCKED debounced sync — cancel cooldown active');
+                return;
+              }
+              // v3.23.553: Block if timer started since debounce was queued
+              if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused' || state.timerState === 'completed') {
+                console.warn('[StorageSync2] BLOCKED debounced sync — timer is ' + state.timerState + ' (started after debounce was queued)');
                 return;
               }
               state = Object.assign({}, DEFAULT_STATE, newState);
