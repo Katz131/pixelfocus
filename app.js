@@ -16836,9 +16836,11 @@ try {
               return; // Do NOT render — timer tick handles it
             }
             // Not in a timer session — safe to do a full sync
+            // v3.23.555: Also block full sync if timer started between check and debounce
             if (_storageSyncTimer) clearTimeout(_storageSyncTimer);
             _storageSyncTimer = setTimeout(function() {
               _storageSyncTimer = null;
+              if (state.timerState === 'running' || state.timerState === 'countdown' || state.timerState === 'paused') return;
               state = Object.assign({}, DEFAULT_STATE, newState);
               // v3.23.187: Restore grace period from synced state
               if (state.gameLockGraceUntil && state.gameLockGraceUntil > Date.now()) {
@@ -17205,7 +17207,7 @@ try {
           // If the tick interval isn't running (e.g. it was killed by
           // browser throttling or a modal race), restart it so the
           // display keeps updating every second.
-          if (!timerInterval) {
+          if (!timerInterval && state.timerState === 'running') {
             try { armTimerTick(); } catch (_) {}
           }
         }
