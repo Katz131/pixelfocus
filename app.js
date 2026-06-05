@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.557 - Main Application Logic
+// PixelFocus v3.23.558 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1442,6 +1442,10 @@ try {
         var _prevDoubleDownOrigCoins = state.doubleDownOriginalCoins;
         var _prevPopOutTimerOpen = state.popOutTimerOpen;
         var _prevPhaseTtsMuted = state.phaseTtsMuted;
+        var _prevCurrentPhaseIndex = state.currentPhaseIndex;
+        var _prevPhaseModeEnabled = state.phaseModeEnabled;
+        var _prevPhases = state.phases;
+        var _prevPhaseBoundaries = state.phaseBoundaries;
         // Preserve combo/session data — only popup manages these during active sessions
         var _prevCombo = state.combo;
         var _prevComboSessions = state.comboSessions;
@@ -1485,6 +1489,12 @@ try {
           }
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
           state.phaseTtsMuted = _prevPhaseTtsMuted; // v3.23.542: always preserve mute state
+          if (_prevPhaseModeEnabled) {
+            state.phaseModeEnabled = _prevPhaseModeEnabled;
+            state.currentPhaseIndex = _prevCurrentPhaseIndex;
+            if (_prevPhases) state.phases = _prevPhases;
+            if (_prevPhaseBoundaries) state.phaseBoundaries = _prevPhaseBoundaries;
+          }
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
           // v3.23.435: Restore phase TTS flags to prevent repeat announcements
@@ -10218,10 +10228,19 @@ try {
                 // Starting new sessions or adding time must be done
                 // from the main popup — prevents accidental resets.
                 // v3.23.362: Also handle countdown — cancel the pre-start countdown.
+                console.warn('[PIP-BTN] clicked timerState=' + state.timerState);
                 if (state.timerState === 'countdown') {
-                  try { startTimer(); } catch (err) { console.error('PiP button startTimer (cancel countdown) failed:', err); }
+                  cancelPreStartCountdown();
+                  state.timerState = 'idle';
+                  state.timerEndsAt = 0;
+                  save();
+                  render();
+                  console.warn('[PIP-BTN] countdown cancelled');
                 } else if (state.timerState === 'running' || state.timerState === 'paused') {
                   try { startTimer(); } catch (err) { console.error('PiP button startTimer failed:', err); }
+                  console.warn('[PIP-BTN] pause/resume toggled, now ' + state.timerState);
+                } else {
+                  console.warn('[PIP-BTN] NO-OP state=' + state.timerState);
                 }
                 try { renderPopOutTimer(); } catch (_) {}
               });
