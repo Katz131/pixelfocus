@@ -19,7 +19,7 @@
 // full-tab windows opened via chrome.tabs.create() with dedup logic.
 // =============================================================================
 
-// PixelFocus v3.23.542 - Main Application Logic
+// PixelFocus v3.23.544 - Main Application Logic
 try {
 (() => {
   // v3.23.452: Module-scope collapsible open/closed state.
@@ -1476,15 +1476,22 @@ try {
           state.timerEndsAt = _prevTimerEndsAt;
           state.timerRemaining = _prevTimerRemaining;
           state.sessionDurationSec = _prevSessionDurationSec;
-          if (_prevDoubleDown) {
+          // v3.23.543: Only restore DD if it's not corrupted (ext must be > 0)
+          if (_prevDoubleDown && _prevDoubleDownExtSec > 0) {
             state.doubleDownActive = _prevDoubleDown;
-            // v3.23.539: Also preserve extension fields — without these the reward calc breaks
-            if (_prevDoubleDownExtSec) state.doubleDownExtensionSec = _prevDoubleDownExtSec;
-            if (_prevDoubleDownOrigSec) state.doubleDownOriginalSec = _prevDoubleDownOrigSec;
+            state.doubleDownExtensionSec = _prevDoubleDownExtSec;
+            state.doubleDownOriginalSec = _prevDoubleDownOrigSec;
             if (_prevDoubleDownOrigCoins !== undefined) state.doubleDownOriginalCoins = _prevDoubleDownOrigCoins;
+          } else if (_prevDoubleDown && (!_prevDoubleDownExtSec || _prevDoubleDownExtSec <= 0)) {
+            // Corrupted DD — don't restore, let it stay cleared
+            state.doubleDownActive = false;
+            state.doubleDownExtensionSec = 0;
+            state.doubleDownOriginalSec = 0;
+            console.log('[DD-DBG] onChanged: BLOCKED corrupted DD restore (active=true but ext=0)');
           }
           if (_prevPopOutTimerOpen) state.popOutTimerOpen = _prevPopOutTimerOpen;
           state.phaseTtsMuted = _prevPhaseTtsMuted; // v3.23.542: always preserve mute state
+          console.log('[DD-DBG] onChanged: restoring DD. active=' + _prevDoubleDown + ' ext=' + _prevDoubleDownExtSec + ' orig=' + _prevDoubleDownOrigSec + ' incoming.active=' + _incoming.doubleDownActive);
           state.sessionBlocks = _prevSessionBlocks;
           state.sessionDistractions = _prevSessionDistractions;
           // v3.23.435: Restore phase TTS flags to prevent repeat announcements
@@ -2165,6 +2172,8 @@ try {
       }
       checkComboTimeout();
 
+      // v3.23.542: DD debug logging
+      console.log('[DD-DBG] load() check: doubleDownActive=' + state.doubleDownActive + ' ext=' + state.doubleDownExtensionSec + ' orig=' + state.doubleDownOriginalSec + ' timerState=' + state.timerState);
       // v3.23.540: Clean up corrupted double-down state (active but 0 extension = clobbered)
       if (state.doubleDownActive && (!state.doubleDownExtensionSec || state.doubleDownExtensionSec <= 0)) {
         console.log('[DD] Corrupted double-down state detected (active=true, extension=0). Resetting.');
@@ -10568,6 +10577,7 @@ try {
       return false;
     }
     // Record original commitment
+    console.log('[DD-DBG] activateDoubleDown: extraMinutes=' + extraMinutes + ' current sessionDurationSec=' + state.sessionDurationSec + ' timerRemaining=' + state.timerRemaining + ' timerEndsAt=' + state.timerEndsAt);
     state.doubleDownActive = true;
     state.doubleDownOriginalSec = state.sessionDurationSec || 600;
     state.doubleDownExtensionSec = extraMinutes * 60;
@@ -10594,6 +10604,7 @@ try {
   }
 
   function resetDoubleDown() {
+    console.log('[DD-DBG] resetDoubleDown called. Stack:', new Error().stack.split('\n').slice(1,3).join(' <- '));
     state.doubleDownActive = false;
     state.doubleDownOriginalSec = 0;
     state.doubleDownExtensionSec = 0;

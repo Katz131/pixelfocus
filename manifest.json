@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Todo of the Loom",
-  "version": "3.23.542",
-  "description": "v3.23.542",
+  "version": "3.23.544",
+  "description": "v3.23.544",
   "permissions": [
     "storage",
     "alarms",
